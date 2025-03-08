@@ -57,11 +57,17 @@ export class DatabaseManager {
 		return DatabaseManager._dbm;
 	}
 
+    public async deleteCredentials(id: string) {
+      const r = await this.pgclient.query("delete from trex.db where id = $1", [id]);
+        this.trexdbm.setCredentials(await this.getCredentialsDecrypted());
+        return r;
+    }
+
     public async setCredentials(c: any) {
         const v = new Validator();
         v.validate(c, dbSchema);
 
-        const params = [c.code || c.id, c.host, c.port, c.name, c.dialect, JSON.stringify(c.credentials), JSON.stringify(c.vocabSchemas) || null, JSON.stringify(c.publications) || null, JSON.stringify(c.extra.Internal) || null, JSON.stringify(c.authenticationMode) || null ];
+        const params = [c.code || c.id, c.host, c.port, c.name, c.dialect, JSON.stringify(c.credentials), JSON.stringify(c.vocabSchemas) || null, JSON.stringify(c.publications) || null, JSON.stringify(c.extra?.Internal) || null, c.authenticationMode || null ];
         const r = await this.pgclient.query(this.insert_query, params);
         this.trexdbm.setCredentials(await this.getCredentialsDecrypted());
         return c.code;

@@ -93,6 +93,7 @@ export const env = {
     PLUGINS_INIT: _env.PLUGINS_SEED? JSON.parse(_env.PLUGINS_SEED) : [],
     PLUGINS_SEED_UPDATE: JSON.parse(_env.PLUGINS_SEED_UPDATE) === true || false,
     PLUGINS_PULL_POLICY: _env.PLUGINS_PULL_POLICY || 'IfNotPresent',
+    PLUGINS_IMAGE_TAG: _env.PLUGINS_IMAGE_TAG || 'develop' 
 
 }
 

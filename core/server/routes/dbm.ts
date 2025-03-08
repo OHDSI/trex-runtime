@@ -17,7 +17,13 @@ export function addRoutes(app: Hono) {
     });
 
     app.delete('/trex/db/:name', authn, authz, async (c: Context) => {
-        return c.json({"message": "ok"});
+        try {
+            const id = await (await DatabaseManager.get()).deleteCredentials(c.req.param('name'));
+            return c.json({"id": c.req.param('name')});
+        } catch (e) {
+            logger.error(e);
+            return c.text(e, 500);
+        }
     })
 
     app.post('/trex/db/', authn, authz, async (c: Context) => {
@@ -41,11 +47,14 @@ export function addRoutes(app: Hono) {
         return c.json(r);
     });
 
+
+
     app.put('/trex/db/', authn, authz, async (c: Context) => {
         const body = await c.req.json();
         let r = await (await DatabaseManager.get()).getCredentialsEncrypted();
         let y = r.filter((x: any) => x.id === body.id)[0];
         let x = _.merge({}, y, {authenticationMode:y.authentication_mode, extra:{Internal:y.db_extra}, vocabSchemas:y.vocab_schemas}, body);
+        //let w = r.filter((x: any) => x.id != body.id).push(x);
         try {
             const id = await (await DatabaseManager.get()).setCredentials(x);
             return c.json({"id": id});

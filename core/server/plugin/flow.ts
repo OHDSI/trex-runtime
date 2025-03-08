@@ -38,7 +38,7 @@ export async function addPlugin(value: any) {
 						entrypoint: f.entrypoint,
 						enforce_parameter_schema: false,
 						job_variables: {
-							image: f.image,
+							image: value.image ? `${value.image}:${env.PLUGINS_IMAGE_TAG}` : f.image,
 							image_pull_policy: env.PLUGINS_PULL_POLICY,
 							volumes: env.PREFECT_DOCKER_VOLUMES,
 							networks: [env.PREFECT_DOCKER_NETWORK]
