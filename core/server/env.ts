@@ -25,21 +25,22 @@ export let logger = {
 };
 
 export const publicURLs = [
-    '/portalsvc/public-graphql',
-    '/usermgmt/api/user-group/public',
-    '/system-portal/dataset/public/list',
-    '/system-portal/feature/list',
-    '/system-portal/config/public/overview-description',
-    '/index*',
-    '/api/*',
-    '/oidc/*',
-    '/sign-in',
-    '/consent',
-    '/callback'
+    '^/portalsvc/public-graphql$',
+    '^/usermgmt/api/user-group/public$',
+    '^/system-portal/dataset/public/list$',
+    '^/system-portal/feature/list$',
+    '^/system-portal/config/public/overview-description$',
+    '^/index.html$',
+    '^/assets/.*$',
+    '^/api/.*$',
+    '^/oidc/.*$',
+    '^/sign-in$',
+    '^/consent$',
+    '^/callback$'
   ]
 
   export const authz_publicURLs = publicURLs.concat([
-    '/usermgmt/api/user-group/list'
+    '^/usermgmt/api/user-group/list$'
   ])
 
 export const env = {
