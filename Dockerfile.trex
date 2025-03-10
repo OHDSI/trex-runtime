@@ -1,31 +1,58 @@
+# syntax=docker/dockerfile:1.4
 
 FROM rust:1.83.0-bookworm AS builder
+
 ARG TARGETPLATFORM
-ARG GIT_V_VERSION
 ARG ONNXRUNTIME_VERSION=1.17.0
+ARG GIT_V_VERSION
 ARG PROFILE=release
 ARG FEATURES=cli/tracing
 
-RUN apt-get update && apt-get install -y llvm-dev libclang-dev clang cmake
-WORKDIR /usr/src/
+ENV ZERO_AR_DATE=1
+#ENV DUCKDB_STATIC_BUILD=1
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
-    cargo install cargo-strip
+RUN apt-get update && apt-get install -y binutils llvm-dev libclang-dev clang cmake
+#WORKDIR /usr/src/
+
+#RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
+#    cargo install cargo-strip
 
 COPY . /usr/src/trex
 WORKDIR /usr/src/trex
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} --mount=type=cache,target=/usr/src/trex/target,id=${TARGETPLATFORM} \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
+    --mount=type=cache,target=/usr/src/trex/target,id=${TARGETPLATFORM} \
+    (cargo build --profile ${PROFILE} --workspace || true) && \
     GIT_V_TAG=${GIT_V_VERSION} cargo build --profile ${PROFILE} --features "${FEATURES}" && \
-    cargo strip && \
+    #cargo strip && \
     mv /usr/src/trex/target/${PROFILE}/trex /root
 
-FROM node:18.20.4-bookworm-slim AS development
-RUN apt-get update && apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN objcopy --compress-debug-sections \
+    --only-keep-debug \
+    /root/trex \
+    /root/trex.debug
+RUN objcopy --strip-debug \
+    --add-gnu-debuglink=/root/trex.debug \
+    /root/trex
+    
+
+# ONNX Runtime provider
+# Application runtime with ONNX
+FROM builder as ort
+RUN ./scripts/install_onnx.sh $ONNXRUNTIME_VERSION linux $TARGETPLATFORM /root/onnxruntime
+
+
+FROM node:18.20.4-bookworm-slim AS trex-base
+RUN apt-get update && apt-get install -y libssl-dev libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN apt-get remove -y perl && apt-get autoremove -y
 
-WORKDIR /usr/src
 COPY --from=builder /root/trex /usr/src/trex
+# COPY --from=builder /root/trex.debug /usr/src/trex.debug
+
+COPY --from=ort /root/onnxruntime/lib/libonnxruntime.so* /usr/lib
+
+WORKDIR /usr/src
+
 COPY core /usr/src/core
 RUN mkdir -p /usr/src/data/cache
 RUN mkdir -p /usr/src/data/plugins

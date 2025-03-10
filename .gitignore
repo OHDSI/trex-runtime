@@ -1,3 +1,6 @@
+.env
+cache
+cert
 debug/
 target/
 temp/

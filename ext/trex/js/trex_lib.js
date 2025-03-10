@@ -8,6 +8,8 @@ import { HanaConnection } from './hdbconnection.js';
 const ops = core.ops;
 
 const {
+	op_prompt,
+	op_prompt_next,
 	op_add_replication,
 	op_install_plugin,
 	op_execute_query,
@@ -17,6 +19,23 @@ const {
 } = ops;
 
 export { op_add_replication, op_exit };
+
+export async function prompt(xprompt) {
+    const streamId = op_prompt(xprompt, 2048);
+
+    return new ReadableStream({
+        async start(controller) {
+            while (true) {
+                const chunk = await op_prompt_next(streamId);
+                if (chunk === null) {
+                    controller.close();
+                    break;
+                }
+                controller.enqueue(chunk);
+            }
+        }
+    });
+}
 
 export class DatabaseManager {
 	static #dbm;

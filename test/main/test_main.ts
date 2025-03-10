@@ -133,6 +133,46 @@ const init_tests = {
                 "vocabSchemas": [
                     "demo_cdm"
                 ]
+            },
+            {
+                "id": "fhir_database",
+                "host": "localhost",
+                "port": 5432,
+                "code": "demo_database",
+                "name": "alp",
+                "dialect": "postgres",
+                "credentials": [
+                    {
+                        "username": "postgres",
+                        "userScope": "Admin",
+                        "serviceScope": "Internal",
+                        "password": "FZna0JX6xKSrTQ5Ji9lDeNVVDogpym"
+                    },
+                    {
+                        "username": "postgres",
+                        "userScope": "Read",
+                        "serviceScope": "Internal",
+                        "password": "mypass"
+                    }
+                ],
+                "publications": [
+                    {"publication": "fhir_publication", "slot": "stdout2_slot"}
+                ],
+                "extra": [
+                    {
+                        "value": {
+                            "max": 50,
+                            "queryTimeout": 60000,
+                            "statementTimeout": 60000,
+                            "idleTimeoutMillis": 300000,
+                            "idleInTransactionSessionTimeout": 300000
+                        },
+                        "serviceScope": "Internal"
+                    }
+                ],
+                "vocabSchemas": [
+                    "demo_cdm"
+                ]
             }
         ];
         dbm.setCredentials(c);
@@ -186,6 +226,25 @@ const tests = {
         } catch (e) {
             console.error(e);
         }
+    },
+    "ask": async () => {
+
+        const stream = await Trex.ask(`write a python program to get the repos from github`);
+        const reader = stream.getReader();
+
+
+        let res = ""
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+   
+            Deno.stdout.write(new TextEncoder().encode(value));
+            res += value;
+            
+        } 
+        console.log("Answer:"+res)
     }
 }
 
@@ -196,6 +255,6 @@ export function test() {
         runtest(key, value, 0);
     }
     for (const [key, value] of Object.entries(tests)) {
-        runtest(key, value, 2000);
+        runtest(key, value, 3000);
     }
 }

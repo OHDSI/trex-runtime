@@ -7,19 +7,40 @@ use std::process;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use duckdb::arrow::record_batch::RecordBatch;
-use duckdb::{params_from_iter, types::ToSqlOutput, types::Value, Connection, Result, ToSql};
+use duckdb::{params_from_iter, types::ToSqlOutput, types::Value, Connection, ToSql};
 use pgwire::tokio::process_socket;
 use serde::{Deserialize, Serialize};
 pub use sql::{
     auth::AuthType,
     duckdb::{TrexDuckDB, TrexDuckDBFactory},
 };
+use std::env;
 use std::process::Command;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 use std::{error::Error, time::Duration};
 use tokio::net::TcpListener;
 use tracing::warn;
+
+use std::io::Write;
+
+use anyhow::{bail, Context};
+use llama_cpp_2::context::params::LlamaContextParams;
+use llama_cpp_2::ggml_time_us;
+use llama_cpp_2::llama_backend::LlamaBackend;
+use llama_cpp_2::llama_batch::LlamaBatch;
+use llama_cpp_2::model::params::LlamaModelParams;
+use llama_cpp_2::model::LlamaModel;
+use llama_cpp_2::model::{AddBos, Special};
+use llama_cpp_2::sampling::LlamaSampler;
+
+use std::num::NonZeroU32;
+use std::pin::pin;
+
+use deno_core::{OpState, Resource, ResourceId};
+use std::cell::RefCell;
+use std::rc::Rc;
+use tokio::sync::mpsc;
 
 use crate::pipeline::{
     batching::{data_pipeline::BatchDataPipeline, BatchConfig},
@@ -202,6 +223,208 @@ fn op_set_dbc(#[string] dbc: String) {
     *(*(*DB_CREDENTIALS)).lock().unwrap() = dbc;
 }
 
+pub struct LlamaStreamResource {
+    receiver: Arc<Mutex<mpsc::Receiver<String>>>,
+}
+
+impl Resource for LlamaStreamResource {
+    fn name(&self) -> std::borrow::Cow<str> {
+        "LlamaStreamResource".into()
+    }
+}
+
+#[op2]
+#[serde]
+fn op_prompt(
+    state: &mut OpState,
+    #[string] prompt: String,
+    #[smi] max_tokens: u32,
+) -> Result<ResourceId, anyhow::Error> {
+    let (sender, receiver) = mpsc::channel::<String>((max_tokens) as usize);
+
+    tokio::spawn(async move {
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = run_llama_model(prompt, max_tokens, sender) {
+                eprintln!("Error running llama model: {}", e);
+            }
+        });
+    });
+
+    let resource = LlamaStreamResource {
+        receiver: Arc::new(Mutex::new(receiver)),
+    };
+    Ok(state.resource_table.add(resource))
+}
+
+#[allow(clippy::await_holding_lock)]
+#[op2(async)]
+#[string]
+async fn op_prompt_next(
+    state: Rc<RefCell<OpState>>,
+    #[smi] rid: ResourceId,
+) -> Result<Option<String>, AnyError> {
+    let resource = state
+        .borrow()
+        .resource_table
+        .get::<LlamaStreamResource>(rid)?;
+
+    let mut rx = resource.receiver.lock().unwrap();
+    let next_chunk = rx.recv().await;
+
+    if next_chunk.is_none() {
+        state
+            .borrow_mut()
+            .resource_table
+            .take::<LlamaStreamResource>(rid)?;
+    }
+    Ok(next_chunk)
+}
+
+fn run_llama_model(
+    prompt: String,
+    max_tokens: u32,
+    sender: mpsc::Sender<String>,
+) -> Result<(), anyhow::Error> {
+    let backend = LlamaBackend::init()?;
+    let model_params = {
+        /*#[cfg(any(feature = "cuda", feature = "vulkan"))]
+        if !disable_gpu {
+            LlamaModelParams::default().with_n_gpu_layers(1000)
+        } else {
+            LlamaModelParams::default()
+        }
+        #[cfg(not(any(feature = "cuda", feature = "vulkan")))]*/
+        LlamaModelParams::default()
+    };
+    let ctx_size: Option<NonZeroU32> = Some(NonZeroU32::new(max_tokens).unwrap());
+    let n_len = max_tokens as i32;
+    let seed = 1234;
+
+    let model_params = pin!(model_params);
+
+    /*for (k, v) in &key_value_overrides {
+        let k = CString::new(k.as_bytes()).with_context(|| format!("invalid key: {k}"))?;
+        model_params.as_mut().append_kv_override(k.as_c_str(), *v);
+    }*/
+
+    let model_path = match env::var("TREX_MODEL") {
+        Ok(val) => val.to_string(),
+        Err(_e) => "./data/plugins/node_modules/@data2evidence/chat/llm.gguf".to_string(),
+    };
+
+    let model = LlamaModel::load_from_file(&backend, model_path, &model_params)
+        .with_context(|| "unable to load model")?;
+
+    let ctx_params =
+        LlamaContextParams::default().with_n_ctx(ctx_size.or(Some(NonZeroU32::new(2048).unwrap())));
+
+    let mut ctx = model
+        .new_context(&backend, ctx_params)
+        .with_context(|| "unable to create the llama_context")?;
+
+    let tokens_list = model
+        .str_to_token(&prompt, AddBos::Always)
+        .with_context(|| format!("failed to tokenize {prompt}"))?;
+
+    let n_cxt = ctx.n_ctx() as i32;
+    let n_kv_req = tokens_list.len() as i32 + (n_len - tokens_list.len() as i32);
+
+    eprintln!("n_len = {n_len}, n_ctx = {n_cxt}, k_kv_req = {n_kv_req}");
+
+    if n_kv_req > n_cxt {
+        bail!(
+            "n_kv_req > n_ctx, the required kv cache size is not big enough either reduce n_len or increase n_ctx"
+        )
+    }
+
+    if tokens_list.len() >= usize::try_from(n_len)? {
+        bail!("the prompt is too long, it has more tokens than n_len")
+    }
+
+    eprintln!();
+
+    for token in &tokens_list {
+        eprint!("{}", model.token_to_str(*token, Special::Tokenize)?);
+    }
+
+    std::io::stderr().flush()?;
+
+    // create a llama_batch with size 512
+    let mut batch = LlamaBatch::new(512, 1);
+
+    let last_index: i32 = (tokens_list.len() - 1) as i32;
+    for (i, token) in (0_i32..).zip(tokens_list.into_iter()) {
+        let is_last = i == last_index;
+        batch.add(token, i, &[0], is_last)?;
+    }
+
+    ctx.decode(&mut batch)
+        .with_context(|| "llama_decode() failed")?;
+
+    let mut n_cur = batch.n_tokens();
+    let mut n_decode = 0;
+
+    eprintln!("DONE INIT");
+
+    let t_main_start = ggml_time_us();
+
+    let mut decoder = encoding_rs::UTF_8.new_decoder();
+
+    let mut sampler =
+        LlamaSampler::chain_simple([LlamaSampler::dist(seed), LlamaSampler::greedy()]);
+
+    while n_cur <= n_len {
+        {
+            let token = sampler.sample(&ctx, batch.n_tokens() - 1);
+
+            sampler.accept(token);
+
+            if model.is_eog_token(token) {
+                eprintln!();
+                break;
+            }
+
+            let output_bytes = model.token_to_bytes(token, Special::Tokenize)?;
+            let mut output_string = String::with_capacity(32);
+            let _decode_result = decoder.decode_to_string(&output_bytes, &mut output_string, false);
+            for chunk in output_string.chars().collect::<Vec<_>>().chunks(1024) {
+                let s: String = chunk.iter().collect();
+                if sender.blocking_send(s).is_err() {
+                    warn!("TREX Error: send llm result to deno");
+                    break;
+                }
+            }
+            //print!("{output_string}");
+            //std::io::stdout().flush()?;
+            std::thread::yield_now();
+            batch.clear();
+            batch.add(token, n_cur, &[0], true)?;
+        }
+
+        n_cur += 1;
+
+        ctx.decode(&mut batch).with_context(|| "failed to eval")?;
+
+        n_decode += 1;
+    }
+
+    eprintln!("\n");
+
+    let t_main_end = ggml_time_us();
+
+    let duration = Duration::from_micros((t_main_end - t_main_start) as u64);
+
+    eprintln!(
+        "decoded {} tokens in {:.2} s, speed {:.2} t/s\n",
+        n_decode,
+        duration.as_secs_f32(),
+        n_decode as f32 / duration.as_secs_f32()
+    );
+
+    println!("{}", ctx.timings());
+    Ok(())
+}
+
 #[op2(fast)]
 fn op_install_plugin(#[string] name: String, #[string] dir: String) {
     Command::new("npx")
@@ -318,6 +541,8 @@ fn op_execute_query(
 deno_core::extension!(
     sb_trex,
     ops = [
+        op_prompt,
+        op_prompt_next,
         op_add_replication,
         op_install_plugin,
         op_execute_query,
