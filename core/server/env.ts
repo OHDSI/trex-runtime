@@ -29,6 +29,7 @@ export const publicURLs = [
     '^/usermgmt/api/user-group/public$',
     '^/system-portal/dataset/public/list$',
     '^/system-portal/feature/list$',
+    '^/system-portal/config/public$',
     '^/system-portal/config/public/overview-description$',
     '^/index.html$',
     '^/assets/.*$',
