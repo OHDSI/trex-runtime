@@ -293,16 +293,8 @@ export async function authz(c: Context, next: any) {
         return next()
       } else if(scopes.some(i => mriUserObj.studyScopes.includes(i))) {
 
-        let datasetId: string | null = null;
         const datasetIdKey = match["datasetId"] ?? "datasetId"
-        // Look for datasetId in query param
-        datasetId = c.req.query(datasetIdKey);
-
-        // Look for datasetId in body if not found in query parameter
-        if (!datasetId) {
-          datasetId = await _lookForDatasetIdInBody(c, datasetIdKey)
-        }
-
+        const datasetId = await extractDatasetIdFromRequestContext(c, datasetIdKey);
         if(datasetId) {
           if(mriUserObj.alpRoleMap.STUDY_RESEARCHER_ROLE.indexOf(datasetId) > -1) {
             logger.info(`AUTHORIZED STUDY ACCESS: user ${mriUserObj.userId}, url ${originalUrl}`)
@@ -328,6 +320,36 @@ export async function authz(c: Context, next: any) {
       })
     }
   }
+  }
+
+  /*
+
+  Look for datasetId in the following order
+    1. Request query parameter
+    2. Request body
+    3. Request header
+  If datasetId is not found, return null
+  */
+  const extractDatasetIdFromRequestContext = async (
+    c,
+    datasetIdKey: string
+  ): Promise<string | null> => {
+    let datasetId: string | null = null;
+
+    // Look for datasetId in query param
+    datasetId = c.req.query(datasetIdKey);
+
+    // Look for datasetId in body if not found in query parameter
+    if (!datasetId) {
+      datasetId = await _lookForDatasetIdInBody(c, datasetIdKey)
+    }
+
+    // Look for datasetId in header if not found in query parameter or body
+    if (!datasetId) {
+      datasetId = c.req.header(datasetIdKey)
+    }
+
+    return datasetId;
   }
 
   const _lookForDatasetIdInBody = async (
