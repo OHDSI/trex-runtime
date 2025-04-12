@@ -10,12 +10,12 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
-duckdb = { git = "https://github.com/p-hoffmann/duckdb-rs", rev = "64954938af0d5fa93ee1d59e70cd6f90cb70cfce", default-features = false, features = ["bundled"] }
+duckdb = { git = "https://github.com/p-hoffmann/duckdb-rs", rev = "6444ce2f5ee2f0b0474d9361b7b1e2b1106e244f", default-features = false, features = ["bundled"] }
 pgwire = { version = "0.28.0", default-features = false, features = ["server-api", "_bundled", "_duckdb"] }
 chrono = {version = "0.4.34", features = ["serde"] }
 tracing-subscriber.workspace = true
 thiserror = "1.0"
-arrow-json = "53.0.0"
+arrow-json = "54.0.0"
 async-trait = { workspace = true }
 bigdecimal = { version = "0.4.6", features = ["std"] }
 bytes = { workspace = true }
