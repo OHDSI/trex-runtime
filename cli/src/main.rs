@@ -126,6 +126,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
                             .await
                         });
                     } else {
+                        println!("Starting SQL Server Port: {}", sql.unwrap());
                         tokio::spawn(async move {
                             start_sql_server(
                                 myip.as_str(),

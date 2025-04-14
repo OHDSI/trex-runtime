@@ -9,9 +9,21 @@ ARG PROFILE=release
 ARG FEATURES=cli/tracing
 
 ENV ZERO_AR_DATE=1
-#ENV DUCKDB_STATIC_BUILD=1
+ENV DUCKDB_STATIC_BUILD=1
+ENV LLAMA_CUBLAS=1
 
-RUN apt-get update && apt-get install -y binutils llvm-dev libclang-dev clang cmake
+RUN echo "Platform: $TARGETPLATFORM"
+
+RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
+    export RUSTFLAGS="-C target-feature=+neon,+dotprod,+fp16,+rcpc,+crypto" && \
+    export CFLAGS="-march=armv8-a+dotprod+fp16+rcpc+crypto -O3" && \
+    export CXXFLAGS="-march=armv8-a+dotprod+fp16+rcpc+crypto -O3" && \
+    export CC=clang && \
+    export CXX=clang++ \
+    ; fi
+
+RUN apt-get update && apt-get install -y binutils llvm-dev libclang-dev clang cmake ninja-build
+RUN rustup component add rustfmt
 #WORKDIR /usr/src/
 
 #RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
@@ -32,7 +44,7 @@ RUN objcopy --compress-debug-sections \
     /root/trex \
     /root/trex.debug
 RUN objcopy --strip-debug \
-    --add-gnu-debuglink=/root/trex.debug \
+#    --add-gnu-debuglink=/root/trex.debug \
     /root/trex
     
 
@@ -43,11 +55,11 @@ RUN ./scripts/install_onnx.sh $ONNXRUNTIME_VERSION linux $TARGETPLATFORM /root/o
 
 
 FROM node:18.20.4-bookworm-slim AS trex-base
-RUN apt-get update && apt-get install -y libssl-dev libgomp1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl libssl-dev libgomp1 && rm -rf /var/lib/apt/lists/*
 RUN apt-get remove -y perl && apt-get autoremove -y
 
 COPY --from=builder /root/trex /usr/src/trex
-# COPY --from=builder /root/trex.debug /usr/src/trex.debug
+#COPY --from=builder /root/trex.debug /usr/src/trex.debug
 
 COPY --from=ort /root/onnxruntime/lib/libonnxruntime.so* /usr/lib
 
@@ -68,7 +80,14 @@ RUN /usr/src/trex bundle --entrypoint /usr/src/core/server/index.ts --output /us
 RUN /usr/src/trex bundle --entrypoint /usr/src/core/event/index.ts --output /usr/src/core/event/index.eszip 
 
 # Allows usage of npx
-RUN ln -sf /usr/src/node_modules/@oven/bun-linux-x64-baseline/bin/bun /usr/src/node_modules/.bin/bun
+RUN if [ "$(uname -m)" = "aarch64" ]; then \
+    npm install @oven/bun-linux-aarch64; \
+    ln -sf /usr/src/node_modules/bun-linux-aarch64/bin/bun /usr/src/node_modules/.bin/bun; \
+    else \
+    npm install @oven/bun-linux-x64-baseline; \
+    ln -sf /usr/src/node_modules/bun-linux-x64-baseline/bin/bun /usr/src/node_modules/.bin/bun; \
+    fi
+
 
 CMD ["npm", "run", "start"]
 EXPOSE 33000

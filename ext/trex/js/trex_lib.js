@@ -76,10 +76,10 @@ export class DatabaseManager {
 			if(c.publications) {
 				const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
 				for(const p of c.publications) {
-					const key = `${c.id}_${p.publication}_${p.slot}`
+					const key = `${p.publication}`
 					if(!(key in this.getPublications)) {
 						op_add_replication(p.publication, p.slot, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
-						this.#add_postgres(`${key}_pg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+						//this.#add_postgres(`${key}_pg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
 						const pub = this.getPublications();
 						pub[key] = true;
 						this.#setPublications(pub);
@@ -91,7 +91,7 @@ export class DatabaseManager {
 
 	getFirstPublication(db_id) {
 		const tmp =  this.getCredentials().filter(c => c.id === db_id)[0].publications[0]
-		return `${db_id}_${tmp.publication}_${tmp.slot}`
+		return `${tmp.publication}`
 	}
 
 

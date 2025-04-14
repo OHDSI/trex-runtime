@@ -424,6 +424,7 @@ struct LaxSingleProcessFsFlagInner {
     finished_token: Arc<tokio_util::sync::CancellationToken>,
 }
 
+#[allow(unstable_name_collisions)]
 impl Drop for LaxSingleProcessFsFlagInner {
     fn drop(&mut self) {
         use fs3::FileExt;
