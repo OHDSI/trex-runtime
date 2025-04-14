@@ -79,21 +79,21 @@ fn get_start_command() -> Command {
     )
     .arg(
       arg!(-s --sql <PORT>)
-          .help("SQL port to listen on")
-          .value_parser(value_parser!(u16)),
+        .help("SQL port to listen on")
+        .value_parser(value_parser!(u16)),
     )
     .arg(
-        arg!(--"sql-scram")
-            .help("Enables SQL SCRAM Auth")
-            .default_value("false")
-            .requires("key")
-            .requires("cert"),
+      arg!(--"sql-scram")
+        .help("Enables SQL SCRAM Auth")
+        .default_value("false")
+        .requires("key")
+        .requires("cert"),
     )
     .arg(
-        arg!(--"sql-password" <PASSWORD>)
-            .help("SQL password")
-            .env("TREX_SQL_PASSWORD")
-            .default_value("pencil")
+      arg!(--"sql-password" <PASSWORD>)
+        .help("SQL password")
+        .env("TREX_SQL_PASSWORD")
+        .default_value("pencil"),
     )
     .arg(
       arg!(--tls[PORT])

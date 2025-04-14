@@ -5,9 +5,9 @@ use thiserror::Error;
 use tokio_postgres::types::PgLsn;
 
 use crate::conversions::{
-    cdc_event::CdcEvent,
-    table::{TableId, TableSchema},
-    table_row::TableRow,
+  cdc_event::CdcEvent,
+  table::{TableId, TableSchema},
+  table_row::TableRow,
 };
 
 use super::PipelineResumptionState;
@@ -26,18 +26,29 @@ impl SinkError for InfallibleSinkError {}
 
 #[async_trait]
 pub trait BatchSink {
-    type Error: SinkError;
-    async fn get_resumption_state(&mut self) -> Result<PipelineResumptionState, Self::Error>;
-    async fn write_table_schemas(
-        &mut self,
-        table_schemas: HashMap<TableId, TableSchema>,
-    ) -> Result<(), Self::Error>;
-    async fn write_table_rows(
-        &mut self,
-        rows: Vec<TableRow>,
-        table_id: TableId,
-    ) -> Result<(), Self::Error>;
-    async fn write_cdc_events(&mut self, events: Vec<CdcEvent>) -> Result<PgLsn, Self::Error>;
-    async fn table_copied(&mut self, table_id: TableId) -> Result<(), Self::Error>;
-    async fn truncate_table(&mut self, table_id: TableId) -> Result<(), Self::Error>;
+  type Error: SinkError;
+  async fn get_resumption_state(
+    &mut self,
+  ) -> Result<PipelineResumptionState, Self::Error>;
+  async fn write_table_schemas(
+    &mut self,
+    table_schemas: HashMap<TableId, TableSchema>,
+  ) -> Result<(), Self::Error>;
+  async fn write_table_rows(
+    &mut self,
+    rows: Vec<TableRow>,
+    table_id: TableId,
+  ) -> Result<(), Self::Error>;
+  async fn write_cdc_events(
+    &mut self,
+    events: Vec<CdcEvent>,
+  ) -> Result<PgLsn, Self::Error>;
+  async fn table_copied(
+    &mut self,
+    table_id: TableId,
+  ) -> Result<(), Self::Error>;
+  async fn truncate_table(
+    &mut self,
+    table_id: TableId,
+  ) -> Result<(), Self::Error>;
 }

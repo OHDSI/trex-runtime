@@ -34,11 +34,9 @@ mod flags;
 #[cfg(not(feature = "tracing"))]
 mod logger;
 
-
-use trex_core::{start_sql_server, AuthType};
 use clap::ArgMatches;
 use deno_core::url::Url;
-
+use trex_core::{start_sql_server, AuthType};
 
 fn main() -> Result<ExitCode, anyhow::Error> {
   rustls::crypto::ring::default_provider().install_default();
@@ -174,52 +172,52 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .cloned();
 
         let sql = sub_matches.get_one::<u16>("sql").cloned();
-        let sql_scram = sub_matches.get_one::<bool>("sql-scram").cloned().unwrap();
+        let sql_scram =
+          sub_matches.get_one::<bool>("sql-scram").cloned().unwrap();
         let sql_password = sub_matches
-            .get_one::<String>("sql-password")
-            .cloned()
-            .unwrap();
+          .get_one::<String>("sql-password")
+          .cloned()
+          .unwrap();
         let myip = ip.clone();
         if sql.is_some() {
-            if sql_scram {
-                let Some((key_slice, cert_slice)) = sub_matches
-                    .get_one::<PathBuf>("key")
-                    .and_then(|it| std::fs::read(it).ok())
-                    .zip(
-                        sub_matches
-                            .get_one::<PathBuf>("cert")
-                            .and_then(|it| std::fs::read(it).ok()),
-                    )
-                else {
-                    bail!("unable to load the key file or cert file");
-                };
-                tokio::spawn(async move {
-                    start_sql_server(
-                        myip.as_str(),
-                        sql.unwrap(),
-                        AuthType::Scram {
-                            password: sql_password,
-                            key_slice,
-                            cert_slice,
-                        },
-                    )
-                    .await
-                });
-            } else {
-                tokio::spawn(async move {
-                    println!("Starting SQL Server Port: {}", sql.unwrap());
-                    start_sql_server(
-                        myip.as_str(),
-                        sql.unwrap(),
-                        AuthType::Default {
-                            password: sql_password,
-                        },
-                    )
-                    .await
-                });
-            }
+          if sql_scram {
+            let Some((key_slice, cert_slice)) = sub_matches
+              .get_one::<PathBuf>("key")
+              .and_then(|it| std::fs::read(it).ok())
+              .zip(
+                sub_matches
+                  .get_one::<PathBuf>("cert")
+                  .and_then(|it| std::fs::read(it).ok()),
+              )
+            else {
+              bail!("unable to load the key file or cert file");
+            };
+            tokio::spawn(async move {
+              start_sql_server(
+                myip.as_str(),
+                sql.unwrap(),
+                AuthType::Scram {
+                  password: sql_password,
+                  key_slice,
+                  cert_slice,
+                },
+              )
+              .await
+            });
+          } else {
+            tokio::spawn(async move {
+              println!("Starting SQL Server Port: {}", sql.unwrap());
+              start_sql_server(
+                myip.as_str(),
+                sql.unwrap(),
+                AuthType::Default {
+                  password: sql_password,
+                },
+              )
+              .await
+            });
+          }
         }
-
 
         let static_patterns =
           if let Some(val_ref) = sub_matches.get_many::<String>("static") {
