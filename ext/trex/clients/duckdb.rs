@@ -91,11 +91,11 @@ impl DuckDbClient {
             &Type::TIME => "time",
             &Type::TIMESTAMP => "timestamp",
             &Type::TIMESTAMPTZ => "timestamptz",
-            &Type::UUID => "uuid",
+            //&Type::UUID => "uuid",
             &Type::JSON => "json",
             &Type::OID => "int8",
             &Type::BYTEA => "bytea",
-            &Type::BOOL_ARRAY => "bool[]",
+            /*&Type::BOOL_ARRAY => "bool[]",
             &Type::CHAR_ARRAY
             | &Type::BPCHAR_ARRAY
             | &Type::VARCHAR_ARRAY
@@ -111,19 +111,24 @@ impl DuckDbClient {
             &Type::UUID_ARRAY => "uuid[]",
             &Type::JSON_ARRAY => "json[]",
             &Type::OID_ARRAY => "oid[]",
-            &Type::BYTEA_ARRAY => "bytea[]",
-            _ => "string",
+            &Type::BYTEA_ARRAY => "bytea[]",*/
+            _ => "text",
         }
     }
 
-    fn duckdb_column_spec(column_schema: &ColumnSchema, s: &mut String) {
+    fn duckdb_column_spec(column_schema: &ColumnSchema, s: &mut String, x: &str) {
         s.push('"');
         s.push_str(&column_schema.name);
+        s.push_str(x);
+        let typ = Self::postgres_to_duckdb_type(&column_schema.typ);
         s.push('"');
 
         s.push(' ');
-        let typ = Self::postgres_to_duckdb_type(&column_schema.typ);
-        s.push_str(typ);
+        if &column_schema.name == "content" && typ == "text" {
+            s.push_str("json"); //json
+        } else {
+            s.push_str(typ);
+        }
         //if column_schema.primary {
         //    s.push_str(" primary key");
         //};
@@ -132,11 +137,18 @@ impl DuckDbClient {
     fn create_columns_spec(column_schemas: &[ColumnSchema]) -> String {
         let mut s = String::new();
         let mut p = String::new();
+        let mut names = HashSet::new();
         p.push_str("PRIMARY KEY (");
         s.push('(');
 
         for column_schema in column_schemas {
-            Self::duckdb_column_spec(column_schema, &mut s);
+            let cname = column_schema.name.to_uppercase();
+            if !names.contains(&cname) {
+                names.insert(cname);
+                Self::duckdb_column_spec(column_schema, &mut s, "");
+            } else {
+                Self::duckdb_column_spec(column_schema, &mut s, "_2");
+            }
             //if i < column_schemas.len() - 1 {
             s.push_str(", ");
             //}
@@ -168,6 +180,7 @@ impl DuckDbClient {
             "create table {}.{}.{} {}",
             &self.current_database, table_name.schema, table_name.name, columns_spec
         );
+        info!("{}", &query);
         self.conn.lock().unwrap().execute(&query, [])?;
         Ok(())
     }
@@ -259,6 +272,7 @@ impl DuckDbClient {
         let _ = c
             .execute(&format!("USE {};", &self.current_database), [])
             .inspect_err(|e| warn!("TREX: Failled to insert row (appender): {e}"));
+        info!("COPY {}", &table_name.name);
         let mut appender = c.appender_to_db(&table_name.name, &table_name.schema)?;
         for table_row in table_rows {
             let _ = appender
@@ -506,7 +520,7 @@ impl From<Cell> for Value {
                 Value::Text(s)
             }
             Cell::Bytes(b) => Value::Blob(b),
-            Cell::Array(a) => a.into(),
+            Cell::Array(_a) => Value::Null, //a.into(),
         }
     }
 }
