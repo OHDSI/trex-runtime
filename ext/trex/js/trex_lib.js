@@ -11,6 +11,7 @@ const {
 	op_prompt,
 	op_prompt_next,
 	op_add_replication,
+	op_copy_tables,
 	op_install_plugin,
 	op_execute_query,
 	op_exit,
@@ -73,10 +74,12 @@ export class DatabaseManager {
 
 	#updatePublications() {
 		for(const c of this.getCredentials()) {
-			if(c.publications) {
-				const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
+			const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
+
+			if(c.publications && c.publications.length > 0 ) {
+				console.log(`TREX PUB FOUND ${c.id}`)
 				for(const p of c.publications) {
-					const key = `${p.publication}`
+					const key = `${c.id}_${p.publication}`
 					if(!(key in this.getPublications)) {
 						op_add_replication(p.publication, p.slot, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
 						this.#add_postgres(`${key}_pg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
@@ -85,14 +88,28 @@ export class DatabaseManager {
 						this.#setPublications(pub);
 					}
 				}
-			} 
+			} else {
+				console.log(`TREX NO PUB FOUND ${c.id}`)
+				const key = `${c.id}`
+				if(!(key in this.getPublications)) {
+					this.#add_postgres(`${key}_pg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+					const res = JSON.parse(op_execute_query(`${key}_pg`,"select table_schema as schema,table_name as name from information_schema.tables where table_type = 'BASE TABLE' and table_schema not in ('information_schema','pg_catalog') ", []));
+					op_copy_tables(res, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
+					const pub = this.getPublications();
+					pub[key] = true;
+					this.#setPublications(pub);
+				}
+			}
 		}
 	}
 
 	getFirstPublication(db_id) {
-		const tmp =  this.getCredentials().filter(c => c.id === db_id)[0].publications[0]
-		if(tmp)
-			return `${tmp.publication}`
+		try {
+			const tmp =  this.getCredentials().filter(c => c.id === db_id)[0].publications[0]
+			if(tmp)
+				return `${db_id}_${tmp.publication}`
+		} catch(e) {
+		}
 		return `${db_id}`
 	}
 

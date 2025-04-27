@@ -274,6 +274,8 @@ impl DuckDbExecutor {
 
     fn table_copied(&self, table_id: TableId) -> Result<(), DuckDbExecutorError> {
         self.client.insert_into_copied_tables(table_id)?;
+        let table_schema = self.get_table_schema(table_id)?;
+        self.client.create_fts_index(&table_schema.table_name)?;
         Ok(())
     }
 

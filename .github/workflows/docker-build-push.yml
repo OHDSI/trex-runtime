@@ -99,15 +99,15 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
 
-      - name: delete-untagged-images
-        if: env.GIT_BRANCH_NAME == 'develop'
-        continue-on-error: true
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: "d2e-trex-base"
-          package-type: "container"
-          min-versions-to-keep: 3
-          delete-only-untagged-versions: "true"
+     # - name: delete-untagged-images
+     #   if: env.GIT_BRANCH_NAME == 'develop'
+     #   continue-on-error: true
+     #   uses: actions/delete-package-versions@v5
+     #   with:
+     #     package-name: "d2e-trex-base"
+     #     package-type: "container"
+     #     min-versions-to-keep: 3
+     #     delete-only-untagged-versions: "true"
 
       - name: npm install
         run: npm install

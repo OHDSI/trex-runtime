@@ -1,9 +1,10 @@
 use std::fmt::Display;
 
 use pg_escape::quote_identifier;
+use serde::{Deserialize, Serialize};
 use tokio_postgres::types::Type;
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TableName {
     pub schema: String,
     pub name: String,

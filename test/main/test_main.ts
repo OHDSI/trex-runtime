@@ -128,7 +128,7 @@ const init_tests = {
                     }
                 ],
                 "publications": [
-                    {"publication": "test_pub", "slot": "stdout_slot"}
+                    {"publication": "test_pub", "slot": "data2evidence"}
                 ],
                 "extra": [
                     {
@@ -259,6 +259,22 @@ const tests = {
         console.log("Answer:"+res)*/
     },
     "dbquery #6": test_dbquery6,
+    "dbquery json": async () => {
+        const dbm = Trex.userDatabaseManager();
+        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", {"duckdb": (n:any) => n})
+        const res1 = conn.execute("create table if not exists test (id number primary key, test json)",[], ((err:any,res:any) => {
+            console.log(err);
+            if(!err)
+            conn.execute("insert into test values (0, '{\"x\": {\"id\": \"a\"}}')",[], ((err:any,res:any) => {
+                console.log(err);
+                if(!err)
+                conn.execute("select now(), test->'$.x' from test",[], ((err:any,res:any) => {
+                    console.log(res);
+                    console.log(err);
+                      }));
+            }));
+        }));
+    },
 
 }
 
