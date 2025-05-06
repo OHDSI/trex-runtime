@@ -72,11 +72,21 @@ export class DatabaseManager {
         );
     }
 
+	#add_bigquery(
+		name, credentials
+    ) {
+		op_execute_query("memory","INSTALL bigquery FROM community",[]);
+		op_execute_query("memory","LOAD bigquery",[]);
+		op_execute_query("memory",
+        `ATTACH IF NOT EXISTS 'project=${credentials.project} dataset=${credentials.dataset}' AS ${name} (TYPE bigquery, READ_ONLY)`, []
+        );
+    }
+
 	#updatePublications() {
 		for(const c of this.getCredentials()) {
 			const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
 
-			if(c.publications && c.publications.length > 0 ) {
+			if(c.dialect == 'postgres' && c.publications && c.publications.length > 0 ) {
 				console.log(`TREX PUB FOUND ${c.id}`)
 				for(const p of c.publications) {
 					const key = `${c.id}_${p.publication}`
@@ -88,19 +98,25 @@ export class DatabaseManager {
 						this.#setPublications(pub);
 					}
 				}
-			} else {
-				if (c.vocabSchemas && c.vocabSchemas.length > 0 && c.dialect == 'postgres') {
-					console.log(`TREX NO PUB FOUND ${c.id}`)
-					const key = `${c.id}`
-					if(!(key in this.getPublications)) {
-						this.#add_postgres(`${key}_trexpg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
-						const schemas = c.vocabSchemas.map(x => `'${x}'`).join(",");
-						const res = JSON.parse(op_execute_query(`${key}_trexpg`,`select table_schema as schema,table_name as name from information_schema.tables where table_type = 'BASE TABLE' and table_schema in (${schemas})`, []));
-						op_copy_tables(res, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
-						const pub = this.getPublications();
-						pub[key] = true;
-						this.#setPublications(pub);
-					}
+			} else if (c.vocabSchemas && c.vocabSchemas.length > 0 && c.dialect == 'postgres') {
+				console.log(`TREX NO PUB FOUND ${c.id}`)
+				const key = `${c.id}`
+				if(!(key in this.getPublications)) {
+					this.#add_postgres(`${key}_trexpg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+					const schemas = c.vocabSchemas.map(x => `'${x}'`).join(",");
+					const res = JSON.parse(op_execute_query(`${key}_trexpg`,`select table_schema as schema,table_name as name from information_schema.tables where table_type = 'BASE TABLE' and table_schema in (${schemas})`, []));
+					op_copy_tables(res, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
+					const pub = this.getPublications();
+					pub[key] = true;
+					this.#setPublications(pub);
+				}
+			} else if (c.dialect == 'bigquery') {
+				const key = `${c.id}`
+				if(!(key in this.getPublications)) {
+					this.#add_bigquery(`${key}`, {project: c.host, dataset: c.name});
+					const pub = this.getPublications();
+					pub[key] = true;
+					this.#setPublications(pub);
 				}
 			}
 		}
