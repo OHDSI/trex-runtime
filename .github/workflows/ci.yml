@@ -28,7 +28,7 @@ jobs:
       - run: rustup show
       #- run: deno run --allow-write --allow-read --allow-run --allow-net ./scripts/format.js --check
       - run: rustup component add rustfmt
-      - run: ./scripts/fmt.sh
+      - run: rustfmt --all --check
 
   cargo-clippy:
     name: 'cargo clippy'
