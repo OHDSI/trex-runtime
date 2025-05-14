@@ -22,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
+      - run: rustup component add rustfmt
       - run: ./scripts/fmt.sh
 
   cargo-clippy:
@@ -30,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: rustup show
+      - run: rustup component add clippy
       - uses: Swatinem/rust-cache@v2
       - run: ./scripts/clippy.sh
 

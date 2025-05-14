@@ -127,9 +127,9 @@ const init_tests = {
                         "password": "mypass"
                     }
                 ],
-                "publications": [
+                /*"publications": [
                     {"publication": "test_pub", "slot": "data2evidence"}
-                ],
+                ],*/
                 "extra": [
                     {
                         "value": {
@@ -213,7 +213,7 @@ const tests = {
     },
     "dbquery #7 (pg conn insert)": async () => {
         try {
-            const connx = new Trex.TrexDB("demo_database_pg");
+            const connx = new Trex.TrexDB("demo_database_trexpg");
 
             let resx = await connx.execute("delete from demo_cdm.person where person_id > ?", [10000]);
             console.log(resx);

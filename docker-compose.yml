@@ -1,21 +1,21 @@
 services:
   trex:
+    image: ghcr.io/data2evidence/d2e-trex-base:local
     build:
-      context: ../../../
+      context: .
       dockerfile: Dockerfile.trex
     pull_policy: never
-    command: npm run watch
+    command: npm run test
+    platform: linux/amd64
     ports:
       - 8001:8001
       - 25432:5432
     volumes:
-      - ../../../core:/usr/src/core
-      - ../../../package.json:/usr/src/package.json
+      - ./core:/usr/src/core
+      - ./package.json:/usr/src/package.json
     environment:
       LOCAL_DEBUG: "true"
-      DATABASE_CREDENTIALS: ${DATABASE_CREDENTIALS}
+      DATABASE_CREDENTIALS: ${DATABASE_CREDENTIALS:-}
       PLUGINS_SEED: '["d2e-functions", "d2e-flows", "d2e-ui", "chat"]'
       PLUGIN_BASE_PATH: "./plugins"
-  alp-minerva-postgres:
-    ports:
-      - 5432:5432
+  
