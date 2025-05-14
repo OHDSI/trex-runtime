@@ -4,7 +4,7 @@ volumes:
 
 services:
   test-broadsea-atlasdb:
-    image: ohdsi/broadsea-atlasdb:2.0.0
+    image: ohdsi/broadsea-atlasdb:2.2.0
     container_name: test-broadsea-atlasdb
     mem_limit: "2G"
     ports:
