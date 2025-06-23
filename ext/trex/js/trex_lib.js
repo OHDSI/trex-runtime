@@ -199,6 +199,10 @@ export class UserDatabaseManager {
 	getDatabaseCredentials() {
 		return this.#dbm.getCredentials();
 	}
+	
+	getFirstPublication(db_id) {
+		return this.#dbm.getFirstPublication(db_id);
+	}
 
 
 	getConnection(db_id, schema, vocab_schema, translationMap) {
