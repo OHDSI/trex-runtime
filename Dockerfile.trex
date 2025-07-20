@@ -43,7 +43,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${TARGETPLATFORM} \
     cp /usr/local/cargo/git/checkouts/circe-be-*/${CIRCE_REV}*/native-libs/linux-x86_64/libcirce-native.so /root/libcirce-native.so || \
     echo "Warning: Could not find CIRCE native library for revision $CIRCE_REV"
 
-
 RUN objcopy --compress-debug-sections \
     --only-keep-debug \
     /root/trex \
@@ -65,11 +64,9 @@ RUN apt-get remove -y perl && apt-get autoremove -y
 
 COPY --from=builder /root/trex /usr/src/trex
 #COPY --from=builder /root/trex.debug /usr/src/trex.debug
-COPY --from=builder /root/circe_rev.txt /tmp/circe_rev.txt
 COPY --from=builder /root/libcirce-native.so /usr/lib/libcirce-native.so
 
 COPY --from=ort /root/onnxruntime/lib/libonnxruntime.so* /usr/lib/
-
 
 WORKDIR /usr/src
 
