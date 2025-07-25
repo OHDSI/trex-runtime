@@ -13,7 +13,7 @@ deno_core.workspace = true
 duckdb = { git = "https://github.com/p-hoffmann/duckdb-rs", rev = "851c056964a3b86f119c34a1c374d11b6f545f78", default-features = false, features = ["bundled"] }
 pgwire = { version = "0.28.0", default-features = false, features = ["server-api", "_bundled", "_duckdb"] }
 chrono = {version = "0.4.34", features = ["serde"] }
-circe = { git = "https://github.com/p-hoffmann/circe-be.git", rev = "250db000f0add7cc90174d49051812f728dddba8", package = "circe-rust-wrapper" }
+circe = { git = "https://github.com/p-hoffmann/circe-be.git", rev = "846917e40d4851249c538ec296ce803eee5edb4a", package = "circe-rust-wrapper" }
 tracing-subscriber.workspace = true
 thiserror = "1.0"
 arrow-json = {version = "54.0.0"}
