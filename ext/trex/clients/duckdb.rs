@@ -128,31 +128,26 @@ impl DuckDbClient {
     }
   }*/
 
-  pub fn create_fts_index(
-    &self,
-    table_name: &TableName,
-  ) -> Result<bool, duckdb::Error> {
-    if table_name.name.to_lowercase() == "concept" {
-      info!("CREATE FTS");
-      let q0 = "install fts";
-      let c = self.conn.lock().unwrap();
-      let _install_fts = c.execute(q0, []);
-      let query = format!(
-        "PRAGMA create_fts_index({}.{}.{}, {}, {})",
-        &self.current_database,
-        table_name.schema,
-        table_name.name,
-        "concept_id",
-        "'*'"
-      );
-      info!(query);
-      info!("{}", &query);
-      let x = c.execute_batch(&query);
-      info!("RES: {:?}", x);
-      Ok(true)
-    } else {
-      Ok(false)
-    }
+  pub fn create_fts_index(&self, table_name: &TableName) -> Result<bool, duckdb::Error> {
+        if table_name.name.to_lowercase() == "concept" {
+            info!("CREATE FTS");
+            let q0 = "install fts";
+            let c = self.conn.lock().unwrap();
+            let _install_fts = c.execute(q0, []);
+            let query = format!(
+                "PRAGMA create_fts_index({}.{}.{}, {}, {}, ignore={}, strip_accents=1, lower=1, overwrite=1)",
+                &self.current_database, table_name.schema, table_name.name, "concept_id", 
+                "concept_id, concept_name, domain_id, vocabulary_id, concept_class_id, standard_concept, concept_code, valid_start_date, valid_end_date, invalid_reason", 
+                r#"'(\\.|[^a-z0-9!@#$%^&*()\-`.+,\\\/"])+'"#
+            );
+            info!(query);
+            info!("{}", &query);
+            let x = c.execute_batch(&query);
+            info!("RES: {:?}", x);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
   }
 
   fn postgres_to_duckdb_type(typ: &Type) -> &'static str {
@@ -225,27 +220,9 @@ impl DuckDbClient {
         p.push('"');
       }
     }
-
-    pub fn create_fts_index(&self, table_name: &TableName) -> Result<bool, duckdb::Error> {
-        if table_name.name.to_lowercase() == "concept" {
-            info!("CREATE FTS");
-            let q0 = "install fts";
-            let c = self.conn.lock().unwrap();
-            let _install_fts = c.execute(q0, []);
-            let query = format!(
-                "PRAGMA create_fts_index({}.{}.{}, {}, {}, ignore={}, strip_accents=1, lower=1, overwrite=1)",
-                &self.current_database, table_name.schema, table_name.name, "concept_id", 
-                "concept_id, concept_name, domain_id, vocabulary_id, concept_class_id, standard_concept, concept_code, valid_start_date, valid_end_date, invalid_reason", 
-                r#"'(\\.|[^a-z0-9!@#$%^&*()\-`.+,\\\/"])+'"#
-            );
-            info!(query);
-            info!("{}", &query);
-            let x = c.execute_batch(&query);
-            info!("RES: {:?}", x);
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+    p.push(')');
+    if p.len() > 14 {
+      s.push_str(p.as_str());
     }
     s.push(')');
 

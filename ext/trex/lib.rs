@@ -855,9 +855,10 @@ deno_core::extension!(
     ],
     esm_entry_point = "ext:trex/trex_lib.js",
     esm = [
-        "js/trex_lib.js",
-        "js/pgconnection.js",
-        "js/hdbconnection.js",
-        "js/cdw_svc.js"
+        dir "js",
+        "trex_lib.js",
+        "pgconnection.js"//,
+        //"hdbconnection.js",
+        //"cdw_svc.js"
     ]
 );

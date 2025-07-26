@@ -1719,7 +1719,10 @@ dependencies = [
 [[package]]
 name = "circe-rust-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/p-hoffmann/circe-be.git?rev=250db000f0add7cc90174d49051812f728dddba8#250db000f0add7cc90174d49051812f728dddba8"
+source = "git+https://github.com/p-hoffmann/circe-be.git?rev=846917e40d4851249c538ec296ce803eee5edb4a#846917e40d4851249c538ec296ce803eee5edb4a"
+dependencies = [
+ "regex",
+]
 
 [[package]]
 name = "clang-sys"
