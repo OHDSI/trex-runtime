@@ -13,8 +13,6 @@
     "proseWrap": "preserve"
   },
   "imports": {
-    "@meowmeow/foobar": "npm:is-odd",
-    "openai": "npm:openai"
   },
   "compilerOptions": {
     "types": [

@@ -400,13 +400,6 @@ const globalProperties = {
 };
 ObjectDefineProperties(globalThis, globalProperties);
 
-let bootstrapMockFnThrowError = false;
-const MOCK_FN = () => {
-  if (bootstrapMockFnThrowError) {
-    throw new TypeError("called MOCK_FN");
-  }
-};
-
 const MAKE_HARD_ERR_FN = (msg) => {
   return () => {
     throw new globalThis_.Deno.errors.PermissionDenied(msg);
@@ -416,7 +409,9 @@ const MAKE_HARD_ERR_FN = (msg) => {
 const DENIED_DENO_FS_API_LIST = ObjectKeys(fsVars)
   .reduce(
     (acc, it) => {
-      acc[it] = MAKE_HARD_ERR_FN(`Deno.${it} is blocklisted`);
+      if (fsVars[it] !== void 0) {
+        acc[it] = MAKE_HARD_ERR_FN(`Deno.${it} is blocklisted`);
+      }
       return acc;
     },
     {},
@@ -492,6 +487,8 @@ function processRejectionHandled(promise, reason) {
 }
 
 globalThis.bootstrapSBEdge = (opts, ctx) => {
+  let bootstrapMockFnThrowError = false;
+
   globalThis_ = globalThis;
 
   // We should delete this after initialization,
@@ -592,8 +589,8 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
   );
   setLanguage("en");
 
-  // Find declarative fetch handler
   core.addMainModuleHandler((main) => {
+    // Find declarative fetch handler
     if (ObjectHasOwn(main, "default")) {
       registerDeclarativeServer(main.default);
     }
@@ -658,6 +655,7 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       "cwd": true,
 
       "open": true,
+      "lstat": true,
       "stat": true,
       "realPath": true,
       "realPathSync": true,
@@ -671,10 +669,21 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       "makeTempDir": true,
       "readDir": true,
 
-      "kill": MOCK_FN,
-      "exit": MOCK_FN,
-      "addSignalListener": MOCK_FN,
-      "removeSignalListener": MOCK_FN,
+      "kill": "mock",
+      "exit": "mock",
+      "addSignalListener": "mock",
+      "removeSignalListener": "mock",
+
+      "lstatSync": "allowIfRuntimeIsInInit",
+      "statSync": "allowIfRuntimeIsInInit",
+      "removeSync": "allowIfRuntimeIsInInit",
+      "writeFileSync": "allowIfRuntimeIsInInit",
+      "writeTextFileSync": "allowIfRuntimeIsInInit",
+      "readFileSync": "allowIfRuntimeIsInInit",
+      "readTextFileSync": "allowIfRuntimeIsInInit",
+      "mkdirSync": "allowIfRuntimeIsInInit",
+      "makeTempDirSync": "allowIfRuntimeIsInInit",
+      "readDirSync": "allowIfRuntimeIsInInit",
 
       // TODO: use a non-hardcoded path
       "execPath": () => "/bin/edge-runtime",
@@ -682,8 +691,8 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
     };
 
     if (ctx?.useReadSyncFileAPI) {
-      apisToBeOverridden["readFileSync"] = true;
-      apisToBeOverridden["readTextFileSync"] = true;
+      apisToBeOverridden["readFileSync"] = "warnIfRuntimeIsAlreadyInit";
+      apisToBeOverridden["readTextFileSync"] = "warnIfRuntimeIsAlreadyInit";
     }
 
     const apiNames = ObjectKeys(apisToBeOverridden);
@@ -695,6 +704,45 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
         delete Deno[name];
       } else if (typeof value === "function") {
         Deno[name] = value;
+      } else if (typeof value === "string") {
+        switch (value) {
+          case "mock": {
+            Deno[name] = () => {
+              if (bootstrapMockFnThrowError) {
+                throw new TypeError("called MOCK_FN");
+              }
+            };
+            break;
+          }
+          case "allowIfRuntimeIsInInit": {
+            const originalFn = Deno[name];
+            const blocklistedFn = MAKE_HARD_ERR_FN(
+              `Deno.${name} is blocklisted on the current context`,
+            );
+            Deno[name] = (...args) => {
+              if (ops.op_is_runtime_init()) {
+                return originalFn(...args);
+              } else {
+                return blocklistedFn();
+              }
+            };
+            break;
+          }
+          case "warnIfRuntimeIsAlreadyInit": {
+            const originalFn = Deno[name];
+            Deno[name] = (...args) => {
+              if (ops.op_is_runtime_init()) {
+                return originalFn(...args);
+              } else {
+                globalThis.console.error(
+                  `WARNING: Do not use Deno.${name} inside the async callback. This has performance impacts and will be disallowed in the future.\nUse the async version instead.`,
+                );
+                return originalFn(...args);
+              }
+            };
+            break;
+          }
+        }
       }
     }
   }

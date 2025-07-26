@@ -39,9 +39,9 @@ dependencies = [
 
 [[package]]
 name = "aead-gcm-stream"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4947a169074c7e038fa43051d1c4e073f4488b0e4b0a30658f1e1a1b06449ce8"
+checksum = "e70c8dec860340effb00f6945c49c0daaa6dac963602750db862eabb74bf7886"
 dependencies = [
  "aead",
  "aes",
@@ -506,6 +506,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-scoped"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4042078ea593edffc452eef14e99fdb2b120caa4ad9618bcdeabc4a023b98740"
+dependencies = [
+ "futures",
+ "pin-project",
+ "tokio",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -605,7 +616,7 @@ dependencies = [
  "fastrand",
  "hex",
  "http 0.2.11",
- "ring 0.17.12",
+ "ring 0.17.14",
  "time",
  "tokio",
  "tracing",
@@ -791,7 +802,7 @@ dependencies = [
  "once_cell",
  "p256 0.11.1",
  "percent-encoding",
- "ring 0.17.12",
+ "ring 0.17.14",
  "sha2",
  "subtle",
  "time",
@@ -1073,6 +1084,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "async-scoped",
  "async-trait",
  "async-tungstenite",
  "base_mem_check",
@@ -2234,7 +2246,7 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "reqwest 0.12.7",
- "ring 0.17.12",
+ "ring 0.17.14",
  "serde",
  "tar",
  "thiserror 2.0.8",
@@ -2447,7 +2459,7 @@ dependencies = [
  "p384",
  "p521",
  "rand 0.8.5",
- "ring 0.17.12",
+ "ring 0.17.14",
  "rsa",
  "sec1 0.7.3",
  "serde",
@@ -2644,7 +2656,7 @@ dependencies = [
  "percent-encoding",
  "phf",
  "pin-project",
- "ring 0.17.12",
+ "ring 0.17.14",
  "scopeguard",
  "serde",
  "smallvec",
@@ -2773,7 +2785,7 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "rand 0.8.5",
- "ring 0.17.12",
+ "ring 0.17.14",
  "serde_json",
  "tar",
  "tempfile",
@@ -2932,12 +2944,11 @@ dependencies = [
 [[package]]
 name = "deno_unsync"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d774fd83f26b24f0805a6ab8b26834a0d06ceac0db517b769b1e4633c96a2057"
 dependencies = [
  "futures",
  "parking_lot",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -3689,7 +3700,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "rand 0.8.5",
  "regex",
- "ring 0.17.12",
+ "ring 0.17.14",
  "ripemd",
  "rsa",
  "scrypt",
@@ -4036,6 +4047,7 @@ dependencies = [
  "aws-smithy-runtime",
  "aws-smithy-runtime-api",
  "base",
+ "base_rt",
  "ctor",
  "deno",
  "deno_ast",
@@ -7084,7 +7096,7 @@ dependencies = [
  "bytes",
  "getrandom 0.2.12",
  "rand 0.8.5",
- "ring 0.17.12",
+ "ring 0.17.14",
  "rustc-hash 2.1.0",
  "rustls 0.23.20",
  "rustls-pki-types",
@@ -7497,9 +7509,9 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.12"
+version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed9b823fa29b721a59671b41d6b06e66b29e0628e207e8b1c3ceeda701ec928d"
+checksum = "a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7"
 dependencies = [
  "cc",
  "cfg-if",
@@ -7696,7 +7708,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
 dependencies = [
  "log",
- "ring 0.17.12",
+ "ring 0.17.14",
  "rustls-webpki 0.101.7",
  "sct 0.7.1",
 ]
@@ -7708,7 +7720,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf4ef73721ac7bcd79b2b315da7779d8fc09718c6b3d2d1b2d94850eb8c18432"
 dependencies = [
  "log",
- "ring 0.17.12",
+ "ring 0.17.14",
  "rustls-pki-types",
  "rustls-webpki 0.102.8",
  "subtle",
@@ -7724,7 +7736,7 @@ dependencies = [
  "aws-lc-rs",
  "log",
  "once_cell",
- "ring 0.17.12",
+ "ring 0.17.14",
  "rustls-pki-types",
  "rustls-webpki 0.102.8",
  "subtle",
@@ -7814,7 +7826,7 @@ version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
- "ring 0.17.12",
+ "ring 0.17.14",
  "untrusted 0.9.0",
 ]
 
@@ -7825,7 +7837,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
 dependencies = [
  "aws-lc-rs",
- "ring 0.17.12",
+ "ring 0.17.14",
  "rustls-pki-types",
  "untrusted 0.9.0",
 ]
@@ -7915,7 +7927,7 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da046153aa2352493d6cb7da4b6e5c0c057d8a1d0a9aa8560baffdd945acd414"
 dependencies = [
- "ring 0.17.12",
+ "ring 0.17.14",
  "untrusted 0.9.0",
 ]
 
@@ -9882,9 +9894,8 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "130.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ee0be58935708fa4d7efb970c6cf9f2d9511d24ee24246481a65b6ee167348d"
+version = "130.0.7"
+source = "git+https://github.com/supabase/rusty_v8?tag=v130.0.7#57d783ad71294f2677394e2aaf2db1ae162c16d0"
 dependencies = [
  "bindgen 0.70.1",
  "bitflags 2.6.0",
