@@ -667,8 +667,21 @@ where
             .tmp_dir("/tmp")
             .add_fs(tmp_fs_actual_path, tmp_fs);
 
-          fs
-            .set_runtime_state(&runtime_state);
+          fs.set_runtime_state(&runtime_state);
+
+          // Determine if filesystem should be blocked for user workers
+          let should_block_fs = if is_user_worker {
+            // For user workers, block filesystem unless allow_host_fs_access is explicitly true
+            !maybe_user_conf
+              .and_then(|conf| conf.allow_host_fs_access)
+              .unwrap_or(false)
+          } else {
+            // For non-user workers, never block filesystem
+            false
+          };
+
+          // Apply filesystem blocking to the base filesystem
+          fs.set_check_sync_api(should_block_fs);
 
           Ok(
             if let Some(s3_fs) =
@@ -676,7 +689,8 @@ where
             {
               let mut s3_prefix_fs = fs.add_fs("/s3", s3_fs.clone());
 
-              s3_prefix_fs.set_check_sync_api(is_user_worker);
+              // Apply the same blocking logic to S3 filesystem
+              s3_prefix_fs.set_check_sync_api(should_block_fs);
 
               (Arc::new(s3_prefix_fs), Some(s3_fs))
             } else {
@@ -1012,6 +1026,14 @@ where
                 &serde_json::Value::Object(context),
               );
               json::merge_object(&mut extra_context, &tokens);
+
+              // Add allow_host_fs_access flag for JavaScript-level filesystem blocking
+              if let Some(user_conf) = maybe_user_conf {
+                let allow_host_fs_access_obj = serde_json::json!({
+                  "allowHostFsAccess": user_conf.allow_host_fs_access.unwrap_or(false)
+                });
+                json::merge_object(&mut extra_context, &allow_host_fs_access_obj);
+              }
 
               extra_context
             };

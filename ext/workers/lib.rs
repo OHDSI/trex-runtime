@@ -112,6 +112,8 @@ pub struct UserWorkerCreateOptions {
   context: Option<JsonMap>,
   #[serde(default)]
   static_patterns: Vec<String>,
+  #[serde(default)]
+  allow_host_fs_access: Option<bool>,
 }
 
 /// It is identical to [`PermissionsOptions`], except for `prompt`.
@@ -196,6 +198,7 @@ pub async fn op_user_worker_create(
 
       context,
       static_patterns,
+      allow_host_fs_access,
     } = opts;
 
     let user_worker_options = WorkerContextInitOpts {
@@ -227,6 +230,7 @@ pub async fn op_user_worker_create(
             .map(PermissionsOptions2::into_permissions_options),
 
           context,
+          allow_host_fs_access,
 
           ..Default::default()
         }

@@ -88,6 +88,7 @@ pub struct UserWorkerRuntimeOpts {
   pub permissions: Option<PermissionsOptions>,
 
   pub context: Option<crate::JsonMap>,
+  pub allow_host_fs_access: Option<bool>,
 }
 
 impl Default for UserWorkerRuntimeOpts {
@@ -131,6 +132,7 @@ impl Default for UserWorkerRuntimeOpts {
       permissions: None,
 
       context: None,
+      allow_host_fs_access: None,
     }
   }
 }
