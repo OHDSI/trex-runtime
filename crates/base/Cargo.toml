@@ -107,9 +107,9 @@ ext_node.workspace = true
 ext_os.workspace = true
 ext_workers.workspace = true
 ext_runtime.workspace = true
+trex_core.workspace = true
 
 deno_facade.workspace = true
-trex_core.workspace = true
 
 url.workspace = true
 

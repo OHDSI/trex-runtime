@@ -754,6 +754,7 @@ where
           deno_io::deno_io::init_ops(Some(stdio)),
           deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
           ext_ai::ai::init_ops(),
+          trex_core::trex::init_ops(),
           ext_env::env::init_ops(),
           ext_os::os::init_ops(),
           ext_workers::user_workers::init_ops(),
