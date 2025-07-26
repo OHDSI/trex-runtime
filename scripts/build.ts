@@ -27,7 +27,7 @@ async function build(fn) {
             "run", "--rm",
             "-v", `${Deno.cwd()}:${Deno.cwd()}`,
             "-w", Deno.cwd(),
-            `ghcr.io/data2evidence/d2e-trex-base:${dockerTag}`,
+            `ghcr.io/data2evidence/d2e-trex-base@${dockerTag}`,
             "/usr/src/trex",
             ..._args
         ];
