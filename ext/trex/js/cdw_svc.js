@@ -1,5 +1,6 @@
-import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
-import { statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+//TODO: re-add fs interface changed and needs to be adjusted
+//import { existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
+//import { statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 
 export const DUCKDB_FILE_DATABASE_CODE = "cdw_config_svc";
 export const DUCKDB_FILE_SCHEMA_NAME = "validation_schema";
@@ -18,11 +19,11 @@ export const resolve_cdw_config_duckdb_file_path = () => {
 
   let cdw_duckdb_file_path;
 
-  if (existsSync(DYNAMICALLY_GENERATED_DUCKDB_FILE_PATH)) {
-    cdw_duckdb_file_path = DYNAMICALLY_GENERATED_DUCKDB_FILE_PATH;
-  } else {
-    cdw_duckdb_file_path = BUILT_IN_DUCKDB_FILE_PATH;
-  }
+  //if (existsSync(DYNAMICALLY_GENERATED_DUCKDB_FILE_PATH)) {
+  //  cdw_duckdb_file_path = DYNAMICALLY_GENERATED_DUCKDB_FILE_PATH;
+  //} else {
+  cdw_duckdb_file_path = BUILT_IN_DUCKDB_FILE_PATH;
+  //}
   console.log(`Using cdw_svc duckdb file from ${cdw_duckdb_file_path}`);
-  return [cdw_duckdb_file_path, statSync(cdw_duckdb_file_path).mtime];
+  return [cdw_duckdb_file_path, 0 /*statSync(cdw_duckdb_file_path).mtime*/];
 };
