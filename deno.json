@@ -1,8 +1,5 @@
 {
   "workspace": [
-    "./examples",
-    "./crates/base/test_cases",
-    "./test"
   ],
   "nodeModulesDir": "auto",
   "fmt": {
@@ -12,11 +9,8 @@
     "singleQuote": true,
     "proseWrap": "preserve"
   },
-  "imports": {
-  },
+  "imports": {},
   "compilerOptions": {
-    "types": [
-      "./types/global.d.ts"
-    ]
+    "types": []
   }
 }
