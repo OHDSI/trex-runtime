@@ -1,5 +1,8 @@
 {
   "workspace": [
+    "./examples",
+    "./crates/base/test_cases",
+    "./test"
   ],
   "nodeModulesDir": "auto",
   "fmt": {
