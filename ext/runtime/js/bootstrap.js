@@ -691,8 +691,11 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
     };
 
     if (ctx?.useReadSyncFileAPI) {
-      apisToBeOverridden["readFileSync"] = "warnIfRuntimeIsAlreadyInit";
-      apisToBeOverridden["readTextFileSync"] = "warnIfRuntimeIsAlreadyInit";
+      // Only override if allowHostFsAccess is not explicitly enabled
+      if (!ctx?.allowHostFsAccess) {
+        apisToBeOverridden["readFileSync"] = "warnIfRuntimeIsAlreadyInit";
+        apisToBeOverridden["readTextFileSync"] = "warnIfRuntimeIsAlreadyInit";
+      }
     }
 
     const apiNames = ObjectKeys(apisToBeOverridden);
@@ -702,6 +705,9 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
 
       if (value === false) {
         delete Deno[name];
+      } else if (value === true) {
+        // Allow the API - do nothing, keep original function
+        continue;
       } else if (typeof value === "function") {
         Deno[name] = value;
       } else if (typeof value === "string") {

@@ -656,6 +656,20 @@ where
           )?,
         };
 
+        // Determine if filesystem should be blocked for user workers
+        let should_block_fs = if is_user_worker {
+          // For user workers, block filesystem unless allow_host_fs_access is explicitly true
+          let allow_fs_access = maybe_user_conf
+            .and_then(|conf| conf.allow_host_fs_access)
+            .unwrap_or(false);
+          
+          // Don't block filesystem if access is explicitly allowed
+          !allow_fs_access
+        } else {
+          // For non-user workers, never block filesystem
+          false
+        };
+
         let build_file_system_fn = |base_fs: Arc<dyn deno_fs::FileSystem>| -> Result<
           (Arc<dyn deno_fs::FileSystem>, Option<S3Fs>),
           AnyError,
@@ -668,17 +682,6 @@ where
             .add_fs(tmp_fs_actual_path, tmp_fs);
 
           fs.set_runtime_state(&runtime_state);
-
-          // Determine if filesystem should be blocked for user workers
-          let should_block_fs = if is_user_worker {
-            // For user workers, block filesystem unless allow_host_fs_access is explicitly true
-            !maybe_user_conf
-              .and_then(|conf| conf.allow_host_fs_access)
-              .unwrap_or(false)
-          } else {
-            // For non-user workers, never block filesystem
-            false
-          };
 
           // Apply filesystem blocking to the base filesystem
           fs.set_check_sync_api(should_block_fs);
@@ -699,7 +702,8 @@ where
           )
         };
 
-        let (fs, s3_fs) = build_file_system_fn(if is_user_worker {
+        let (fs, s3_fs) = build_file_system_fn(if is_user_worker && should_block_fs {
+          // Use StaticFs for user workers that have filesystem blocking enabled
           Arc::new(StaticFs::new(
             static_files,
             if matches!(entrypoint, Some(Entrypoint::ModuleCode(_)) | None)
@@ -726,6 +730,7 @@ where
             npm_snapshot,
           ))
         } else {
+          // Use DenoCompileFileSystem for main workers and user workers with filesystem access enabled
           Arc::new(DenoCompileFileSystem::from_rc(vfs))
         })?;
 
@@ -1028,9 +1033,13 @@ where
               json::merge_object(&mut extra_context, &tokens);
 
               // Add allow_host_fs_access flag for JavaScript-level filesystem blocking
-              if let Some(user_conf) = maybe_user_conf {
+              if is_user_worker {
+                let allow_host_fs_access_value = maybe_user_conf
+                  .and_then(|conf| conf.allow_host_fs_access)
+                  .unwrap_or(false);
+                  
                 let allow_host_fs_access_obj = serde_json::json!({
-                  "allowHostFsAccess": user_conf.allow_host_fs_access.unwrap_or(false)
+                  "allowHostFsAccess": allow_host_fs_access_value
                 });
                 json::merge_object(&mut extra_context, &allow_host_fs_access_obj);
               }
