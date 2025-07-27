@@ -21,7 +21,7 @@ on:
   push:
     branches:
       - develop
-      - p-hoffmann/deno2x
+
   pull_request:
     types: [opened, ready_for_review, reopened, synchronize]
 
@@ -74,11 +74,7 @@ jobs:
           if [[ ${{ github.event_name }} == "workflow_dispatch" ]]; then
             DOCKER_IMG_TAG_NAME=${{ github.event.inputs.tag }}
           elif [[ ${{ github.event_name }} == "push" ]]; then
-            if [[ ${{ github.ref_name }} == "p-hoffmann/deno2x" ]]; then
-              DOCKER_IMG_TAG_NAME=deno2
-            else
-              DOCKER_IMG_TAG_NAME=${{ github.ref_name }}
-            fi
+            DOCKER_IMG_TAG_NAME=${{ github.ref_name }}
           else
             DOCKER_IMG_TAG_NAME=$(echo $(git rev-parse --short HEAD))
           fi
