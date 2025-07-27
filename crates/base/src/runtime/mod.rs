@@ -656,17 +656,12 @@ where
           )?,
         };
 
-        // Determine if filesystem should be blocked for user workers
         let should_block_fs = if is_user_worker {
-          // For user workers, block filesystem unless allow_host_fs_access is explicitly true
           let allow_fs_access = maybe_user_conf
             .and_then(|conf| conf.allow_host_fs_access)
             .unwrap_or(false);
-          
-          // Don't block filesystem if access is explicitly allowed
           !allow_fs_access
         } else {
-          // For non-user workers, never block filesystem
           false
         };
 
@@ -1037,11 +1032,14 @@ where
                 let allow_host_fs_access_value = maybe_user_conf
                   .and_then(|conf| conf.allow_host_fs_access)
                   .unwrap_or(false);
-                  
+
                 let allow_host_fs_access_obj = serde_json::json!({
                   "allowHostFsAccess": allow_host_fs_access_value
                 });
-                json::merge_object(&mut extra_context, &allow_host_fs_access_obj);
+                json::merge_object(
+                  &mut extra_context,
+                  &allow_host_fs_access_obj,
+                );
               }
 
               extra_context
