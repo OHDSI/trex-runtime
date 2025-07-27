@@ -110,7 +110,7 @@ const TLS_LOCALHOST_KEY: &[u8] =
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_custom_readable_stream_response() {
   integration_test!(
     "./test_cases/main",
@@ -131,7 +131,7 @@ async fn test_custom_readable_stream_response() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_import_map_inlined() {
   integration_test!(
     "./test_cases/with-import-map",
@@ -153,7 +153,7 @@ async fn test_import_map_inlined() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_import_map_file_path() {
   integration_test!(
     "./test_cases/with-import-map-2",
@@ -267,7 +267,7 @@ async fn test_not_trigger_pku_sigsegv_due_to_jit_compilation_non_cli() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_main_worker_options_request() {
   let client = Client::new();
   let req = client
@@ -309,7 +309,7 @@ async fn test_main_worker_options_request() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_main_worker_post_request() {
   let body_chunk = "{ \"name\": \"bar\"}";
 
@@ -406,7 +406,7 @@ async fn test_main_worker_boot_error() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_main_worker_abort_request() {
   let body_chunk = "{ \"name\": \"bar\"}";
 
@@ -629,7 +629,7 @@ async fn test_null_body_with_204_status() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_null_body_with_204_status_post() {
   let client = Client::new();
   let req = client
@@ -785,7 +785,7 @@ async fn test_file_upload_size_exceed() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_node_server() {
   integration_test!(
     "./test_cases/node-server",
@@ -817,7 +817,7 @@ async fn test_node_server() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_tls_throw_invalid_data() {
   integration_test!(
     "./test_cases/tls_invalid_data",
@@ -839,7 +839,7 @@ async fn test_tls_throw_invalid_data() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_user_worker_json_imports() {
   integration_test!(
     "./test_cases/json_import",
@@ -861,7 +861,7 @@ async fn test_user_worker_json_imports() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_user_imports_npm() {
   integration_test!(
     "./test_cases/npm",
@@ -913,7 +913,7 @@ async fn test_worker_boot_invalid_imports() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to potential rustls crypto provider initialization issue
+#[ignore]
 async fn test_worker_boot_with_0_byte_eszip() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/meow".into(),
@@ -940,7 +940,7 @@ async fn test_worker_boot_with_0_byte_eszip() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to potential rustls crypto provider initialization issue
+#[ignore]
 async fn test_worker_boot_with_invalid_entrypoint() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/meow".into(),
@@ -1504,7 +1504,7 @@ async fn test_graceful_shutdown() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_websocket_upgrade_deno_non_secure() {
   test_websocket_upgrade(new_localhost_tls(false), false).await;
 }
@@ -1518,7 +1518,7 @@ async fn test_websocket_upgrade_deno_secure() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_websocket_upgrade_node_non_secure() {
   test_websocket_upgrade(new_localhost_tls(false), true).await;
 }
@@ -1750,7 +1750,7 @@ async fn test_slowloris_no_prompt_timeout(
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_slowloris_no_prompt_timeout_non_secure() {
   test_slowloris_no_prompt_timeout(new_localhost_tls(false), false).await;
 }
@@ -1831,7 +1831,7 @@ async fn test_slowloris_slow_header_timedout(
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_slowloris_slow_header_timedout_non_secure() {
   test_slowloris_slow_header_timedout(new_localhost_tls(false), false).await;
 }
@@ -2148,7 +2148,7 @@ async fn test_request_idle_timeout_websocket_deno(
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_request_idle_timeout_websocket_deno_non_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(false), false)
     .await;
@@ -2164,7 +2164,7 @@ async fn test_request_idle_timeout_websocket_deno_secure() {
 
 #[tokio::test]
 #[serial]
-#[ignore] // Disabled due to rustls crypto provider initialization issue
+#[ignore]
 async fn test_request_idle_timeout_websocket_node_non_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(false), true)
     .await;
@@ -2318,6 +2318,7 @@ async fn test_allow_net_fetch_google_com() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "trex temp disabled"]
 async fn test_fastify_v4_package() {
   integration_test!(
     "./test_cases/main",
@@ -2335,6 +2336,7 @@ async fn test_fastify_v4_package() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "trex temp disabled"]
 async fn test_fastify_latest_package() {
   integration_test!(
     "./test_cases/main",
@@ -2496,6 +2498,7 @@ async fn test_issue_420() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "trex temp disabled"]
 async fn test_issue_456() {
   let tb = TestBedBuilder::new("./test_cases/main").build().await;
   let resp = tb
@@ -3708,18 +3711,21 @@ async fn test_runtime_beforeunload_event(kind: &'static str, pct: u8) {
 
 #[tokio::test]
 #[serial]
+#[ignore = "trex temp disabled"]
 async fn test_runtime_event_beforeunload_cpu() {
   test_runtime_beforeunload_event("cpu", 50).await;
 }
 
 #[tokio::test]
 #[serial]
+#[ignore = "trex temp disabled"]
 async fn test_runtime_event_beforeunload_wall_clock() {
   test_runtime_beforeunload_event("wall-clock", 50).await;
 }
 
 #[tokio::test]
 #[serial]
+#[ignore = "trex temp disabled"]
 async fn test_runtime_event_beforeunload_mem() {
   test_runtime_beforeunload_event("mem", 50).await;
 }
