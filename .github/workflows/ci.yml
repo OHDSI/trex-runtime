@@ -58,8 +58,7 @@ jobs:
   cargo-test:
     if: github.event.pull_request.draft == false
     name: "cargo test"
-    runs-on:
-      group: trex
+    runs-on: ubuntu-latest
     steps:
       - name: Install deps
         run: |
