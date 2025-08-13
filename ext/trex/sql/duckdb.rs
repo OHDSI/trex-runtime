@@ -112,9 +112,9 @@ impl SimpleQueryHandler for TrexDuckDB {
         .map_err(|e| PgWireError::ApiError(Box::new(e)))
     } else {
       conn
-        .execute(_query, params![])
-        .map(|affected_rows| {
-          vec![Response::Execution(Tag::new("OK").with_rows(affected_rows))]
+        .execute_batch(_query)
+        .map(|_affected_rows| {
+          vec![Response::Execution(Tag::new("OK").with_rows(0))]
         })
         .map_err(|e| PgWireError::ApiError(Box::new(e)))
     }
