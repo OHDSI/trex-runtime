@@ -79,9 +79,12 @@ jobs:
             DOCKER_IMG_TAG_NAME=$(echo $(git rev-parse --short HEAD))
           fi
 
+
           echo GIT_BRANCH_NAME=$GIT_BRANCH_NAME >> $GITHUB_OUTPUT
           echo DOCKER_IMG_TAG_NAME=$DOCKER_IMG_TAG_NAME >> $GITHUB_OUTPUT
           echo DOCKER_BUILD_PUSH_BOOL_STR="${DOCKER_BUILD_PUSH_BOOL_STR}" >> $GITHUB_OUTPUT
+          REPO_OWNER="${{ github.repository_owner }}"
+          echo REPO_OWNER_LOWER=${REPO_OWNER,,} >> $GITHUB_OUTPUT
 
       - name: "Login to GitHub Container Registry"
         uses: docker/login-action@v3
@@ -96,7 +99,7 @@ jobs:
         with:
           push: ${{ steps.setup.outputs.DOCKER_BUILD_PUSH_BOOL_STR }}
           platforms: "linux/amd64"
-          tags: ghcr.io/${{ lower(github.repository_owner) }}/${{ matrix.AZ_REGISTRY_REPOSITORY }}:${{ steps.setup.outputs.DOCKER_IMG_TAG_NAME }}
+          tags: ghcr.io/${{ steps.setup.outputs.REPO_OWNER_LOWER }}/${{ matrix.AZ_REGISTRY_REPOSITORY }}:${{ steps.setup.outputs.DOCKER_IMG_TAG_NAME }}
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
 
