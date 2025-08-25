@@ -1,12 +1,11 @@
 import { core } from "ext:core/mod.js";
-import { TrexConnection } from './pgconnection.js';
-//import { HanaConnection } from './hdbconnection.js';
-import { resolve_cdw_config_duckdb_file_path, DUCKDB_FILE_DATABASE_CODE, DUCKDB_FILE_SCHEMA_NAME } from "./cdw_svc.js"
-
-//import * as hdb from './hdb.js';
-//import * as p from './postgres.js';
+import { TrexConnection } from './dbconnection.js';
 
 const ops = core.ops;
+
+const CDW_DUCKDB_FILE_DATABASE_CODE = "cdw_config_svc";
+const CDW_DUCKDB_FILE_SCHEMA_NAME = "validation_schema";
+const CDW_BUILT_IN_DIR = "/usr/src/cdw_data/built_in";
 
 const {
 	op_prompt,
@@ -25,19 +24,26 @@ const {
 
 export { op_add_replication, op_exit };
 
+
+function map_params(params) {
+		const nparams= params.map(v => {
+					if(typeof(v) === 'string' || v instanceof String) {
+						try {
+							const d = Date.parse(v);	
+							if(/^\d\d\d\d-\d\d-\d\d/.test(v) && d) {
+								return {"DateTime": d};
+							}
+						} catch (e) {}
+						return {"String": v}
+
+					}
+					return {"Number": v};
+				});
+		return nparams;
+	};
+
 export async function executeQueryStream(database, sql, params = []) {
-    const nparams = params.map(v => {
-        if(typeof(v) === 'string' || v instanceof String) {
-            try {
-                const d = Date.parse(v);    
-                if(/^\d\d\d\d-\d\d-\d\d/.test(v) && d) {
-                    return {"DateTime": d};
-                }
-            } catch (e) {}
-            return {"String": v}
-        }
-        return {"Number": v};
-    });
+    const nparams = map_params(params);
     
     const streamId = op_execute_query_stream(database, sql, nparams);
 
@@ -154,7 +160,7 @@ export class DatabaseManager {
 		Else fallback to using the built in duckdb file in /usr/src/cdw_data/built_in
 		*/
     const [duckdb_file_path, file_mtime] =
-      resolve_cdw_config_duckdb_file_path();
+      `${CDW_BUILT_IN_DIR}/${CDW_DUCKDB_FILE_DATABASE_CODE}_${CDW_DUCKDB_FILE_SCHEMA_NAME}`;
 
     if (
       this.#attached_cdw_svc_file_path === null || // File not attached yet
@@ -164,12 +170,12 @@ export class DatabaseManager {
     ) {
       op_execute_query(
         "memory",
-        `DETACH DATABASE IF EXISTS ${DUCKDB_FILE_SCHEMA_NAME}`,
+        `DETACH DATABASE IF EXISTS ${CDW_DUCKDB_FILE_SCHEMA_NAME}`,
         []
       );
       op_execute_query(
         "memory",
-        `ATTACH IF NOT EXISTS '${duckdb_file_path}' AS ${DUCKDB_FILE_SCHEMA_NAME} (READ_ONLY)`,
+        `ATTACH IF NOT EXISTS '${duckdb_file_path}' AS ${CDW_DUCKDB_FILE_SCHEMA_NAME} (READ_ONLY)`,
         []
       );
     }
@@ -189,6 +195,8 @@ export class DatabaseManager {
 					if(!(key in this.getPublications)) {
 						op_add_replication(p.publication, p.slot, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
 						this.#add_postgres(`${key}_trexpg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+						this.#add_postgres(`${key}__srcdb`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+
 						const pub = this.getPublications();
 						pub[key] = true;
 						this.#setPublications(pub);
@@ -199,6 +207,7 @@ export class DatabaseManager {
 				const key = `${c.id}`
 				if(!(key in this.getPublications)) {
 					this.#add_postgres(`${key}_trexpg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+					this.#add_postgres(`${key}__srcdb`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
 					const schemas = c.vocab_schemas.map(x => `'${x}'`).join(",");
 					const res = JSON.parse(op_execute_query(`${key}_trexpg`,`select table_schema as schema,table_name as name from information_schema.tables where table_type = 'BASE TABLE' and table_schema in (${schemas})`, []));
 					//op_copy_tables(res, key, c.host, c.port, c.name, adminCredentials.username, adminCredentials.password);
@@ -210,7 +219,7 @@ export class DatabaseManager {
 				console.log(`TREX ADD BQ ${c.id}`)
 				const key = `${c.id}`
 				if(!(key in this.getPublications)) {
-					this.#add_bigquery(`${key}_srcdb`, {project: c.host, dataset: c.name});
+					this.#add_bigquery(`${key}__srcdb`, {project: c.host, dataset: c.name});
 					const pub = this.getPublications();
 					pub[key] = true;
 					this.#setPublications(pub);
@@ -268,63 +277,62 @@ export class UserDatabaseManager {
 
 
 	getConnection(db_id, schema, vocab_schema, translationMap) {
-		return new TrexConnection(new TrexDB(db_id), new TrexDB(`${db_id}_trexpg`), schema,vocab_schema,translationMap);
+		const dbc = this.getDatabaseCredentials();
+		const dialect = dbc.filter(c => c.id === db_id)[0].dialect;
+		if(dialect !== 'hana') {
+			return new TrexConnection(new TrexDB(db_id), new TrexDB(`${db_id}`), schema,vocab_schema,'duckdb',translationMap);
+		} else {
+			return new TrexConnection(new HanaDB(db_id), new HanaDB(`${db_id}`), schema,vocab_schema,'hana',translationMap);
+		}
 	}
 }
 
 
 
 export class TrexDB {
-	#database;
+	__database;
 	constructor(database) {
 		const dbm = DatabaseManager.getDatabaseManager();
-
-		if (database === DUCKDB_FILE_DATABASE_CODE) {
-      this.#database = DUCKDB_FILE_DATABASE_CODE;
+		if (database === CDW_DUCKDB_FILE_DATABASE_CODE) {
+      this.__database = CDW_DUCKDB_FILE_DATABASE_CODE;
 			dbm.add_cdw_config_duckdb_connection()
       return;
     }
 
 		if(database in dbm.getPublications()) {
-			this.#database = database;
+			this.__database = database;
 		} else {
-			this.#database = dbm.getFirstPublication(database.replace("_trexpg", ""));
+			this.__database = dbm.getFirstPublication(database.replace("_trexpg", ""));
 			if(database.endsWith("_trexpg")){
-				this.#database = this.#database+"_trexpg";
+				this.__database = this.__database+"_trexpg";
 			}
 		}
 		
 	}
 
-	get database() {
-		return this.#database;
+	getdatabase() {
+		return this.__database;
+	}
+
+
+	executeWrite(sql, params) {
+		return this.execute(sql, params);
 	}
 
 	execute(sql, params) {
 
 		return new Promise((resolve, reject) => {
 			try {
-				const nparams= params.map(v => {
-					if(typeof(v) === 'string' || v instanceof String) {
-						try {
-							const d = Date.parse(v);	
-							if(/^\d\d\d\d-\d\d-\d\d/.test(v) && d) {
-								return {"DateTime": d};
-							}
-						} catch (e) {}
-						return {"String": v}
-
-					}
-					return {"Number": v};
-				});
+				const nparams = map_params(params);
 				//console.log(nparams);
-				console.log(`DB: ${this.#database} SQL: ${sql}`);
-				resolve(JSON.parse(op_execute_query(this.#database, sql, nparams)));
+				console.log(`DB: ${this.__database} SQL: ${sql}`);
+				resolve(JSON.parse(op_execute_query(this.__database, sql, nparams)));
 			} catch(e) {
 				reject(e);
 			}
 		});
 	}
+
 	atlas_query(atlas, cdmSchema, cohortId) {
 
 		return new Promise((resolve, reject) => {
@@ -341,13 +349,39 @@ export class TrexDB {
 				};
 				const atlasB64 = toBase64(atlasStr);
 				let query = `select circe_json_to_sql(${atlasB64} , '{"cdmSchema":"${cdmSchema}","resultSchema": "${cdmSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}')`;
-				resolve({sql: op_execute_query(this.#database, query, [])});
+				resolve({sql: op_execute_query(this.__database, query, [])});
 
 			} catch(e) {
 				reject(e);
 			}
 		});
 	}
+}
+
+export class HanaDB extends TrexDB {
+	constructor(database) {
+		super(database);
+	}
+	executeWrite(sql, params) {
+		return this.execute(sql, params);
+	}
+
+	execute(sql, params) {
+
+		return new Promise((resolve, reject) => {
+			try {
+				const nparams= map_params(params);
+				console.log(`DB: ${super.__database} SQL: ${sql}`);
+				const dbm = DatabaseManager.getDatabaseManager();
+				const c = dbm.getCredentials().filter(c => c.id === super.__database)[0]
+				const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
+				resolve(JSON.parse(op_execute_query(super.__database, `select * from hana_scan('${sql}', 'hdbsql://${adminCredentials.username}:${adminCredentials.password}@${c.host}:${c.port}/${c.name}')'`, nparams)));
+			} catch(e) {
+				reject(e);
+			}
+		});
+	}
+
 }
 
 export class PluginManager {

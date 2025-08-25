@@ -34,14 +34,15 @@ export class TrexConnection  {
         writeConn,
         schemaName,
         vocabSchemaName,
+        dialect,
         translatefn, 
     ) {
         this.connection = conn
         this.writeConn = writeConn
         this.schemaName = schemaName;
         this.vocabSchemaName = vocabSchemaName;
-        this.dialect = "duckdb";
-        this.translatefn = translatefn[this.dialect];
+        this.dialect = dialect;
+        this.translatefn = translatefn[dialect];
     }
 
 
@@ -123,7 +124,7 @@ export class TrexConnection  {
             temp = this.#parseSql(temp, parameters);
             console.log("Duckdb client created");
             console.log(temp);
-            const result = await this.writeConn.execute(
+            const result = await this.writeConn.executeWrite(
                 temp, flattenParameter(parameters)
             );
             callback(null, result);
