@@ -646,7 +646,7 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
             try {
               return ops.op_user_worker_log(msg, level > 1);
             } catch (error) {
-              console.error(`Failed to log message: ${error.message}\n${level}: ${msg}`);
+              globalThis.console.error(`Failed to log message: ${error.message}\n${level}: ${msg}`);
               return;
             }
           }),
