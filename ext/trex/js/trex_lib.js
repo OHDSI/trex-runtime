@@ -278,7 +278,14 @@ export class UserDatabaseManager {
 
 	getConnection(db_id, schema, vocab_schema, translationMap) {
 		const dbc = this.getDatabaseCredentials();
-		const dialect = dbc.filter(c => c.id === db_id)[0].dialect;
+		let dialect = "duckdb";
+		if (db_id != CDW_DUCKDB_FILE_DATABASE_CODE) {
+			try {
+				dialect = dbc.filter(c => c.id === db_id)[0].dialect;
+			} catch (e) {
+				console.error(`Error getting dialect for ${db_id}: ${e}`);
+			}
+		}
 		if(dialect !== 'hana') {
 			return new TrexConnection(new TrexDB(db_id), new TrexDB(`${db_id}`), schema,vocab_schema,'duckdb',translationMap);
 		} else {
