@@ -279,7 +279,7 @@ export class UserDatabaseManager {
 	getConnection(db_id, schema, vocab_schema, translationMap) {
 		const dbc = this.getDatabaseCredentials();
 		let dialect = "duckdb";
-		if (database != CDW_DUCKDB_FILE_DATABASE_CODE) {
+		if (db_id != CDW_DUCKDB_FILE_DATABASE_CODE) {
 			try {
 				dialect = dbc.filter(c => c.id === db_id)[0].dialect;
 			} catch (e) {
