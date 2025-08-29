@@ -654,7 +654,7 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       });
     }
 
-    const apisToBeOverridden = {
+    const apisToBeOverridden = ctx?.allowHostFsAccess ? {} : {
       ...DENIED_DENO_FS_API_LIST,
 
       "cwd": true,

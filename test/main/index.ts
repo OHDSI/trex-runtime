@@ -74,6 +74,7 @@ const createWorker = async (servicePath) => {
         // maybeEszip,
         // maybeEntrypoint,
         // maybeModuleCode,
+        allowHostFsAccess: true,
     });
 };
 

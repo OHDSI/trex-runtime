@@ -1,6 +1,10 @@
 
 
 
+import { writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+
+
 function  test_dbquery5() {
         console.log("USER WORKER Example");
         const dbm = Trex.databaseManager();
@@ -103,3 +107,43 @@ function  test_atlas() {
 }
 
 test_atlas()
+
+function test_writeFileSync() {
+    console.log("Testing Node.js writeFileSync functionality");
+    
+    try {
+        const testData = "Hello World from Node.js writeFileSync test!\nTimestamp: " + new Date().toISOString();
+        const testFilePath = join(".", "trex_writefilesync_test.txt");
+        
+        // Test writing a file using Node.js writeFileSync
+        writeFileSync(testFilePath, testData, 'utf8');
+        console.log(`Successfully wrote test data to ${testFilePath}`);
+        
+        // Test reading it back to verify it was written correctly
+        const readData = readFileSync(testFilePath, 'utf8');
+        console.log("Read back data:", readData);
+        
+        // Verify the data matches
+        if (readData === testData) {
+            console.log("✅ writeFileSync test PASSED - data matches!");
+        } else {
+            console.log("❌ writeFileSync test FAILED - data mismatch!");
+            console.log("Expected:", testData);
+            console.log("Got:", readData);
+        }
+        
+        // Clean up test file
+        try {
+            unlinkSync(testFilePath);
+            console.log("✅ Cleaned up test file");
+        } catch (cleanupErr) {
+            console.log("Note: Could not clean up test file:", cleanupErr);
+        }
+        
+    } catch (error) {
+        console.error("❌ writeFileSync test FAILED with error:", error);
+    }
+}
+
+// Call the test function
+test_writeFileSync();
