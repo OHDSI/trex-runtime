@@ -323,7 +323,7 @@ fn op_prompt(
   #[string] prompt: String,
   #[smi] max_tokens: u32,
   #[serde] model: Model,
-) -> Result<ResourceId, anyhow::Error> {
+) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<String>((max_tokens) as usize);
 
   tokio::spawn(async move {
@@ -377,7 +377,7 @@ fn run_llama_model(
   _max_tokens: u32,
   _model: Model,
   _sender: mpsc::Sender<String>,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), AnyError> {
   /*
   let backend = LlamaBackend::init()?;
   let model_params = {
@@ -869,7 +869,7 @@ fn op_execute_query_stream(
   #[string] database: String,
   #[string] sql: String,
   #[serde] params: Vec<TrexType>,
-) -> Result<ResourceId, anyhow::Error> {
+) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<String>(1000);
   tokio::spawn(async move {
     tokio::task::spawn_blocking(move || {

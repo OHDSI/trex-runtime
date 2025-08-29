@@ -42,10 +42,10 @@ tokio-postgres = { git = "https://github.com/imor/rust-postgres", rev = "20265ef
 tracing = { workspace = true, default-features = true }
 uuid = { workspace = true, features = ["v4"] }
 #llama-cpp-2 = { git = "https://github.com/utilityai/llama-cpp-rs/", tag = "0.1.105" }
-hf-hub = { version = "0.3.2" }
-clap = { version = "4.5.31", features = ["derive"] }
-anyhow = "1.0.97"
-encoding_rs = "0.8.33"
+#hf-hub = { version = "0.3.2" }
+#clap = { version = "4.5.31", features = ["derive"] }
+#anyhow = "1.0.97"
+#encoding_rs = "0.8.33"
 base64.workspace = true
 
 
