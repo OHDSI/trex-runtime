@@ -12,16 +12,17 @@ pub use trex_cli::{
 
 static LOG_INIT: AtomicBool = AtomicBool::new(false);
 
-static SERVER_THREADS: LazyLock<
-  Arc<Mutex<HashMap<String, thread::JoinHandle<()>>>>,
-> = LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+// Define a type alias for the complex type to improve readability
+type ServerThreads = Arc<Mutex<HashMap<String, thread::JoinHandle<()>>>>;
+
+static SERVER_THREADS: LazyLock<ServerThreads> =
+  LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 fn init_logging() {
-  if let Err(_) = rustls::crypto::ring::default_provider().install_default() {
+  if rustls::crypto::ring::default_provider().install_default().is_err() {
     return;
   }
   if LOG_INIT.swap(true, Ordering::Relaxed) {
-    return;
   }
 }
 
@@ -38,24 +39,6 @@ impl TrexServerManagerWrapper {
 
   pub fn get_version(&self) -> String {
     get_version()
-  }
-
-  pub fn start_server_with_defaults(
-    &self,
-    addr: Option<SocketAddr>,
-    main_service_path: Option<String>,
-  ) -> Result<String> {
-    let mut config = ServerConfig::default();
-
-    if let Some(addr) = addr {
-      config.addr = addr;
-    }
-
-    if let Some(path) = main_service_path {
-      config.main_service_path = path;
-    }
-
-    self.start_server_persistent(config)
   }
 
   pub fn start_server_sync(&self, config: ServerConfig) -> Result<String> {
@@ -94,14 +77,14 @@ impl TrexServerManagerWrapper {
       };
 
       let local = tokio::task::LocalSet::new();
-      let result = local.block_on(&runtime, async {
+      let result: Result<()> = local.block_on(&runtime, async {
         let mut builder =
           Builder::new(config_clone.addr, &config_clone.main_service_path);
 
         if let (Some(cert_path), Some(key_path)) =
           (&config_clone.tls_cert_path, &config_clone.tls_key_path)
         {
-          if let Ok(tls) = create_tls_config_static(&cert_path, &key_path) {
+          if let Ok(tls) = Self::create_tls_config_static(cert_path, key_path) {
             builder.tls(tls);
           }
         }
@@ -131,11 +114,8 @@ impl TrexServerManagerWrapper {
         let entrypoints = config_clone.to_worker_entrypoints();
         *builder.entrypoints_mut() = entrypoints;
 
-        if let Err(e) = get_global_server_manager()
-          .register_server(server_id_clone.clone(), config_clone.clone())
-        {
-          return Err(e);
-        }
+        get_global_server_manager()
+          .register_server(server_id_clone.clone(), config_clone.clone())?;
 
         let _ = result_tx.send(Ok("Server starting".to_string()));
 
@@ -144,9 +124,7 @@ impl TrexServerManagerWrapper {
             use std::io::Write;
             let _ = std::io::stdout().flush();
 
-            if let Err(_e) = server.listen().await {
-            } else {
-            }
+            let _ = server.listen().await;
           }
           Err(_e) => {}
         }
@@ -187,21 +165,6 @@ impl TrexServerManagerWrapper {
     let port = 443;
     base::server::Tls::new(port, &key_data, &cert_data)
   }
-}
-
-fn create_tls_config_static(
-  cert_path: &str,
-  key_path: &str,
-) -> Result<base::server::Tls> {
-  use std::fs;
-
-  let cert_data = fs::read(cert_path)
-    .map_err(|e| anyhow::anyhow!("Failed to read certificate file: {}", e))?;
-  let key_data = fs::read(key_path)
-    .map_err(|e| anyhow::anyhow!("Failed to read private key file: {}", e))?;
-
-  let port = 443;
-  base::server::Tls::new(port, &key_data, &cert_data)
 }
 
 impl TrexServerManagerWrapper {
@@ -288,7 +251,7 @@ fn default_main_service_path() -> String {
 }
 
 impl TrexServerConfig {
-  pub fn to_server_config(self) -> Result<ServerConfig> {
+  pub fn into_server_config(self) -> Result<ServerConfig> {
     let addr: SocketAddr = format!("{}:{}", self.host, self.port)
       .parse()
       .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;

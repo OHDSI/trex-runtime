@@ -53,7 +53,7 @@ impl VScalar for TrexVersionScalar {
     input: &mut DataChunkHandle,
     output: &mut dyn WritableVector,
   ) -> Result<(), Box<dyn std::error::Error>> {
-    if input.len() > 0 {
+    if !input.is_empty() {
       let version = TREX_MANAGER.get_version();
       let flat_vector = output.flat_vector();
       flat_vector.insert(0, &format!("trex extension v{}", version));
@@ -92,7 +92,7 @@ impl VScalar for StartTrexServerScalar {
     let event_worker_slice = event_worker_vector
       .as_slice_with_len::<libduckdb_sys::duckdb_string_t>(input.len());
 
-    if input.len() == 0 {
+    if input.is_empty() {
       return Err("No input provided".into());
     }
 
@@ -180,7 +180,7 @@ impl VScalar for StartTrexServerWithConfigScalar {
     let config_slice = config_vector
       .as_slice_with_len::<libduckdb_sys::duckdb_string_t>(input.len());
 
-    if input.len() == 0 {
+    if input.is_empty() {
       return Err("No input provided".into());
     }
 
@@ -191,7 +191,7 @@ impl VScalar for StartTrexServerWithConfigScalar {
 
     let response =
       match serde_json::from_str::<TrexServerConfig>(&config_json_str) {
-        Ok(config_struct) => match config_struct.to_server_config() {
+        Ok(config_struct) => match config_struct.into_server_config() {
           Ok(server_config) => {
             match TREX_MANAGER.start_server_sync(server_config) {
               Ok(server_id) => format!("Trex server started: {}", server_id),
@@ -230,7 +230,7 @@ impl VScalar for StopTrexServerScalar {
     let server_id_slice = server_id_vector
       .as_slice_with_len::<libduckdb_sys::duckdb_string_t>(input.len());
 
-    if input.len() == 0 {
+    if input.is_empty() {
       return Err("No input provided".into());
     }
 
@@ -413,6 +413,10 @@ impl VTab for TrexServersTable {
 }
 
 #[duckdb_entrypoint_c_api(ext_name = "trexas")]
+/// # Safety
+/// This function is called by DuckDB's extension loading mechanism and must be marked
+/// as unsafe due to FFI requirements. The Connection parameter is guaranteed to be valid
+/// by DuckDB when this function is called.
 pub unsafe fn extension_entrypoint(
   con: Connection,
 ) -> Result<(), Box<dyn Error>> {
