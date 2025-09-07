@@ -114,12 +114,29 @@ export class DatabaseManager {
 	setCredentials(credentials) {
 		const dbc = JSON.parse(op_get_dbc());
 		op_set_dbc(JSON.stringify({credentials: credentials, publications: dbc.publications}));
+		try {
+			//const servers = JSON.parse(op_execute_query("memory", "SELECT * FROM pgwire_server_status()", []));
+			//for (const server of servers) {
+			try {
+				op_execute_query("memory", `SELECT update_db_credentials('${btoa(JSON.stringify(credentials))}')`, []);
+			} catch (e) {
+				console.error(`Failed to update credentials for all servers`, e);
+			}
+			//}
+		} catch (e) {
+			console.error("Failed to update database credentials:", e);
+		}
 		this.#updatePublications();
 	}
 	#setPublications(pub) {
 		const dbc = JSON.parse(op_get_dbc());
 		op_set_dbc(JSON.stringify({credentials: dbc.credentials, publications: pub}));
 
+	}
+
+	query(sql, params) {
+		const nparams= map_params(params);
+		return JSON.parse(op_execute_query("memory", sql, nparams));
 	}
 
 	 // This is temporary workaround to enable communication with Postgres since cohort tables are only populated in postgres and not in duckdb yet. Once we enable the write mode on duckdb for cohort tables, then this can be removed.
@@ -188,7 +205,7 @@ export class DatabaseManager {
 		for(const c of this.getCredentials()) {
 			const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
 
-			if(c.dialect == 'postgres' && c.publications && c.publications.length > 0 ) {
+			/*if(c.dialect == 'postgres' && c.publications && c.publications.length > 0 ) {
 				console.log(`TREX PUB FOUND ${c.id}`)
 				for(const p of c.publications) {
 					const key = `${c.id}_${p.publication}`
@@ -202,7 +219,8 @@ export class DatabaseManager {
 						this.#setPublications(pub);
 					}
 				}
-			} else if (c.vocab_schemas && c.vocab_schemas.length > 0 && c.dialect == 'postgres') {
+			} else */
+			if (/*c.vocab_schemas && c.vocab_schemas.length > 0 && */c.dialect == 'postgres') {
 				console.log(`TREX NO PUB FOUND ${c.id}`)
 				const key = `${c.id}`
 				if(!(key in this.getPublications)) {
