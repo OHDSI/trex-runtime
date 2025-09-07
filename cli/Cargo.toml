@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 description = "A server based on Deno runtime, capable of running JavaScript, TypeScript, and WASM services"
 
+[lib]
+name = "trex_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "trex"
 path = "src/main.rs"
@@ -28,6 +32,8 @@ rustls.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
 
 env_logger = "=0.10.0"
+chrono = { version = "0.4", features = ["serde"] }
+lazy_static = "1.4"
 
 [features]
 tracing = ["dep:tracing-subscriber", "dep:ext_event_worker"]

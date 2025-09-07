@@ -1,0 +1,271 @@
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::thread;
+
+pub use trex_cli::{
+  get_global_server_manager, get_version, ServerConfig, ServerManager,
+};
+
+static LOG_INIT: AtomicBool = AtomicBool::new(false);
+
+// Define a type alias for the complex type to improve readability
+type ServerThreads = Arc<Mutex<HashMap<String, thread::JoinHandle<()>>>>;
+
+static SERVER_THREADS: LazyLock<ServerThreads> =
+  LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+fn init_logging() {
+  if rustls::crypto::ring::default_provider()
+    .install_default()
+    .is_err()
+  {
+    return;
+  }
+  if LOG_INIT.swap(true, Ordering::Relaxed) {}
+}
+
+pub struct TrexServerManagerWrapper {
+  manager: &'static ServerManager,
+}
+
+impl TrexServerManagerWrapper {
+  pub fn new() -> Self {
+    Self {
+      manager: get_global_server_manager(),
+    }
+  }
+
+  pub fn get_version(&self) -> String {
+    get_version()
+  }
+
+  pub fn start_server_sync(&self, config: ServerConfig) -> Result<String> {
+    init_logging();
+    self.start_server_persistent(config)
+  }
+
+  fn start_server_persistent(&self, config: ServerConfig) -> Result<String> {
+    use base::server::Builder;
+    use std::sync::mpsc;
+
+    let server_id = format!(
+      "trex_{}_{}",
+      config.addr.port(),
+      chrono::Utc::now().timestamp()
+    );
+    let server_id_clone = server_id.clone();
+    let config_clone = config.clone();
+
+    let (result_tx, result_rx) = mpsc::channel();
+
+    let thread_handle = thread::spawn(move || {
+      init_logging();
+
+      let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .thread_name("trex-server")
+        .build()
+      {
+        Ok(rt) => rt,
+        Err(e) => {
+          let _ = result_tx
+            .send(Err(anyhow::anyhow!("Failed to create runtime: {}", e)));
+          return;
+        }
+      };
+
+      let local = tokio::task::LocalSet::new();
+      let result: Result<()> = local.block_on(&runtime, async {
+        let mut builder =
+          Builder::new(config_clone.addr, &config_clone.main_service_path);
+
+        if let (Some(cert_path), Some(key_path)) =
+          (&config_clone.tls_cert_path, &config_clone.tls_key_path)
+        {
+          if let Ok(tls) = Self::create_tls_config_static(cert_path, key_path) {
+            builder.tls(tls);
+          }
+        }
+
+        if let Some(event_worker_path) = &config_clone.event_worker_path {
+          builder.event_worker_path(event_worker_path);
+        }
+
+        if let Some(ref user_worker_policy) = config_clone.user_worker_policy {
+          builder.user_worker_policy(user_worker_policy.clone());
+        }
+
+        if !config_clone.static_patterns.is_empty() {
+          for pattern in &config_clone.static_patterns {
+            builder.add_static_pattern(pattern);
+          }
+        }
+
+        if let Some(inspector) = config_clone.inspector {
+          builder.inspector(inspector);
+        }
+
+        let mut flags = config_clone.to_server_flags();
+        flags.no_module_cache = true;
+        *builder.flags_mut() = flags;
+
+        let entrypoints = config_clone.to_worker_entrypoints();
+        *builder.entrypoints_mut() = entrypoints;
+
+        get_global_server_manager()
+          .register_server(server_id_clone.clone(), config_clone.clone())?;
+
+        let _ = result_tx.send(Ok("Server starting".to_string()));
+
+        match builder.build().await {
+          Ok(mut server) => {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+
+            let _ = server.listen().await;
+          }
+          Err(_e) => {}
+        }
+
+        let _ = get_global_server_manager().unregister_server(&server_id_clone);
+        Ok(())
+      });
+
+      if let Err(e) = result {
+        println!("[TREX-EXT] Server thread error: {}", e);
+      } else {
+        println!("[TREX-EXT] Server thread completed successfully");
+      }
+    });
+
+    if let Ok(mut threads) = SERVER_THREADS.lock() {
+      threads.insert(server_id.clone(), thread_handle);
+    }
+
+    match result_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+      Ok(Ok(_)) => Ok(format!("Started Trex server: {}", server_id)),
+      Ok(Err(e)) => Err(e),
+      Err(_) => Err(anyhow::anyhow!("Server start timeout")),
+    }
+  }
+
+  fn create_tls_config_static(
+    cert_path: &str,
+    key_path: &str,
+  ) -> Result<base::server::Tls> {
+    use std::fs;
+
+    let cert_data = fs::read(cert_path)
+      .map_err(|e| anyhow::anyhow!("Failed to read certificate file: {}", e))?;
+    let key_data = fs::read(key_path)
+      .map_err(|e| anyhow::anyhow!("Failed to read private key file: {}", e))?;
+
+    let port = 443;
+    base::server::Tls::new(port, &key_data, &cert_data)
+  }
+}
+
+impl TrexServerManagerWrapper {
+  pub fn stop_server(&self, server_id: &str) -> Result<String> {
+    self.manager.unregister_server(server_id)?;
+
+    if let Ok(mut threads) = SERVER_THREADS.lock() {
+      threads.remove(server_id);
+    }
+
+    Ok(format!("Stopped Trex server: {}", server_id))
+  }
+
+  pub fn stop_all_servers(&self) -> Result<usize> {
+    let count = if let Ok(mut threads) = SERVER_THREADS.lock() {
+      let count = threads.len();
+      threads.clear();
+      count
+    } else {
+      0
+    };
+
+    let _ = self.manager.stop_all_servers();
+    Ok(count)
+  }
+
+  pub fn list_servers(&self) -> Vec<(String, ServerHandle)> {
+    match self.manager.list_servers() {
+      Ok(servers) => servers
+        .into_iter()
+        .map(|(id, config, _status)| {
+          let handle = ServerHandle {
+            config,
+            started_at: chrono::Utc::now(),
+          };
+          (id, handle)
+        })
+        .collect(),
+      Err(_) => Vec::new(),
+    }
+  }
+}
+
+// Create a global manager instance
+pub static TREX_MANAGER: LazyLock<TrexServerManagerWrapper> =
+  LazyLock::new(|| {
+    init_logging();
+    TrexServerManagerWrapper::new()
+  });
+
+/// Server handle for the extension API
+#[derive(Debug, Clone)]
+pub struct ServerHandle {
+  pub config: ServerConfig,
+  pub started_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrexServerConfig {
+  #[serde(default = "default_host")]
+  pub host: String,
+  #[serde(default = "default_port")]
+  pub port: u16,
+  #[serde(default = "default_main_service_path")]
+  pub main_service_path: String,
+  #[serde(default)]
+  pub event_worker_path: Option<String>,
+  #[serde(default)]
+  pub tls_cert_path: Option<String>,
+  #[serde(default)]
+  pub tls_key_path: Option<String>,
+  #[serde(default)]
+  pub static_patterns: Vec<String>,
+}
+
+fn default_host() -> String {
+  "127.0.0.1".to_string()
+}
+fn default_port() -> u16 {
+  8080
+}
+fn default_main_service_path() -> String {
+  "main.ts".to_string()
+}
+
+impl TrexServerConfig {
+  pub fn into_server_config(self) -> Result<ServerConfig> {
+    let addr: SocketAddr = format!("{}:{}", self.host, self.port)
+      .parse()
+      .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
+
+    Ok(ServerConfig {
+      addr,
+      main_service_path: self.main_service_path,
+      event_worker_path: self.event_worker_path,
+      tls_cert_path: self.tls_cert_path,
+      tls_key_path: self.tls_key_path,
+      static_patterns: self.static_patterns,
+      ..Default::default()
+    })
+  }
+}
