@@ -5607,11 +5607,8 @@ checksum = "4e02f6069513efb67a0743aff3b846090de14763802b0e95c352ebc6e1bdc1da"
 dependencies = [
  "flate2",
  "pkg-config",
- "prettyplease",
- "quote",
  "serde",
  "serde_json",
- "syn 2.0.106",
  "tar",
  "vcpkg",
 ]
@@ -9695,23 +9692,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
-]
-
-[[package]]
-name = "trexas"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base",
- "chrono",
- "cli",
- "duckdb",
- "duckdb-loadable-macros",
- "libduckdb-sys",
- "rustls 0.23.20",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
