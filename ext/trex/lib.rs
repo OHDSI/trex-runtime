@@ -43,19 +43,16 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use tokio::sync::{mpsc, oneshot};
 
-/*
-use circe::{
-  build_expression_query, init_jvm, render_and_translate_sql,
-  validate_cohort_expression, BuildExpressionQueryOptions,
-};
-*/
-
 use crate::pipeline::{
   batching::{data_pipeline::BatchDataPipeline, BatchConfig},
   sinks::duckdb::DuckDbSink,
   sources::postgres::{PostgresSource, TableNamesFrom},
   PipelineAction,
 };
+
+type PendingRequestsMap =
+  Arc<Mutex<HashMap<String, oneshot::Sender<JsonValue>>>>;
+type RequestChannelType = Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>;
 
 static TREX_DB: LazyLock<Arc<Mutex<Connection>>> = LazyLock::new(|| {
   let cfg = match Config::default().allow_unsigned_extensions() {
@@ -83,13 +80,11 @@ static DB_CREDENTIALS: LazyLock<Arc<Mutex<String>>> = LazyLock::new(|| {
   )))
 });
 
-static REQUEST_CHANNEL: LazyLock<Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>> =
+static REQUEST_CHANNEL: LazyLock<RequestChannelType> =
   LazyLock::new(|| Arc::new(Mutex::new(None)));
 
-// Map of request IDs to response channels
-static PENDING_REQUESTS: LazyLock<
-  Arc<Mutex<HashMap<String, oneshot::Sender<JsonValue>>>>,
-> = LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+static PENDING_REQUESTS: LazyLock<PendingRequestsMap> =
+  LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 pub async fn start_sql_server(ip: &str, port: u16, auth_type: AuthType) {
   let factory = Arc::new(TrexDuckDBFactory {
@@ -643,41 +638,45 @@ async fn op_req(#[serde] message: JsonValue) -> Result<JsonValue, AnyError> {
     "message": message
   });
 
-  let channel_guard = REQUEST_CHANNEL.lock().unwrap();
-  if let Some(sender) = channel_guard.as_ref() {
-    match sender.try_send(request_with_id) {
-      Ok(()) => {
-        drop(channel_guard);
-
-        match tokio::time::timeout(
-          std::time::Duration::from_secs(30),
-          response_receiver,
-        )
-        .await
-        {
-          Ok(Ok(response)) => Ok(response),
-          Ok(Err(_)) => {
-            let mut pending = PENDING_REQUESTS.lock().unwrap();
-            pending.remove(&request_id);
-            Err(deno_core::error::generic_error("Request cancelled"))
-          }
-          Err(_) => {
-            let mut pending = PENDING_REQUESTS.lock().unwrap();
-            pending.remove(&request_id);
-            Err(deno_core::error::generic_error("Request timeout"))
-          }
-        }
-      }
-      Err(_) => {
+  let send_result = {
+    let channel_guard = REQUEST_CHANNEL.lock().unwrap();
+    if let Some(sender) = channel_guard.as_ref() {
+      sender.try_send(request_with_id)
+    } else {
+      return {
         let mut pending = PENDING_REQUESTS.lock().unwrap();
         pending.remove(&request_id);
-        Err(deno_core::error::generic_error("Failed to send request"))
+        Err(deno_core::error::generic_error("No active listeners"))
+      };
+    }
+  };
+
+  match send_result {
+    Ok(()) => {
+      match tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        response_receiver,
+      )
+      .await
+      {
+        Ok(Ok(response)) => Ok(response),
+        Ok(Err(_)) => {
+          let mut pending = PENDING_REQUESTS.lock().unwrap();
+          pending.remove(&request_id);
+          Err(deno_core::error::generic_error("Request cancelled"))
+        }
+        Err(_) => {
+          let mut pending = PENDING_REQUESTS.lock().unwrap();
+          pending.remove(&request_id);
+          Err(deno_core::error::generic_error("Request timeout"))
+        }
       }
     }
-  } else {
-    let mut pending = PENDING_REQUESTS.lock().unwrap();
-    pending.remove(&request_id);
-    Err(deno_core::error::generic_error("No active listeners"))
+    Err(_) => {
+      let mut pending = PENDING_REQUESTS.lock().unwrap();
+      pending.remove(&request_id);
+      Err(deno_core::error::generic_error("Failed to send request"))
+    }
   }
 }
 
@@ -705,14 +704,12 @@ async fn op_req_next(
 ) -> Result<Option<JsonValue>, AnyError> {
   let resource = state.borrow().resource_table.get::<RequestResource>(rid)?;
 
-  // Take the receiver out of the RefCell to avoid holding a borrow across await
   let receiver = resource.receiver.borrow_mut().take();
 
   if let Some(mut rx) = receiver {
     let next_message = rx.recv().await;
 
     if next_message.is_none() {
-      // Clean up the global channel when receiver is done
       {
         let mut channel_guard = REQUEST_CHANNEL.lock().unwrap();
         *channel_guard = None;
@@ -723,13 +720,11 @@ async fn op_req_next(
         .resource_table
         .take::<RequestResource>(rid)?;
     } else {
-      // Put the receiver back if we still have messages
       resource.receiver.borrow_mut().replace(rx);
     }
 
     Ok(next_message)
   } else {
-    // Receiver already taken/consumed
     Ok(None)
   }
 }
@@ -745,13 +740,9 @@ fn op_req_respond(
   if let Some(sender) = pending.remove(&request_id) {
     match sender.send(response) {
       Ok(()) => Ok(serde_json::Value::Bool(true)),
-      Err(_) => {
-        // Receiver was dropped
-        Ok(serde_json::Value::Bool(false))
-      }
+      Err(_) => Ok(serde_json::Value::Bool(false)),
     }
   } else {
-    // Request ID not found (maybe already responded or timed out)
     Ok(serde_json::Value::Bool(false))
   }
 }
