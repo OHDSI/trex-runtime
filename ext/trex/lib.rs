@@ -102,9 +102,8 @@ static DB_CREDENTIALS: LazyLock<Arc<Mutex<String>>> = LazyLock::new(|| {
   )))
 });
 
-static REQUEST_CHANNEL: LazyLock<Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>> = LazyLock::new(|| {
-  Arc::new(Mutex::new(None))
-});
+static REQUEST_CHANNEL: LazyLock<Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>> =
+  LazyLock::new(|| Arc::new(Mutex::new(None)));
 
 pub async fn start_sql_server(ip: &str, port: u16, auth_type: AuthType) {
   let factory = Arc::new(TrexDuckDBFactory {
@@ -894,13 +893,13 @@ fn op_req(#[serde] message: JsonValue) -> Result<serde_json::Value, AnyError> {
 #[serde]
 fn op_req_listen(state: &mut OpState) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<JsonValue>(1000);
-  
+
   // Update the global channel
   {
     let mut channel_guard = REQUEST_CHANNEL.lock().unwrap();
     *channel_guard = Some(sender);
   }
-  
+
   let resource = RequestResource {
     receiver: Arc::new(Mutex::new(receiver)),
   };
@@ -914,10 +913,7 @@ async fn op_req_next(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<Option<JsonValue>, AnyError> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<RequestResource>(rid)?;
+  let resource = state.borrow().resource_table.get::<RequestResource>(rid)?;
 
   let mut rx = resource.receiver.lock().unwrap();
   let next_message = rx.recv().await;
@@ -928,7 +924,7 @@ async fn op_req_next(
       let mut channel_guard = REQUEST_CHANNEL.lock().unwrap();
       *channel_guard = None;
     }
-    
+
     state
       .borrow_mut()
       .resource_table
