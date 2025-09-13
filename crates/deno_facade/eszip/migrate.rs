@@ -60,10 +60,7 @@ pub async fn try_migrate_if_needed(
           }
         };
 
-        result.map(|mut it| {
-          it.set_migrated(true);
-          it
-        })
+        result
       }
 
       None => Err(anyhow!("failed to migrate (found unexpected error)")),

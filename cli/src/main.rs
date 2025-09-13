@@ -6,12 +6,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Error;
-use base::server;
 use base::server::Builder;
 use base::server::ServerFlags;
 use base::server::Tls;
@@ -21,8 +19,6 @@ use base::worker::pool::WorkerPoolPolicy;
 use base::CacheSetting;
 use base::InspectorOption;
 use base::WorkerKind;
-use deno::deno_telemetry;
-use deno::deno_telemetry::OtelConfig;
 use deno::ConfigMode;
 use deno::DenoOptionsBuilder;
 use deno_facade::extract_from_file;
@@ -32,10 +28,7 @@ use deno_facade::Metadata;
 use env::resolve_deno_runtime_env;
 use flags::get_cli;
 use flags::EszipV2ChecksumKind;
-use flags::OtelConsoleConfig;
-use flags::OtelKind;
 use log::warn;
-use tokio::time::timeout;
 
 mod env;
 mod flags;
@@ -88,11 +81,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
     #[allow(clippy::arc_with_non_send_sync)]
     let exit_code = match matches.subcommand() {
       Some(("start", sub_matches)) => {
-        deno_telemetry::init(
-          deno::versions::otel_runtime_config(),
-          OtelConfig::default(),
-        )?;
-
         let ip = sub_matches.get_one::<String>("ip").cloned().unwrap();
         let ip = IpAddr::from_str(&ip)
           .context("failed to parse the IP address to bind the server")?;
@@ -134,17 +122,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .get_one::<bool>("inspect-main")
           .cloned()
           .unwrap();
-
-        let enable_otel = sub_matches
-          .get_many::<OtelKind>("enable-otel")
-          .unwrap_or_default()
-          .cloned()
-          .collect::<Vec<_>>();
-
-        let otel_console = sub_matches
-          .get_one::<OtelConsoleConfig>("otel-console")
-          .cloned()
-          .map(Into::into);
 
         let event_service_manager_path =
           sub_matches.get_one::<String>("event-worker").cloned();
@@ -280,21 +257,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .unwrap();
 
         let flags = ServerFlags {
-          otel: if !enable_otel.is_empty() {
-            if enable_otel.len() > 1 {
-              Some(server::OtelKind::Both)
-            } else {
-              match enable_otel.first() {
-                Some(OtelKind::Main) => Some(server::OtelKind::Main),
-                Some(OtelKind::Event) => Some(server::OtelKind::Event),
-                None => None,
-              }
-            }
-          } else {
-            None
-          },
-          otel_console,
-
           no_module_cache,
           allow_main_inspector,
           tcp_nodelay,
@@ -375,10 +337,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           } else {
             vec![]
           };
-        let timeout_dur = sub_matches
-          .get_one::<u64>("timeout")
-          .cloned()
-          .map(Duration::from_secs);
 
         if import_map_path.is_some() {
           warn!(concat!(
@@ -442,24 +400,14 @@ fn main() -> Result<ExitCode, anyhow::Error> {
         emitter_factory.set_deno_options(builder.build()?);
 
         let mut metadata = Metadata::default();
-        let eszip_fut = generate_binary_eszip(
+        let eszip = generate_binary_eszip(
           &mut metadata,
           Arc::new(emitter_factory),
           None,
           maybe_checksum_kind,
           Some(static_patterns),
-        );
-
-        let eszip = if let Some(dur) = timeout_dur {
-          match timeout(dur, eszip_fut).await {
-            Ok(eszip) => eszip,
-            Err(_) => {
-              bail!("Failed to complete the bundle within the given time.")
-            }
-          }
-        } else {
-          eszip_fut.await
-        }?;
+        )
+        .await?;
 
         let bin = eszip.into_bytes();
 

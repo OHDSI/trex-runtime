@@ -552,7 +552,6 @@ pub async fn create_module_loader_for_eszip(
   permissions_options: PermissionsOptions,
   include_source_map: bool,
 ) -> Result<RuntimeProviders, AnyError> {
-  let migrated = eszip.migrated();
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
@@ -811,7 +810,6 @@ pub async fn create_module_loader_for_eszip(
   });
 
   Ok(RuntimeProviders {
-    migrated,
     module_loader: module_loader.clone(),
     node_services: NodeExtInitServices {
       node_require_loader: module_loader.clone(),

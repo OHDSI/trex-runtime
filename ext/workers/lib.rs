@@ -32,9 +32,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::WriteOutcome;
 use deno_facade::EszipPayloadKind;
-use deno_telemetry::OtelConfig;
-use deno_telemetry::OtelConsoleConfig;
-use deno_telemetry::OtelPropagators;
 use errors::WorkerError;
 use ext_runtime::conn_sync::ConnWatcher;
 use fs::s3_fs::S3FsConfig;
@@ -53,7 +50,6 @@ use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -73,7 +69,6 @@ deno_core::extension!(
     op_user_worker_create,
     op_user_worker_fetch_build,
     op_user_worker_fetch_send,
-    op_user_worker_cleanup_idle_workers,
   ],
   esm_entry_point = "ext:user_workers/user_workers.js",
   esm = ["user_workers.js",]
@@ -85,18 +80,6 @@ pub struct JsxImportBaseConfig {
   default_specifier: Option<String>,
   module: String,
   base_url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsOtelConfig {
-  #[serde(default)]
-  tracing_enabled: bool,
-  #[serde(default)]
-  metrics_enabled: bool,
-  #[serde(default)]
-  console: OtelConsoleConfig,
-  #[serde(default)]
-  propagators: HashSet<OtelPropagators>,
 }
 
 pub type JsonMap = serde_json::Map<String, serde_json::Value>;
@@ -111,7 +94,7 @@ pub struct UserWorkerCreateOptions {
   force_create: bool,
   allow_remote_modules: bool,
   custom_module_root: Option<String>,
-  permissions: Option<JsPermissionsOptions>,
+  permissions: Option<PermissionsOptions2>,
 
   maybe_eszip: Option<JsBuffer>,
   maybe_entrypoint: Option<String>,
@@ -125,7 +108,6 @@ pub struct UserWorkerCreateOptions {
 
   s3_fs_config: Option<S3FsConfig>,
   tmp_fs_config: Option<TmpFsConfig>,
-  otel_config: Option<JsOtelConfig>,
 
   context: Option<JsonMap>,
   #[serde(default)]
@@ -136,7 +118,7 @@ pub struct UserWorkerCreateOptions {
 
 /// It is identical to [`PermissionsOptions`], except for `prompt`.
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
-pub struct JsPermissionsOptions {
+pub struct PermissionsOptions2 {
   pub allow_all: Option<bool>,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
@@ -155,7 +137,7 @@ pub struct JsPermissionsOptions {
   pub allow_import: Option<Vec<String>>,
 }
 
-impl JsPermissionsOptions {
+impl PermissionsOptions2 {
   fn into_permissions_options(self) -> PermissionsOptions {
     PermissionsOptions {
       prompt: false,
@@ -180,11 +162,11 @@ impl JsPermissionsOptions {
 }
 
 #[op2(async)]
-#[serde]
+#[string]
 pub async fn op_user_worker_create(
   state: Rc<RefCell<OpState>>,
   #[serde] opts: UserWorkerCreateOptions,
-) -> Result<(String, bool), AnyError> {
+) -> Result<String, AnyError> {
   let result_rx = {
     let op_state = state.borrow();
     let tx = op_state.borrow::<mpsc::UnboundedSender<UserWorkerMsgs>>();
@@ -213,20 +195,12 @@ pub async fn op_user_worker_create(
 
       s3_fs_config: maybe_s3_fs_config,
       tmp_fs_config: maybe_tmp_fs_config,
-      otel_config: maybe_otel_config,
 
       context,
       static_patterns,
       allow_host_fs_access,
     } = opts;
 
-    let maybe_otel_config = maybe_otel_config.map(|it| OtelConfig {
-      tracing_enabled: it.tracing_enabled,
-      metrics_enabled: it.metrics_enabled,
-      console: it.console,
-      propagators: it.propagators,
-      ..Default::default()
-    });
     let user_worker_options = WorkerContextInitOpts {
       service_path: PathBuf::from(service_path),
       no_module_cache,
@@ -253,7 +227,7 @@ pub async fn op_user_worker_create(
           allow_remote_modules,
           custom_module_root,
           permissions: permissions
-            .map(JsPermissionsOptions::into_permissions_options),
+            .map(PermissionsOptions2::into_permissions_options),
 
           context,
           allow_host_fs_access,
@@ -271,7 +245,6 @@ pub async fn op_user_worker_create(
 
       maybe_s3_fs_config,
       maybe_tmp_fs_config,
-      maybe_otel_config,
     };
 
     tx.send(UserWorkerMsgs::Create(user_worker_options, result_tx))?;
@@ -290,7 +263,7 @@ pub async fn op_user_worker_create(
     Ok(Err(err)) => {
       Err(custom_error("InvalidWorkerCreation", format!("{err:#}")))
     }
-    Ok(Ok(v)) => Ok((v.key.to_string(), v.reused)),
+    Ok(Ok(v)) => Ok(v.key.to_string()),
   }
 }
 
@@ -660,30 +633,6 @@ pub async fn op_user_worker_fetch_send(
   };
 
   Ok(response)
-}
-
-#[op2(async)]
-#[number]
-pub async fn op_user_worker_cleanup_idle_workers(
-  state: Rc<RefCell<OpState>>,
-  #[number] timeout_ms: usize,
-) -> usize {
-  let msg_tx = {
-    state
-      .borrow()
-      .borrow::<mpsc::UnboundedSender<UserWorkerMsgs>>()
-      .clone()
-  };
-
-  let (tx, rx) = oneshot::channel();
-  if msg_tx
-    .send(UserWorkerMsgs::TryCleanupIdleWorkers(timeout_ms, tx))
-    .is_err()
-  {
-    return 0;
-  }
-
-  (rx.await).unwrap_or_default()
 }
 
 /// Wraps a [`mpsc::Receiver`] in a [`Stream`] that can be used as a Hyper [`Body`].

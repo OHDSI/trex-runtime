@@ -7,7 +7,6 @@ use std::sync::Arc;
 use base_mem_check::WorkerHeapStatistics;
 use base_rt::DropToken;
 use base_rt::RuntimeState;
-use base_rt::RuntimeWaker;
 use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
@@ -127,7 +126,7 @@ impl WorkerMetricSource {
       let state = runtime.op_state();
       let state_mut = state.borrow_mut();
 
-      state_mut.borrow::<RuntimeWaker>().0.clone()
+      state_mut.waker.clone()
     };
 
     Self { handle, waker }

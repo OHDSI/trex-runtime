@@ -7,22 +7,10 @@ on:
       - reopened
       - synchronize
       - ready_for_review
-    paths: &watch
-      - '.cargo/**'
-      - 'cli/**'
-      - 'crates/**'
-      - 'deno/**'
-      - 'ext/**'
-      - 'vendor/**'
-      - '.env'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'rust-toolchain.toml'
   push:
     branches:
       - main
       - develop
-    paths: *watch
   workflow_dispatch:
 
 permissions:
@@ -174,7 +162,6 @@ jobs:
       - name: Coveralls upload
         uses: coverallsapp/github-action@v2
         with:
-          fail-on-error: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: lcov.info
           debug: true

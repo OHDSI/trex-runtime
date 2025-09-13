@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno::standalone::binary::NodeModules;
 use deno_core::normalize_path;
 use deno_fs::AccessCheckCb;
 use deno_fs::FsDirEntry;
@@ -27,34 +26,22 @@ pub struct StaticFs {
   static_files: EszipStaticFiles,
   base_dir_path: PathBuf,
   vfs_path: PathBuf,
-  byonm_node_modules_path: Option<PathBuf>,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   vfs: Arc<FileBackedVfs>,
 }
 
 impl StaticFs {
   pub fn new(
-    node_modules: Option<NodeModules>,
     static_files: EszipStaticFiles,
     base_dir_path: PathBuf,
     vfs_path: PathBuf,
     vfs: Arc<FileBackedVfs>,
     snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   ) -> Self {
-    let byonm_node_modules_path = if let Some(NodeModules::Byonm {
-      root_node_modules_dir: Some(path),
-    }) = node_modules
-    {
-      Some(vfs_path.join(path))
-    } else {
-      None
-    };
-
     Self {
       vfs,
       static_files,
       base_dir_path,
-      byonm_node_modules_path,
       vfs_path,
       snapshot,
     }
@@ -388,13 +375,7 @@ impl deno_fs::FileSystem for StaticFs {
     _access_check: Option<AccessCheckCb>,
   ) -> FsResult<Cow<'static, [u8]>> {
     let is_npm = self.is_valid_npm_package(path);
-    let is_byonm_path = self
-      .byonm_node_modules_path
-      .as_ref()
-      .map(|it| path.starts_with(it))
-      .unwrap_or_default();
-
-    if is_npm || is_byonm_path {
+    if is_npm {
       let options = OpenOptions::read();
       let file = self.open_sync(path, options, None)?;
       let buf = file.read_all_sync()?;

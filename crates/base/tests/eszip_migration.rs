@@ -2,7 +2,6 @@ use std::fs::read_dir;
 use std::path::Path;
 use std::path::PathBuf;
 
-use anyhow::anyhow;
 use anyhow::bail;
 use base::worker::TerminationToken;
 use base::worker::WorkerSurfaceBuilder;
@@ -16,8 +15,6 @@ use deno_facade::payload_to_eszip;
 use deno_facade::EszipPayloadKind;
 use eszip::v2::EszipV2Module;
 use eszip::v2::EszipV2SourceSlot;
-use ext_event_worker::events::WorkerEventWithMetadata;
-use ext_event_worker::events::WorkerEvents;
 use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::UserWorkerRuntimeOpts;
 use ext_workers::context::WorkerContextInitOpts;
@@ -80,26 +77,8 @@ where
 {
   let buf = read(path.as_ref()).await?;
   let eszip = EszipPayloadKind::VecKind(buf.clone());
-  let metadata_path =
-    PathBuf::from(format!("{}.metadata", &path.as_ref().to_string_lossy()));
-  let metadata = if metadata_path.exists() {
-    let buf = read(metadata_path).await?;
-    Some(serde_json::from_slice::<serde_json::Value>(&buf)?)
-  } else {
-    None
-  }
-  .unwrap_or(serde_json::Value::Object(Default::default()));
-  let capture_event_loop_error =
-    get_bool_from_json_value(&metadata, "captureEventLoopError")
-      .unwrap_or_default();
-  let (tx, rx) = if capture_event_loop_error {
-    let (tx, rx) = mpsc::unbounded_channel::<WorkerEventWithMetadata>();
-    (Some(tx), Some(rx))
-  } else {
-    (None, None)
-  };
   let (maybe_entrypoint, maybe_import_map_path) =
-    guess_eszip_entrypoint_and_import_map_path(&metadata, buf).await?;
+    guess_eszip_entrypoint_and_import_map_path(path, buf).await?;
   let termination_token = TerminationToken::new();
   let (pool_msg_tx, mut pool_msg_rx) = mpsc::unbounded_channel();
   let worker_surface = WorkerSurfaceBuilder::new()
@@ -115,7 +94,7 @@ where
         service_path: Some(String::from("meow")),
         key: Some(Uuid::new_v4()),
         pool_msg_tx: Some(pool_msg_tx),
-        events_msg_tx: tx,
+        events_msg_tx: None,
         cancel: None,
         context: json!({
           "importMapPath": maybe_import_map_path
@@ -131,7 +110,6 @@ where
       maybe_entrypoint,
       maybe_s3_fs_config: None,
       maybe_tmp_fs_config: None,
-      maybe_otel_config: None,
     })
     .build()
     .await;
@@ -149,36 +127,35 @@ where
   });
 
   termination_token.cancel_and_wait().await;
-  worker_surface.map(|_| ())?;
-
-  if let Some(mut rx) = rx {
-    rx.close();
-    let mut msgs = vec![];
-    while let Some(msg) = rx.recv().await {
-      msgs.push(msg);
-    }
-    for msg in msgs {
-      match msg.event {
-        WorkerEvents::BootFailure(ev) => return Err(anyhow!(ev.msg)),
-        WorkerEvents::UncaughtException(ev) => {
-          return Err(anyhow!(ev.exception))
-        }
-        _ => {}
-      }
-    }
-  }
-
-  Ok(())
+  worker_surface.map(|_| ())
 }
 
-async fn guess_eszip_entrypoint_and_import_map_path(
-  metadata: &serde_json::Value,
+async fn guess_eszip_entrypoint_and_import_map_path<P>(
+  path: P,
   buf: Vec<u8>,
-) -> Result<(Option<String>, Option<String>), AnyError> {
-  let (metadata_entrypoint, metadata_import_map_path) = (
-    get_str_from_json_value(metadata, "entrypoint"),
-    get_str_from_json_value(metadata, "importMap"),
-  );
+) -> Result<(Option<String>, Option<String>), AnyError>
+where
+  P: AsRef<Path>,
+{
+  let metadata_path =
+    PathBuf::from(format!("{}.metadata", &path.as_ref().to_string_lossy()));
+  let (metadata_entrypoint, metadata_import_map_path) =
+    if metadata_path.exists() {
+      fn get_str(value: &serde_json::Value, key: &str) -> Option<String> {
+        value
+          .get(key)
+          .and_then(|it| it.as_str().map(str::to_string))
+      }
+
+      let buf = read(metadata_path).await?;
+      let metadata = serde_json::from_slice::<serde_json::Value>(&buf)?;
+      (
+        get_str(&metadata, "entrypoint"),
+        get_str(&metadata, "importMap"),
+      )
+    } else {
+      (None, None)
+    };
   let mut eszip = migrate::try_migrate_if_needed(
     payload_to_eszip(EszipPayloadKind::VecKind(buf)).await?,
     None,
@@ -307,20 +284,4 @@ fn get_testdata_paths() -> Result<Vec<PathBuf>, AnyError> {
     }
   }
   Ok(paths)
-}
-
-fn get_str_from_json_value(
-  value: &serde_json::Value,
-  key: &str,
-) -> Option<String> {
-  value
-    .get(key)
-    .and_then(|it| it.as_str().map(str::to_string))
-}
-
-fn get_bool_from_json_value(
-  value: &serde_json::Value,
-  key: &str,
-) -> Option<bool> {
-  value.get(key).and_then(|it| it.as_bool())
 }

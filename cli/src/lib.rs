@@ -142,8 +142,6 @@ impl ServerConfig {
   /// Convert to ServerFlags
   pub fn to_server_flags(&self) -> ServerFlags {
     ServerFlags {
-      otel: None,
-      otel_console: None,
       no_module_cache: self.no_module_cache,
       allow_main_inspector: self.allow_main_inspector,
       tcp_nodelay: self.tcp_nodelay,

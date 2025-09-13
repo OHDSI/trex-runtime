@@ -4,11 +4,6 @@ import {
   writableStreamForRid,
 } from "ext:deno_web/06_streams.js";
 import { getSupabaseTag } from "ext:runtime/http.js";
-import {
-  builtinTracer,
-  enterSpan,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
 
 const ops = core.ops;
 
@@ -17,7 +12,6 @@ const { TypeError } = primordials;
 const {
   op_user_worker_fetch_send,
   op_user_worker_create,
-  op_user_worker_cleanup_idle_workers,
 } = ops;
 
 const NO_SUPABASE_TAG_WARN_MSG =
@@ -146,34 +140,9 @@ class UserWorker {
       throw new TypeError("service path must be defined");
     }
 
-    let span;
-    if (TRACING_ENABLED) {
-      span = builtinTracer().startSpan("edge_runtime.user_worker.create");
-      enterSpan(span);
-    }
-    try {
-      const [key, reused] = await op_user_worker_create(readyOptions);
-      if (TRACING_ENABLED) {
-        span.setAttribute("worker.id", key);
-        span.setAttribute("worker.reused", reused);
-      }
-      return new UserWorker(key);
-    } catch (err) {
-      if (TRACING_ENABLED) {
-        try {
-          span.setStatus(2, JSON.stringify(err));
-        } catch {
-          span.setStatus(2, "unknown");
-        }
-      }
-      throw err;
-    } finally {
-      span?.end();
-    }
-  }
+    const key = await op_user_worker_create(readyOptions);
 
-  static async tryCleanupIdleWorkers(timeoutMs) {
-    return await op_user_worker_cleanup_idle_workers(timeoutMs);
+    return new UserWorker(key);
   }
 }
 

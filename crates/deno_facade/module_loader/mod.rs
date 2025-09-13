@@ -16,7 +16,6 @@ pub mod standalone;
 pub mod util;
 
 pub struct RuntimeProviders {
-  pub migrated: bool,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: NodeExtInitServices,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,

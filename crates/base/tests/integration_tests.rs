@@ -44,7 +44,6 @@ use deno_facade::EszipPayloadKind;
 use deno_facade::Metadata;
 use ext_event_worker::events::LogLevel;
 use ext_event_worker::events::ShutdownReason;
-use ext_event_worker::events::WorkerEventWithMetadata;
 use ext_event_worker::events::WorkerEvents;
 use ext_runtime::SharedMetricSource;
 use ext_workers::context::MainWorkerRuntimeOpts;
@@ -230,7 +229,6 @@ async fn test_not_trigger_pku_sigsegv_due_to_jit_compilation_non_cli() {
 
       maybe_s3_fs_config: None,
       maybe_tmp_fs_config: None,
-      maybe_otel_config: None,
     })
     .termination_token(main_termination_token.clone())
     .build()
@@ -391,7 +389,6 @@ async fn test_main_worker_boot_error() {
 
       maybe_s3_fs_config: None,
       maybe_tmp_fs_config: None,
-      maybe_otel_config: None,
     })
     .termination_token(main_termination_token.clone())
     .build()
@@ -516,7 +513,6 @@ async fn test_main_worker_user_worker_mod_evaluate_exception() {
 
       maybe_s3_fs_config: None,
       maybe_tmp_fs_config: None,
-      maybe_otel_config: None,
     })
     .termination_token(main_termination_token.clone())
     .build()
@@ -904,7 +900,6 @@ async fn test_worker_boot_invalid_imports() {
 
     maybe_s3_fs_config: None,
     maybe_tmp_fs_config: None,
-    maybe_otel_config: None,
   };
 
   let result = create_test_user_worker(opts).await;
@@ -933,7 +928,6 @@ async fn test_worker_boot_with_0_byte_eszip() {
 
     maybe_s3_fs_config: None,
     maybe_tmp_fs_config: None,
-    maybe_otel_config: None,
   };
 
   let result = create_test_user_worker(opts).await;
@@ -961,7 +955,6 @@ async fn test_worker_boot_with_invalid_entrypoint() {
 
     maybe_s3_fs_config: None,
     maybe_tmp_fs_config: None,
-    maybe_otel_config: None,
   };
 
   let result = create_test_user_worker(opts).await;
@@ -2582,10 +2575,7 @@ async fn test_issue_func_205() {
       b.uri("/issue-func-205")
         .header("x-cpu-time-soft-limit-ms", HeaderValue::from_static("500"))
         .header("x-cpu-time-hard-limit-ms", HeaderValue::from_static("1000"))
-        .header(
-          "x-context-use-read-sync-file-api",
-          HeaderValue::from_static("true"),
-        )
+        .header("x-use-read-sync-file-api", HeaderValue::from_static("true"))
         .body(Body::empty())
         .context("can't make request")
     })
@@ -2605,123 +2595,6 @@ async fn test_issue_func_205() {
   }
 
   unreachable!("test failed");
-}
-
-#[tokio::test]
-#[serial]
-async fn test_issue_func_280() {
-  async fn run(func_name: &'static str, reason: ShutdownReason) {
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    let tb = TestBedBuilder::new("./test_cases/main")
-      .with_per_worker_policy(None)
-      .with_worker_event_sender(Some(tx))
-      .with_server_flags(ServerFlags {
-        beforeunload_cpu_pct: Some(90),
-        beforeunload_memory_pct: Some(90),
-        ..Default::default()
-      })
-      .build()
-      .await;
-
-    let resp = tb
-      .request(|b| {
-        b.uri("/meow")
-          .header("x-cpu-time-soft-limit-ms", HeaderValue::from_static("1000"))
-          .header("x-cpu-time-hard-limit-ms", HeaderValue::from_static("2000"))
-          .header("x-memory-limit-mb", "30")
-          .header("x-service-path", format!("issue-func-280/{}", func_name))
-          .body(Body::empty())
-          .context("can't make request")
-      })
-      .await
-      .unwrap();
-
-    assert_eq!(resp.status().as_u16(), StatusCode::OK);
-
-    while let Some(ev) = rx.recv().await {
-      match ev.event {
-        WorkerEvents::Log(ev) => {
-          tracing::info!("{}", ev.msg);
-          continue;
-        }
-        WorkerEvents::Shutdown(ev) => {
-          tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
-          assert_eq!(ev.reason, reason);
-          return;
-        }
-        _ => continue,
-      }
-    }
-
-    unreachable!("test failed");
-  }
-
-  run("cpu", ShutdownReason::CPUTime).await;
-  run("mem", ShutdownReason::Memory).await;
-}
-
-#[tokio::test]
-#[serial]
-async fn test_issue_func_284() {
-  async fn find_boot_event(
-    rx: &mut mpsc::UnboundedReceiver<WorkerEventWithMetadata>,
-  ) -> Option<usize> {
-    while let Some(ev) = rx.recv().await {
-      match ev.event {
-        WorkerEvents::Boot(ev) => return Some(ev.boot_time),
-        _ => continue,
-      }
-    }
-
-    None
-  }
-
-  let (tx, mut rx) = mpsc::unbounded_channel();
-  let tb = TestBedBuilder::new("./test_cases/main")
-    .with_per_worker_policy(None)
-    .with_worker_event_sender(Some(tx))
-    .build()
-    .await;
-
-  tokio::spawn({
-    let tb = tb.clone();
-    async move {
-      tb.request(|b| {
-        b.uri("/meow")
-          .header("x-service-path", "issue-func-284/noisy")
-          .body(Body::empty())
-          .context("can't make request")
-      })
-      .await
-      .unwrap();
-    }
-  });
-
-  timeout(Duration::from_secs(1), find_boot_event(&mut rx))
-    .await
-    .unwrap()
-    .unwrap();
-
-  tokio::spawn({
-    let tb = tb.clone();
-    async move {
-      tb.request(|b| {
-        b.uri("/meow")
-          .header("x-service-path", "issue-func-284/baseline")
-          .body(Body::empty())
-          .context("can't make request")
-      })
-      .await
-      .unwrap();
-    }
-  });
-
-  let boot_time = timeout(Duration::from_secs(1), find_boot_event(&mut rx))
-    .await
-    .unwrap()
-    .unwrap();
-
-  assert!(boot_time < 1000);
 }
 
 #[tokio::test]
@@ -4034,7 +3907,7 @@ async fn test_should_be_able_to_trigger_early_drop_with_mem() {
   let resp = tb
     .request(|b| {
       b.uri("/early-drop-mem")
-        .header("x-memory-limit-mb", HeaderValue::from_static("30"))
+        .header("x-memory-limit-mb", HeaderValue::from_static("22"))
         .body(Body::empty())
         .context("can't make request")
     })
@@ -4079,109 +3952,6 @@ async fn test_eszip_wasm_import() {
     }),
     TerminationToken::new()
   );
-}
-
-#[tokio::test]
-#[serial]
-async fn test_request_absent_timeout() {
-  let (tx, mut rx) = mpsc::unbounded_channel();
-  let tb = TestBedBuilder::new("./test_cases/main")
-    .with_per_worker_policy(None)
-    .with_worker_event_sender(Some(tx))
-    .build()
-    .await;
-
-  let resp = tb
-    .request(|b| {
-      b.uri("/sleep-5000ms")
-        .header("x-worker-timeout-ms", HeaderValue::from_static("3600000"))
-        .header(
-          "x-context-supervisor-request-absent-timeout-ms",
-          HeaderValue::from_static("1000"),
-        )
-        .body(Body::empty())
-        .context("can't make request")
-    })
-    .await
-    .unwrap();
-
-  assert_eq!(resp.status().as_u16(), StatusCode::OK);
-
-  sleep(Duration::from_secs(3)).await;
-  rx.close();
-  tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
-
-  while let Some(ev) = rx.recv().await {
-    let WorkerEvents::Shutdown(ev) = ev.event else {
-      continue;
-    };
-    if ev.reason != ShutdownReason::EarlyDrop {
-      break;
-    }
-    return;
-  }
-
-  unreachable!("test failed");
-}
-
-#[tokio::test]
-#[serial]
-async fn test_user_workers_cleanup_idle_workers() {
-  let (tx, mut rx) = mpsc::unbounded_channel();
-  let tb = TestBedBuilder::new("./test_cases/main")
-    .with_per_worker_policy(None)
-    .with_worker_event_sender(Some(tx))
-    .build()
-    .await;
-
-  let resp = tb
-    .request(|b| {
-      b.uri("/sleep-5000ms")
-        .header("x-worker-timeout-ms", HeaderValue::from_static("3600000"))
-        .body(Body::empty())
-        .context("can't make request")
-    })
-    .await
-    .unwrap();
-
-  assert_eq!(resp.status().as_u16(), StatusCode::OK);
-
-  let mut resp = tb
-    .request(|b| {
-      b.uri("/_internal/cleanup-idle-workers")
-        .body(Body::empty())
-        .context("can't make request")
-    })
-    .await
-    .unwrap();
-
-  assert_eq!(resp.status().as_u16(), StatusCode::OK);
-
-  let bytes = hyper_v014::body::HttpBody::collect(resp.body_mut())
-    .await
-    .unwrap()
-    .to_bytes();
-
-  let payload = serde_json::from_slice::<serde_json::Value>(&bytes).unwrap();
-  let count = payload.get("count").unwrap().as_u64().unwrap();
-
-  assert_eq!(count, 1);
-
-  sleep(Duration::from_secs(3)).await;
-
-  rx.close();
-  tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
-  while let Some(ev) = rx.recv().await {
-    let WorkerEvents::Shutdown(ev) = ev.event else {
-      continue;
-    };
-    if ev.reason != ShutdownReason::EarlyDrop {
-      break;
-    }
-    return;
-  }
-
-  unreachable!("test failed");
 }
 
 #[derive(Deserialize)]

@@ -24,9 +24,7 @@ use base_rt::get_current_cpu_time_ns;
 use base_rt::BlockingScopeCPUUsage;
 use base_rt::DenoRuntimeDropToken;
 use base_rt::DropToken;
-use base_rt::RuntimeOtelExtraAttributes;
 use base_rt::RuntimeState;
-use base_rt::RuntimeWaker;
 use cooked_waker::IntoWaker;
 use cooked_waker::WakeRef;
 use cpu_timer::CPUTimer;
@@ -41,7 +39,6 @@ use deno::deno_io;
 use deno::deno_net;
 use deno::deno_package_json;
 use deno::deno_telemetry;
-use deno::deno_telemetry::OtelConfig;
 use deno::deno_tls;
 use deno::deno_tls::deno_native_certs::load_native_certs;
 use deno::deno_tls::rustls::RootCertStore;
@@ -80,6 +77,7 @@ use deno_facade::EmitterFactory;
 use deno_facade::EszipPayloadKind;
 use deno_facade::Metadata;
 use either::Either;
+use ext_event_worker::events::EventMetadata;
 use ext_event_worker::events::WorkerEventWithMetadata;
 use ext_runtime::cert::ValueRootCertStoreProvider;
 use ext_runtime::external_memory::CustomAllocator;
@@ -240,16 +238,13 @@ pub trait GetRuntimeContext {
   fn get_runtime_context(
     conf: &WorkerRuntimeOpts,
     use_inspector: bool,
-    migrated: bool,
     version: Option<&str>,
-    otel_config: Option<OtelConfig>,
   ) -> impl Serialize {
     serde_json::json!({
       "target": env!("TARGET"),
       "kind": conf.to_worker_kind().to_string(),
       "debug": cfg!(debug_assertions),
       "inspector": use_inspector,
-      "migrated": migrated,
       "version": {
         "runtime": version.unwrap_or("0.1.0"),
         "deno": MAYBE_DENO_VERSION
@@ -268,8 +263,7 @@ pub trait GetRuntimeContext {
             .get()
             .copied()
             .unwrap_or_default()
-      },
-      "otel": otel_config.unwrap_or_default().as_v8(),
+      }
     })
   }
 
@@ -461,7 +455,6 @@ where
   pub(crate) async fn new(mut worker: Worker) -> Result<Self, Error> {
     let init_opts = worker.init_opts.take();
     let flags = worker.flags.clone();
-    let event_metadata = worker.event_metadata.clone();
 
     debug_assert!(init_opts.is_some(), "init_opts must not be None");
 
@@ -476,11 +469,9 @@ where
       static_patterns,
       maybe_s3_fs_config,
       maybe_tmp_fs_config,
-      maybe_otel_config,
       ..
     } = init_opts.unwrap();
 
-    let waker = Arc::<AtomicWaker>::default();
     let drop_token = CancellationToken::default();
     let is_user_worker = conf.is_user_worker();
     let is_some_entry_point = maybe_entrypoint.is_some();
@@ -496,8 +487,6 @@ where
       .unwrap_or_else(|| get_default_permissions(conf.to_worker_kind()));
 
     struct Bootstrap {
-      migrated: bool,
-      waker: Arc<AtomicWaker>,
       js_runtime: JsRuntime,
       mem_check: Arc<MemCheck>,
       has_inspector: bool,
@@ -646,7 +635,6 @@ where
         .await?;
 
         let RuntimeProviders {
-          migrated,
           module_loader,
           node_services,
           npm_snapshot,
@@ -658,10 +646,6 @@ where
           base_url,
         } = rt_provider;
 
-        let node_modules = metadata
-          .node_modules()
-          .ok()
-          .flatten();
         let entrypoint = metadata.entrypoint.clone();
         let main_module_url = match entrypoint.as_ref() {
           Some(Entrypoint::Key(key)) => base_url.join(key)?,
@@ -713,30 +697,12 @@ where
           )
         };
 
-        let static_files = if is_some_entry_point {
-          let entrypoint_path = main_module_url
-            .to_file_path()
-            .map_err(|_| anyhow!("failed to convert entrypoint to path"))?;
-          let static_root_path = entrypoint_path
-            .parent()
-            .ok_or_else(|| anyhow!("could not resolve parent of entrypoint"))?
-            .to_path_buf();
-
-          metadata
-            .static_assets_lookup(static_root_path)
-            .into_iter()
-            .chain(static_files.into_iter())
-            .collect()
-        } else {
-          static_files
-        };
-
         let (fs, s3_fs) = build_file_system_fn(if is_user_worker && should_block_fs {
+          // Use StaticFs for user workers that have filesystem blocking enabled
           Arc::new(StaticFs::new(
-            node_modules,
             static_files,
             if matches!(entrypoint, Some(Entrypoint::ModuleCode(_)) | None)
-              && is_some_entry_point
+              && maybe_entrypoint.is_some()
             {
               // it is eszip from before v2
               base_url
@@ -962,7 +928,6 @@ where
           op_state.put(promise_metrics.clone());
           op_state.put(runtime_state.clone());
           op_state.put(GlobalMainContext(main_context));
-          op_state.put(RuntimeWaker(waker.clone()))
         }
 
         {
@@ -997,8 +962,6 @@ where
         }
 
         Ok(Bootstrap {
-          migrated,
-          waker,
           js_runtime,
           mem_check,
           has_inspector,
@@ -1026,7 +989,6 @@ where
         bootstrap.js_runtime.v8_isolate().exit();
 
         let has_inspector = bootstrap.has_inspector;
-        let migrated = bootstrap.migrated;
         let context = bootstrap.context.take().unwrap_or_default();
         let mut bootstrap = scopeguard::guard(bootstrap, |mut it| {
           cleanup_js_runtime(&mut it.js_runtime);
@@ -1042,18 +1004,16 @@ where
               serde_json::json!(RuntimeContext::get_runtime_context(
                 &conf,
                 has_inspector,
-                migrated,
                 option_env!("GIT_V_TAG"),
-                maybe_otel_config,
               ));
 
             let tokens = {
               let op_state = locker.op_state();
               let resource_table = &mut op_state.borrow_mut().resource_table;
               serde_json::json!({
-                "terminationRequestToken":
-                  resource_table
-                    .add(DropToken(termination_request_token.clone()))
+                  "terminationRequestToken":
+                    resource_table
+                      .add(DropToken(termination_request_token.clone()))
               })
             };
 
@@ -1132,7 +1092,6 @@ where
     .await;
 
     let Bootstrap {
-      waker,
       mut js_runtime,
       mem_check,
       main_module_url,
@@ -1151,7 +1110,6 @@ where
       }
     };
 
-    let otel_attributes = event_metadata.otel_attributes.clone();
     let span = Span::current();
     let post_task_ret = unsafe {
       spawn_blocking_non_send(|| {
@@ -1181,28 +1139,26 @@ where
 
           if conf.is_user_worker() {
             let conf = conf.as_user_worker().unwrap();
-            let key = conf.key.map_or("".to_string(), |k| k.to_string());
 
             // set execution id for user workers
-            env_vars.insert("SB_EXECUTION_ID".to_string(), key.clone());
+            env_vars.insert(
+              "SB_EXECUTION_ID".to_string(),
+              conf.key.map_or("".to_string(), |k| k.to_string()),
+            );
 
             if let Some(events_msg_tx) = conf.events_msg_tx.clone() {
               op_state.put::<mpsc::UnboundedSender<WorkerEventWithMetadata>>(
                 events_msg_tx,
               );
-              op_state.put(event_metadata);
+              op_state.put::<EventMetadata>(EventMetadata {
+                service_path: conf.service_path.clone(),
+                execution_id: conf.key,
+              });
             }
           }
 
           op_state.put(ext_env::EnvVars(env_vars));
           op_state.put(DenoRuntimeDropToken(DropToken(drop_token.clone())));
-          op_state.put(RuntimeOtelExtraAttributes(
-            otel_attributes
-              .unwrap_or_default()
-              .into_iter()
-              .map(|(k, v)| (k.into(), v.into()))
-              .collect(),
-          ));
         }
 
         if is_user_worker {
@@ -1256,7 +1212,7 @@ where
       promise_metrics,
 
       mem_check,
-      waker,
+      waker: Arc::default(),
 
       beforeunload_cpu_threshold: Arc::new(beforeunload_cpu_threshold),
       beforeunload_mem_threshold: Arc::new(beforeunload_mem_threshold),
@@ -1590,9 +1546,8 @@ where
       }
 
       let js_runtime = &mut this.js_runtime;
-      let op_state = js_runtime.op_state();
       let cpu_metrics_guard = get_cpu_metrics_guard(
-        op_state.clone(),
+        js_runtime.op_state(),
         maybe_cpu_usage_metrics_tx,
         accumulated_cpu_time_ns,
       );
@@ -1648,22 +1603,15 @@ where
           beforeunload_cpu_threshold.load().as_deref().copied()
         {
           let threshold_ns = (threshold_ms as i128) * 1_000_000;
-          if (*accumulated_cpu_time_ns as i128) >= threshold_ns {
+          let accumulated_cpu_time_ns = *accumulated_cpu_time_ns as i128;
+
+          if accumulated_cpu_time_ns >= threshold_ns {
             beforeunload_cpu_threshold.store(None);
 
             if !state.is_terminated() {
-              let _cpu_metrics_guard = get_cpu_metrics_guard(
-                op_state.clone(),
-                maybe_cpu_usage_metrics_tx,
-                accumulated_cpu_time_ns,
-              );
-
               if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut this)
                 .dispatch_beforeunload_event(WillTerminateReason::CPU)
               {
-                if state.is_terminated() {
-                  return Poll::Ready(Err(anyhow!("execution terminated")));
-                }
                 return Poll::Ready(Err(err));
               }
             }
@@ -1687,18 +1635,9 @@ where
             beforeunload_mem_threshold.store(None);
 
             if !state.is_terminated() && !mem_state.is_exceeded() {
-              let _cpu_metrics_guard = get_cpu_metrics_guard(
-                op_state,
-                maybe_cpu_usage_metrics_tx,
-                accumulated_cpu_time_ns,
-              );
-
               if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut this)
                 .dispatch_beforeunload_event(WillTerminateReason::Memory)
               {
-                if state.is_terminated() {
-                  return Poll::Ready(Err(anyhow!("execution terminated")));
-                }
                 return Poll::Ready(Err(err));
               }
             }
@@ -2512,7 +2451,6 @@ mod test {
 
             maybe_s3_fs_config: s3_fs_config,
             maybe_tmp_fs_config: tmp_fs_config,
-            maybe_otel_config: None,
           },
           Arc::default(),
         )
@@ -2616,7 +2554,6 @@ mod test {
 
           maybe_s3_fs_config: None,
           maybe_tmp_fs_config: None,
-          maybe_otel_config: None,
         },
         Arc::default(),
       )
@@ -2683,7 +2620,6 @@ mod test {
 
           maybe_s3_fs_config: None,
           maybe_tmp_fs_config: None,
-          maybe_otel_config: None,
         },
         Arc::default(),
       )
@@ -2772,7 +2708,6 @@ mod test {
 
           maybe_s3_fs_config: None,
           maybe_tmp_fs_config: None,
-          maybe_otel_config: None,
         },
         Arc::default(),
       )

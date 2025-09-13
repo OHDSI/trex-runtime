@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
@@ -7,7 +6,6 @@ use std::sync::Arc;
 use cpu_timer::get_thread_time;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::task::AtomicWaker;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::V8CrossThreadTaskSpawner;
@@ -196,11 +194,3 @@ impl BlockingScopeCPUUsageMetricExt for &mut OpState {
     })
   }
 }
-
-#[derive(Debug, Clone)]
-pub struct RuntimeWaker(pub Arc<AtomicWaker>);
-
-#[derive(Debug, Clone)]
-pub struct RuntimeOtelExtraAttributes(
-  pub HashMap<opentelemetry::Key, opentelemetry::Value>,
-);

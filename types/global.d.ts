@@ -20,15 +20,6 @@ type S3FsConfig = any;
 // deno-lint-ignore no-explicit-any
 type TmpFsConfig = any;
 
-type OtelPropagators = "TraceContext" | "Baggage";
-type OtelConsoleConfig = "Ignore" | "Capture" | "Replace";
-type OtelConfig = {
-  tracing_enabled?: boolean;
-  metrics_enabled?: boolean;
-  console?: OtelConsoleConfig;
-  propagators?: OtelPropagators[];
-};
-
 interface UserWorkerFetchOptions {
   signal?: AbortSignal;
 }
@@ -50,20 +41,6 @@ interface PermissionsOptions {
   allow_write?: string[] | null;
   deny_write?: string[] | null;
   allow_import?: string[] | null;
-}
-
-interface UserWorkerCreateContext {
-  sourceMap?: boolean | null;
-  importMapPath?: string | null;
-  shouldBootstrapMockFnThrowError?: boolean | null;
-  suppressEszipMigrationWarning?: boolean | null;
-  useReadSyncFileAPI?: boolean | null;
-  supervisor?: {
-    requestAbsentTimeoutMs?: number | null;
-  };
-  otel?: {
-    [attribute: string]: string;
-  };
 }
 
 interface UserWorkerCreateOptions {
@@ -89,9 +66,8 @@ interface UserWorkerCreateOptions {
 
   s3FsConfig?: S3FsConfig | null;
   tmpFsConfig?: TmpFsConfig | null;
-  otelConfig?: OtelConfig | null;
 
-  context?: UserWorkerCreateContext | null;
+  context?: { [key: string]: unknown } | null;
 }
 
 interface HeapStatistics {
@@ -134,9 +110,7 @@ declare namespace EdgeRuntime {
       request: Request,
       options?: UserWorkerFetchOptions,
     ): Promise<Response>;
-
     static create(opts: UserWorkerCreateOptions): Promise<UserWorker>;
-    static tryCleanupIdleWorkers(timeoutMs: number): Promise<number>;
   }
 
   export function scheduleTermination(): void;
@@ -253,6 +227,5 @@ declare namespace Supabase {
 declare namespace Deno {
   export namespace errors {
     class WorkerRequestCancelled extends Error {}
-    class WorkerAlreadyRetired extends Error {}
   }
 }

@@ -12,11 +12,14 @@ use tokio::sync::mpsc;
 fn op_user_worker_log(
   state: &mut OpState,
   #[string] msg: &str,
-  #[smi] level: i32,
+  is_err: bool,
 ) -> Result<(), AnyError> {
   let maybe_tx =
     state.try_borrow::<mpsc::UnboundedSender<WorkerEventWithMetadata>>();
-  let level = LogLevel::try_from(level as u8).unwrap_or_default();
+  let mut level = LogLevel::Info;
+  if is_err {
+    level = LogLevel::Error;
+  }
 
   if let Some(tx) = maybe_tx {
     let event_metadata = state

@@ -26,19 +26,16 @@ use ext_workers::context::UserWorkerProfile;
 use ext_workers::context::WorkerContextInitOpts;
 use ext_workers::context::WorkerRuntimeOpts;
 use ext_workers::errors::WorkerError;
-use futures_util::future::join_all;
 use http_v02::Request;
 use hyper_v014::Body;
 use log::error;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot;
 use tokio::sync::oneshot::Sender;
 use tokio::sync::Notify;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 use tokio::sync::TryAcquireError;
-use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -290,7 +287,6 @@ impl WorkerPool {
       if tx
         .send(Ok(CreateUserWorkerResult {
           key: *active_worker_uuid,
-          reused: true,
         }))
         .is_err()
       {
@@ -399,7 +395,6 @@ impl WorkerPool {
             maybe_s3_fs_config,
             maybe_tmp_fs_config,
             static_patterns,
-            maybe_otel_config: otel_config,
             ..
           } = worker_options;
 
@@ -418,7 +413,6 @@ impl WorkerPool {
 
                 maybe_s3_fs_config,
                 maybe_tmp_fs_config,
-                maybe_otel_config: otel_config,
               },
               tx,
             ))
@@ -448,7 +442,6 @@ impl WorkerPool {
         is_retired: Arc::new(AtomicFlag::default()),
       };
 
-      let (early_drop_tx, early_drop_rx) = mpsc::unbounded_channel();
       let (req_end_timing_tx, req_end_timing_rx) =
         mpsc::unbounded_channel::<()>();
 
@@ -460,7 +453,6 @@ impl WorkerPool {
       user_worker_rt_opts.cancel = Some(cancel.clone());
 
       worker_options.timing = Some(Timing {
-        early_drop_rx,
         status: status.clone(),
         req: (req_start_timing_rx, req_end_timing_rx),
       });
@@ -474,14 +466,12 @@ impl WorkerPool {
 
       builder
         .set_termination_token(termination_token.clone())
-        .set_inspector(inspector)
-        .set_eager_module_init(true);
+        .set_inspector(inspector);
 
       match builder.build().await {
         Ok(surface) => {
           let profile = UserWorkerProfile {
             worker_request_msg_tx: surface.msg_tx,
-            early_drop_tx,
             timing_tx_pair: (req_start_timing_tx, req_end_timing_tx),
             service_path,
             permit: permit.map(Arc::new),
@@ -496,13 +486,7 @@ impl WorkerPool {
           {
             error!("user worker msgs receiver dropped")
           }
-          if tx
-            .send(Ok(CreateUserWorkerResult {
-              key: uuid,
-              reused: false,
-            }))
-            .is_err()
-          {
+          if tx.send(Ok(CreateUserWorkerResult { key: uuid })).is_err() {
             error!("main worker receiver dropped")
           };
         }
@@ -672,24 +656,6 @@ impl WorkerPool {
     self.metric_src.decl_active_user_workers();
   }
 
-  async fn try_cleanup_idle_workers(&mut self, timeout_ms: usize) -> usize {
-    let mut rxs = vec![];
-    for profile in self.user_workers.values_mut() {
-      let (tx, rx) = oneshot::channel();
-      if profile.early_drop_tx.send(tx).is_ok() {
-        rxs.push(timeout(Duration::from_millis(timeout_ms as u64), rx));
-      }
-    }
-
-    join_all(rxs)
-      .await
-      .into_iter()
-      .filter_map(|it| it.ok())
-      .map(|it| it.unwrap_or_default())
-      .filter(|it| *it)
-      .count()
-  }
-
   fn retire(&mut self, key: &Uuid) {
     if let Some(profile) = self.user_workers.get_mut(key) {
       let registry = self
@@ -828,10 +794,6 @@ pub async fn create_user_worker_pool(
 
                   break;
                 }
-              }
-
-              Some(UserWorkerMsgs::TryCleanupIdleWorkers(timeout_ms, res_tx)) => {
-                let _ = res_tx.send(worker_pool.try_cleanup_idle_workers(timeout_ms).await);
               }
             }
           }

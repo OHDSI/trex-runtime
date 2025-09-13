@@ -3,7 +3,6 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::SystemTime;
 
 use base_rt::RuntimeState;
 use deno_core::unsync::sync::AtomicFlag;
@@ -38,8 +37,6 @@ use super::V8HandleTerminationData;
 
 #[derive(Debug, Default)]
 struct State {
-  req_absent_duration: Option<Duration>,
-
   is_worker_entered: bool,
   is_wall_clock_limit_disabled: bool,
   is_wall_clock_beforeunload_armed: bool,
@@ -52,7 +49,6 @@ struct State {
   wall_clock_alerts: usize,
 
   req_ack_count: usize,
-  last_req_ack: Option<SystemTime>,
   req_demand: Arc<AtomicUsize>,
 
   runtime: Arc<RuntimeState>,
@@ -84,7 +80,6 @@ impl State {
 
   fn req_acknowledged(&mut self) {
     self.req_ack_count += 1;
-    self.last_req_ack = Some(SystemTime::now());
     self.update_runtime_state();
   }
 
@@ -97,14 +92,6 @@ impl State {
       || self.is_cpu_time_soft_limit_reached
       || self.is_mem_half_reached
       || self.wall_clock_alerts == 2
-      || matches!(
-        self
-          .last_req_ack
-          .as_ref()
-          .zip(self.req_absent_duration)
-          .and_then(|(t, d)| t.checked_add(d)),
-        Some(t) if t < SystemTime::now()
-      )
   }
 
   fn have_all_reqs_been_acknowledged(&self) -> bool {
@@ -143,10 +130,8 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
   } = args;
 
   let Timing {
-    mut early_drop_rx,
     status: TimingStatus { demand, is_retired },
     req: (_, mut req_end_rx),
-    ..
   } = timing.unwrap_or_default();
 
   let UserWorkerRuntimeOpts {
@@ -158,16 +143,6 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
 
   let mut complete_reason = None::<ShutdownReason>;
   let mut state = State {
-    req_absent_duration: runtime_opts
-      .context
-      .as_ref()
-      .and_then(|it| it.get("supervisor"))
-      .and_then(|it| {
-        it.get("requestAbsentTimeoutMs")
-          .and_then(|it| it.as_u64())
-          .map(Duration::from_millis)
-      }),
-
     is_wall_clock_limit_disabled: worker_timeout_ms == 0,
     is_cpu_time_limit_disabled: cpu_time_soft_limit_ms == 0
       && cpu_time_hard_limit_ms == 0,
@@ -188,7 +163,7 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
     worker_timeout_ms
   };
 
-  let wall_clock_duration = Duration::from_millis(wall_clock_limit_ms);
+  let wall_clock_duration = Duration::from_millis(worker_timeout_ms);
 
   // Split wall clock duration into 2 intervals.
   // At the first interval, we will send a msg to retire the worker.
@@ -467,18 +442,6 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
       Some(_) = memory_limit_rx.recv() => {
         error!("memory limit reached for the worker: isolate: {:?}", key);
         complete_reason = Some(ShutdownReason::Memory);
-      }
-
-      Some(tx) = early_drop_rx.recv() => {
-        let mut acknowledged = false;
-        if state.have_all_pending_tasks_been_resolved() {
-          if let Some(func) = dispatch_early_drop_beforeunload_fn.take() {
-            early_retire_fn();
-            func();
-            acknowledged = true;
-          }
-        }
-        let _ = tx.send(acknowledged);
       }
 
       _ = &mut early_drop_fut => {

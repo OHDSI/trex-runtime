@@ -1,6 +1,6 @@
 console.log("main function started");
 
-function parseIntFromHeadersOrDefault(req: Request, key: string, val?: number) {
+function parseIntFromHeadersOrDefault(req: Request, key: string, val: number) {
   const headerValue = req.headers.get(key);
   if (!headerValue) {
     return val;
@@ -14,18 +14,10 @@ function parseIntFromHeadersOrDefault(req: Request, key: string, val?: number) {
   return parsedValue;
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve((req: Request) => {
   console.log(req.url);
   const url = new URL(req.url);
   const { pathname } = url;
-
-  // handle health checks
-  if (pathname === "/_internal/cleanup-idle-workers") {
-    return Response.json({
-      count: await EdgeRuntime.userWorkers.tryCleanupIdleWorkers(1000),
-    });
-  }
-
   const path_parts = pathname.split("/");
   let service_name = path_parts[1];
 
@@ -70,14 +62,7 @@ Deno.serve(async (req: Request) => {
     const envVars = Object.keys(envVarsObj).map((k) => [k, envVarsObj[k]]);
     const context = {
       sourceMap: req.headers.get("x-context-source-map") == "true",
-      useReadSyncFileAPI:
-        req.headers.get("x-context-use-read-sync-file-api") == "true",
-      supervisor: {
-        requestAbsentTimeoutMs: parseIntFromHeadersOrDefault(
-          req,
-          "x-context-supervisor-request-absent-timeout-ms",
-        ),
-      },
+      useReadSyncFileAPI: req.headers.get("x-use-read-sync-file-api") == "true",
     };
 
     return await EdgeRuntime.userWorkers.create({

@@ -52,7 +52,6 @@ use futures::AsyncReadExt;
 use futures::AsyncSeekExt;
 use futures::FutureExt;
 use glob::glob;
-use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use scopeguard::ScopeGuard;
@@ -98,7 +97,6 @@ async fn read_u32<R: futures::io::AsyncRead + Unpin>(
 pub struct LazyLoadableEszip {
   eszip: EszipV2,
   maybe_data_section: Option<Arc<EszipDataSection>>,
-  migrated: bool,
 }
 
 impl std::ops::Deref for LazyLoadableEszip {
@@ -124,7 +122,6 @@ impl Clone for LazyLoadableEszip {
         options: self.eszip.options,
       },
       maybe_data_section: self.maybe_data_section.clone(),
-      migrated: false,
     }
   }
 }
@@ -159,7 +156,6 @@ impl LazyLoadableEszip {
     Self {
       eszip,
       maybe_data_section,
-      migrated: false,
     }
   }
 
@@ -218,15 +214,6 @@ impl LazyLoadableEszip {
     }
 
     Ok(())
-  }
-
-  pub fn migrated(&self) -> bool {
-    self.migrated
-  }
-
-  pub fn set_migrated(&mut self, value: bool) -> &mut Self {
-    self.migrated = value;
-    self
   }
 }
 
@@ -774,7 +761,7 @@ pub async fn generate_binary_eszip(
   let root_dir_url = EszipRelativeFileBaseUrl::new(&root_dir_url);
   let root_path = root_dir_url.inner().to_file_path().unwrap();
 
-  let mut contents = IndexMap::new();
+  let mut contents = HashMap::new();
   let mut vfs_count = 0;
   let mut vfs_content_callback_fn = |_path: &_, _key: &_, content: Vec<u8>| {
     let key = format!("vfs://{}", vfs_count);
