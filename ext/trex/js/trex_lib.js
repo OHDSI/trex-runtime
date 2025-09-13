@@ -22,7 +22,8 @@ const {
 	op_execute_query_stream_next,
 	op_req,
 	op_req_listen,
-	op_req_next
+	op_req_next,
+	op_req_respond
 } = ops;
 
 export { op_add_replication, op_exit };
@@ -423,8 +424,49 @@ export class PluginManager {
 	}
 }
 
-export function req(service, request) {
-	return op_req({service: service, request: request});
+export async function req(service, urlOrRequest, options = {}) {
+	let request;
+	
+	if (urlOrRequest instanceof Request) {
+		const headers = {};
+		for (const [key, value] of urlOrRequest.headers) {
+			headers[key] = value;
+		}
+		
+		request = {
+			url: urlOrRequest.url,
+			method: urlOrRequest.method,
+			headers: headers,
+			body: urlOrRequest.body ? await urlOrRequest.text() : undefined,
+			...options
+		};
+	} else {
+		request = {
+			url: urlOrRequest,
+			method: options.method || 'GET',
+			headers: options.headers || {},
+			body: options.body,
+			...options
+		};
+	}
+
+	try {
+		const httpResponse = await op_req({service: service, request: request});
+		
+		return httpResponse;
+	} catch (error) {
+		return {
+			ok: false,
+			status: 500,
+			statusText: 'Internal Server Error',
+			headers: {},
+			body: { error: error.message }
+		};
+	}
+}
+
+export function reqRespond(requestId, response) {
+	return op_req_respond(requestId, response);
 }
 
 export function createRequestListener(onMessage) {
@@ -440,9 +482,13 @@ export function createRequestListener(onMessage) {
 						break;
 					}
 					
-					// Call the provided callback function
 					if (onMessage && typeof onMessage === 'function') {
-						onMessage(message);
+						const requestId = message.id;
+						const originalMessage = message.message;
+						
+						const respond = (response) => op_req_respond(requestId, response);
+						
+						onMessage(originalMessage, respond);
 					}
 					
 					controller.enqueue(message);
