@@ -5,6 +5,12 @@ import { SUPABASE_USER_WORKERS } from "ext:user_workers/user_workers.js";
 import { applySupabaseTag } from "ext:runtime/http.js";
 import { waitUntil } from "ext:runtime/async_hook.js";
 import { prompt, op_add_replication, PluginManager, TrexDB, DatabaseManager, UserDatabaseManager } from "ext:trex/trex_lib.js";
+import {
+  builtinTracer,
+  enterSpan,
+  METRICS_ENABLED,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
 
 const ops = core.ops;
 const { ObjectDefineProperty } = primordials;
@@ -94,6 +100,10 @@ function installEdgeRuntimeNamespace(kind, terminationRequestTokenRid) {
 
     case "event":
       props = {
+        builtinTracer,
+        enterSpan,
+        METRICS_ENABLED,
+        TRACING_ENABLED,
         ...props,
       };
       break;

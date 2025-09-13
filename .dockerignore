@@ -4,7 +4,7 @@ examples/
 assets/
 build/
 plugins/
-.vscodes/
+.vscode/
 .github/
 apifun/
 d2e-functions-old/
