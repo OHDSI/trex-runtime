@@ -36,31 +36,12 @@ use std::time::SystemTime;
 use std::{error::Error, time::Duration};
 use tokio::net::TcpListener;
 use tracing::warn;
-
-/*
-use std::io::Write;
-
-use anyhow::{bail, Context};
-use hf_hub::api::sync::ApiBuilder;
-
-use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::ggml_time_us;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::params::LlamaModelParams;
-use llama_cpp_2::model::LlamaModel;
-use llama_cpp_2::model::{AddBos, Special};
-use llama_cpp_2::sampling::LlamaSampler;
-
-
-use std::fs;
-use std::num::NonZeroU32;
-use std::pin::pin;
-*/
+use uuid::Uuid;
 
 use deno_core::{OpState, Resource, ResourceId};
+use std::collections::HashMap;
 use std::rc::Rc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 /*
 use circe::{
@@ -104,6 +85,11 @@ static DB_CREDENTIALS: LazyLock<Arc<Mutex<String>>> = LazyLock::new(|| {
 
 static REQUEST_CHANNEL: LazyLock<Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>> =
   LazyLock::new(|| Arc::new(Mutex::new(None)));
+
+// Map of request IDs to response channels
+static PENDING_REQUESTS: LazyLock<
+  Arc<Mutex<HashMap<String, oneshot::Sender<JsonValue>>>>,
+> = LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 pub async fn start_sql_server(ip: &str, port: u16, auth_type: AuthType) {
   let factory = Arc::new(TrexDuckDBFactory {
@@ -381,178 +367,6 @@ fn run_llama_model(
   _model: Model,
   _sender: mpsc::Sender<String>,
 ) -> Result<(), AnyError> {
-  /*
-  let backend = LlamaBackend::init()?;
-  let model_params = {
-    // #[cfg(any(feature = "cuda", feature = "vulkan"))]
-    // if !disable_gpu {
-    //     LlamaModelParams::default().with_n_gpu_layers(1000)
-    // } else {
-    //     LlamaModelParams::default()
-    // }
-    // #[cfg(not(any(feature = "cuda", feature = "vulkan")))]
-    LlamaModelParams::default()
-  };
-  let ctx_size: Option<NonZeroU32> = Some(NonZeroU32::new(max_tokens).unwrap());
-  let n_len = max_tokens as i32;
-  let seed = 1234;
-
-  let model_params = pin!(model_params);
-
-  // for (k, v) in &key_value_overrides {
-  //     let k = CString::new(k.as_bytes()).with_context(|| format!("invalid key: {k}"))?;
-  //     model_params.as_mut().append_kv_override(k.as_c_str(), *v);
-  // }
-
-  let model_path: String = match model {
-    Model::Local { path } => path,
-    Model::HuggingFace { model, repo } => ApiBuilder::new()
-      .with_progress(true)
-      .build()
-      .with_context(|| "unable to create huggingface api")?
-      .model(repo)
-      .get(&model)
-      .with_context(|| "unable to download model")?
-      .into_os_string()
-      .into_string()
-      .expect("Not UTF-8 String"),
-    Model::None => match env::var("TREX_MODEL") {
-      Ok(val) => val,
-      Err(_e) => {
-        "./data/plugins/node_modules/@data2evidence/chat/llm.gguf".to_string()
-      }
-    },
-  };
-
-  if fs::metadata(&model_path).is_err() {
-    eprintln!("Model file does not exist at path: {}", model_path);
-    return Err(anyhow::anyhow!(
-      "Model file does not exist at path: {}",
-      model_path
-    ));
-  }
-
-  let model =
-    match LlamaModel::load_from_file(&backend, model_path, &model_params) {
-      Ok(model) => model,
-      Err(e) => {
-        eprintln!("Error loading model: {}", e);
-        return Err(anyhow::anyhow!("Unable to load model: {}", e));
-      }
-    };
-
-  let ctx_params = LlamaContextParams::default()
-    .with_n_ctx(ctx_size.or(Some(NonZeroU32::new(2048).unwrap())));
-
-  let mut ctx = model
-    .new_context(&backend, ctx_params)
-    .with_context(|| "unable to create the llama_context")?;
-
-  let tokens_list = model
-    .str_to_token(&prompt, AddBos::Always)
-    .with_context(|| format!("failed to tokenize {prompt}"))?;
-
-  let n_cxt = ctx.n_ctx() as i32;
-  let n_kv_req = tokens_list.len() as i32 + (n_len - tokens_list.len() as i32);
-
-  eprintln!("n_len = {n_len}, n_ctx = {n_cxt}, k_kv_req = {n_kv_req}");
-
-  if n_kv_req > n_cxt {
-    bail!(
-            "n_kv_req > n_ctx, the required kv cache size is not big enough either reduce n_len or increase n_ctx"
-        )
-  }
-
-  if tokens_list.len() >= usize::try_from(n_len)? {
-    bail!("the prompt is too long, it has more tokens than n_len")
-  }
-
-  eprintln!();
-
-  for token in &tokens_list {
-    eprint!("{}", model.token_to_str(*token, Special::Tokenize)?);
-  }
-
-  std::io::stderr().flush()?;
-
-  // create a llama_batch with size 512
-  let mut batch = LlamaBatch::new(512, 1);
-
-  let last_index: i32 = (tokens_list.len() - 1) as i32;
-  for (i, token) in (0_i32..).zip(tokens_list.into_iter()) {
-    let is_last = i == last_index;
-    batch.add(token, i, &[0], is_last)?;
-  }
-
-  ctx
-    .decode(&mut batch)
-    .with_context(|| "llama_decode() failed")?;
-
-  let mut n_cur = batch.n_tokens();
-  let mut n_decode = 0;
-
-  eprintln!("DONE INIT");
-
-  let t_main_start = ggml_time_us();
-
-  let mut decoder = encoding_rs::UTF_8.new_decoder();
-
-  let mut sampler = LlamaSampler::chain_simple([
-    LlamaSampler::dist(seed),
-    LlamaSampler::greedy(),
-  ]);
-
-  while n_cur <= n_len {
-    {
-      let token = sampler.sample(&ctx, batch.n_tokens() - 1);
-
-      sampler.accept(token);
-
-      if model.is_eog_token(token) {
-        eprintln!();
-        break;
-      }
-
-      let output_bytes = model.token_to_bytes(token, Special::Tokenize)?;
-      let mut output_string = String::with_capacity(32);
-      let _decode_result =
-        decoder.decode_to_string(&output_bytes, &mut output_string, false);
-      for chunk in output_string.chars().collect::<Vec<_>>().chunks(1024) {
-        let s: String = chunk.iter().collect();
-        if sender.blocking_send(s).is_err() {
-          warn!("TREX Error: send llm result to deno");
-          break;
-        }
-      }
-      //print!("{output_string}");
-      //std::io::stdout().flush()?;
-      std::thread::yield_now();
-      batch.clear();
-      batch.add(token, n_cur, &[0], true)?;
-    }
-
-    n_cur += 1;
-
-    ctx.decode(&mut batch).with_context(|| "failed to eval")?;
-
-    n_decode += 1;
-  }
-
-  eprintln!("\n");
-
-  let t_main_end = ggml_time_us();
-
-  let duration = Duration::from_micros((t_main_end - t_main_start) as u64);
-
-  eprintln!(
-    "decoded {} tokens in {:.2} s, speed {:.2} t/s\n",
-    n_decode,
-    duration.as_secs_f32(),
-    n_decode as f32 / duration.as_secs_f32()
-  );
-
-  println!("{}", ctx.timings());
-  */
   Ok(())
 }
 
@@ -789,69 +603,6 @@ fn op_atlas(
   #[string] _database: String,
   #[string] _query: String,
 ) -> Result<String, AnyError> {
-  /*init_jvm()?;
-  warn!("CIRCE input query: {}", query);
-
-  match validate_cohort_expression(&query) {
-    Ok(validation_result) => {
-      warn!("CIRCE validation result: {}", validation_result);
-      if validation_result.contains("Error")
-        || validation_result.contains("error")
-      {
-        return Ok(format!(
-          "{{\"error\": \"Cohort validation failed: {}\"}}",
-          validation_result.replace("\"", "\\\"")
-        ));
-      }
-    }
-    Err(e) => {
-      warn!("CIRCE validation error: {}", e);
-      return Ok(format!(
-        "{{\"error\": \"Cohort validation error: {}\"}}",
-        e.to_string().replace("\"", "\\\"")
-      ));
-    }
-  }
-
-  let options = BuildExpressionQueryOptions {
-    cohort_id: Some(1),
-    cdm_schema: Some("demo_cdm".to_string()),
-    result_schema: Some("demo_cdm".to_string()),
-    vocabulary_schema: Some("demo_cdm".to_string()),
-    generate_stats: true,
-    ..Default::default()
-  };
-  warn!(
-        "CIRCE options: cdm_schema={:?}, result_schema={:?}, vocabulary_schema={:?}",
-        options.cdm_schema, options.result_schema, options.vocabulary_schema
-    );
-
-  let sql_query = build_expression_query(&query, Some(&options))?;
-  warn!("Generated SQL from CIRCE: {}", sql_query);
-
-  // Check if CIRCE returned an error message instead of SQL
-  if sql_query.contains("Error building cohort SQL")
-    || sql_query.trim().is_empty()
-  {
-    return Ok(format!(
-      "{{\"error\": \"CIRCE failed to generate SQL: {}\"}}",
-      sql_query.replace("\"", "\\\"")
-    ));
-  }
-
-  let translated_sql = render_and_translate_sql(&sql_query, "postgresql")?;
-  warn!("Translated SQL: {}", translated_sql);
-
-  // Check if translation also failed
-  if translated_sql.contains("Error building cohort SQL") {
-    return Ok(format!(
-      "{{\"error\": \"SQL translation failed: {}\"}}",
-      translated_sql.replace("\"", "\\\"")
-    ));
-  }
-  Ok(translated_sql)
-  //execute_query(database, translated_sql, vec![])
-  */
   Ok("".to_string())
 }
 
@@ -875,17 +626,58 @@ impl Resource for RequestResource {
   }
 }
 
-#[op2]
+#[op2(async)]
 #[serde]
-fn op_req(#[serde] message: JsonValue) -> Result<serde_json::Value, AnyError> {
+async fn op_req(#[serde] message: JsonValue) -> Result<JsonValue, AnyError> {
+  let request_id = Uuid::new_v4().to_string();
+
+  let (response_sender, response_receiver) = oneshot::channel::<JsonValue>();
+
+  {
+    let mut pending = PENDING_REQUESTS.lock().unwrap();
+    pending.insert(request_id.clone(), response_sender);
+  }
+
+  let request_with_id = serde_json::json!({
+    "id": request_id,
+    "message": message
+  });
+
   let channel_guard = REQUEST_CHANNEL.lock().unwrap();
   if let Some(sender) = channel_guard.as_ref() {
-    match sender.try_send(message) {
-      Ok(()) => Ok(serde_json::Value::Bool(true)),
-      Err(_) => Ok(serde_json::Value::Bool(false)), // Channel full or receiver dropped
+    match sender.try_send(request_with_id) {
+      Ok(()) => {
+        drop(channel_guard);
+
+        match tokio::time::timeout(
+          std::time::Duration::from_secs(30),
+          response_receiver,
+        )
+        .await
+        {
+          Ok(Ok(response)) => Ok(response),
+          Ok(Err(_)) => {
+            let mut pending = PENDING_REQUESTS.lock().unwrap();
+            pending.remove(&request_id);
+            Err(deno_core::error::generic_error("Request cancelled"))
+          }
+          Err(_) => {
+            let mut pending = PENDING_REQUESTS.lock().unwrap();
+            pending.remove(&request_id);
+            Err(deno_core::error::generic_error("Request timeout"))
+          }
+        }
+      }
+      Err(_) => {
+        let mut pending = PENDING_REQUESTS.lock().unwrap();
+        pending.remove(&request_id);
+        Err(deno_core::error::generic_error("Failed to send request"))
+      }
     }
   } else {
-    Ok(serde_json::Value::Bool(false)) // No active listeners
+    let mut pending = PENDING_REQUESTS.lock().unwrap();
+    pending.remove(&request_id);
+    Err(deno_core::error::generic_error("No active listeners"))
   }
 }
 
@@ -939,6 +731,28 @@ async fn op_req_next(
   } else {
     // Receiver already taken/consumed
     Ok(None)
+  }
+}
+
+#[op2]
+#[serde]
+fn op_req_respond(
+  #[string] request_id: String,
+  #[serde] response: JsonValue,
+) -> Result<serde_json::Value, AnyError> {
+  let mut pending = PENDING_REQUESTS.lock().unwrap();
+
+  if let Some(sender) = pending.remove(&request_id) {
+    match sender.send(response) {
+      Ok(()) => Ok(serde_json::Value::Bool(true)),
+      Err(_) => {
+        // Receiver was dropped
+        Ok(serde_json::Value::Bool(false))
+      }
+    }
+  } else {
+    // Request ID not found (maybe already responded or timed out)
+    Ok(serde_json::Value::Bool(false))
   }
 }
 
@@ -1016,7 +830,8 @@ deno_core::extension!(
         op_execute_query_stream_next,
         op_req,
         op_req_listen,
-        op_req_next
+        op_req_next,
+        op_req_respond
     ],
     esm_entry_point = "ext:trex/trex_lib.js",
     esm = [
