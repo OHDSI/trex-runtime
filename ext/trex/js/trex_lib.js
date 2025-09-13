@@ -499,13 +499,11 @@ export function createRequestListener(onMessage) {
 	});
 }
 
-// Axios-like HTTP client for service requests
 export class TrexHttpClient {
 	constructor(service) {
 		this.service = service;
 	}
 
-	// Main request method (like axios.request)
 	async request(config) {
 		const url = config.url || '/';
 		const options = {
@@ -514,7 +512,6 @@ export class TrexHttpClient {
 			body: config.data || config.body
 		};
 
-		// Handle JSON data automatically
 		if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
 			if (!options.headers['Content-Type']) {
 				options.headers['Content-Type'] = 'application/json';
@@ -525,7 +522,6 @@ export class TrexHttpClient {
 		return await req(this.service, url, options);
 	}
 
-	// HTTP method shortcuts
 	async get(url, config = {}) {
 		return this.request({ ...config, method: 'GET', url });
 	}
@@ -545,10 +541,5 @@ export class TrexHttpClient {
 	async delete(url, config = {}) {
 		return this.request({ ...config, method: 'DELETE', url });
 	}
-}
-
-// Convenience factory function to create HTTP clients
-export function createHttpClient(service) {
-	return new TrexHttpClient(service);
 }
 
