@@ -515,8 +515,8 @@ export function createRequestListener(onMessage) {
 						
 						const request = new Request(originalMessage.request.url, requestOptions);
 						
-						const kSupabaseTag = Symbol.for("kSupabaseTag");
-						request[kSupabaseTag] = {
+						const kTokioChannelTag = Symbol.for("kTokioChannelTag");
+						request[kTokioChannelTag] = {
 							type: "tokio_channel",
 							watcherRid: -1,
 							streamRid: listenerId,
