@@ -48,6 +48,7 @@ import { installPromiseHook } from "ext:runtime/async_hook.js";
 import { registerErrors } from "ext:runtime/errors.js";
 import { denoOverrides, fsVars } from "ext:runtime/denoOverrides.js";
 import { registerDeclarativeServer } from "ext:runtime/00_serve.js";
+import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 
 import {
   formatException,
@@ -521,6 +522,7 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
    * target: string,
    * kind: 'user' | 'main' | 'event',
    * inspector: boolean,
+   * migrated: boolean,
    * debug: boolean,
    * version: {
    * 	runtime: string,
@@ -529,15 +531,18 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
    * flags: {
    * 	SHOULD_DISABLE_DEPRECATED_API_WARNING: boolean,
    * 	SHOULD_USE_VERBOSE_DEPRECATED_API_WARNING: boolean
-   * }
+   * },
+   * otel: [] | [number, number]
    * }}
    */
   const {
+    migrated,
     target,
     kind,
     version,
     inspector,
     flags,
+    otel,
   } = opts;
 
   deprecatedApiWarningDisabled = flags["SHOULD_DISABLE_DEPRECATED_API_WARNING"];
@@ -580,6 +585,26 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       typescript: "5.1.6",
     })),
   });
+
+  if (inspector) {
+    ObjectDefineProperties(globalThis, {
+      console: nonEnumerable(v8Console),
+    });
+  }
+
+  if (kind === "user" && !inspector) {
+    // override console
+    ObjectDefineProperties(globalThis, {
+      console: nonEnumerable(
+        new console.Console((msg, level) => {
+          return ops.op_user_worker_log(msg, level);
+        }),
+      ),
+    });
+  }
+
+  bootstrapOtel(otel);
+
   ObjectDefineProperty(globalThis, "Deno", readOnly(denoOverrides));
 
   setNumCpus(1); // explicitly setting no of CPUs to 1 (since we don't allow workers)
@@ -590,6 +615,13 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
   setLanguage("en");
 
   core.addMainModuleHandler((main) => {
+    if (migrated && !ctx?.suppressEszipMigrationWarning) {
+      globalThis.console.warn(
+        "It appears this function was deployed using an older version of Supabase CLI.\n",
+        "For best performance and compatibility we recommend re-deploying the function using the latest version of the CLI.",
+      );
+    }
+
     // Find declarative fetch handler
     if (ObjectHasOwn(main, "default")) {
       registerDeclarativeServer(main.default);
@@ -629,31 +661,9 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
   delete globalThis.SharedArrayBuffer;
   globalThis.WebAssembly.Memory = patchedWasmMemoryCtor;
 
-  if (inspector) {
-    ObjectDefineProperties(globalThis, {
-      console: nonEnumerable(v8Console),
-    });
-  }
-
   /// DISABLE SHARED MEMORY INSTALL MEM CHECK TIMING
 
   if (kind === "user") {
-    // override console
-    if (!inspector) {
-      ObjectDefineProperties(globalThis, {
-        console: nonEnumerable(
-          new console.Console((msg, level) => {
-            try {
-              return ops.op_user_worker_log(msg, level > 1);
-            } catch (error) {
-              globalThis.console.error(`Failed to log message: ${error.message}\n${level}: ${msg}`);
-              return;
-            }
-          }),
-        ),
-      });
-    }
-
     const apisToBeOverridden = ctx?.allowHostFsAccess ? {} : {
       ...DENIED_DENO_FS_API_LIST,
 
@@ -672,6 +682,7 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       "readTextFile": true,
       "mkdir": true,
       "makeTempDir": true,
+      "makeTempFile": true,
       "readDir": true,
 
       "kill": "mock",
@@ -679,17 +690,18 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       "addSignalListener": "mock",
       "removeSignalListener": "mock",
 
-      // Conditionally block sync filesystem APIs based on allow_host_fs_access
-      "lstatSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "statSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "removeSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "writeFileSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "writeTextFileSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "readFileSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "readTextFileSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "mkdirSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "makeTempDirSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
-      "readDirSync": ctx?.allowHostFsAccess ? true : "allowIfRuntimeIsInInit",
+      "lstatSync": "allowIfRuntimeIsInInit",
+      "statSync": "allowIfRuntimeIsInInit",
+      "removeSync": "allowIfRuntimeIsInInit",
+      "writeFileSync": "allowIfRuntimeIsInInit",
+      "writeTextFileSync": "allowIfRuntimeIsInInit",
+      "readFileSync": "allowIfRuntimeIsInInit",
+      "readTextFileSync": "allowIfRuntimeIsInInit",
+      "mkdirSync": "allowIfRuntimeIsInInit",
+      "makeTempDirSync": "allowIfRuntimeIsInInit",
+      "makeTempFileSync": "allowIfRuntimeIsInInit",
+      "readDirSync": "allowIfRuntimeIsInInit",
+
       // TODO: use a non-hardcoded path
       "execPath": () => "/bin/trex",
       "memoryUsage": () => ops.op_runtime_memory_usage(),

@@ -257,6 +257,7 @@ impl TestBedBuilder {
 
         maybe_s3_fs_config: None,
         maybe_tmp_fs_config: None,
+        maybe_otel_config: None,
       })
       .build()
       .await
@@ -270,6 +271,7 @@ impl TestBedBuilder {
   }
 }
 
+#[derive(Clone)]
 pub struct TestBed {
   pool_termination_token: TerminationToken,
   main_termination_token: TerminationToken,
