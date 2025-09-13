@@ -41,12 +41,15 @@ class UserWorker {
   async fetch(request, options = {}) {
     const tag = getSupabaseTag(request);
 
+    const kTokioChannelTag = Symbol.for("kTokioChannelTag");
+    const tokioChannelTag = request[kTokioChannelTag];
+
     const { method, url, headers, body, bodyUsed } = request;
     const { signal } = options;
 
     signal?.throwIfAborted();
 
-    if (tag === void 0) {
+    if (tag === void 0 && tokioChannelTag === void 0) {
       console.warn(NO_SUPABASE_TAG_WARN_MSG);
     }
 
@@ -73,12 +76,14 @@ class UserWorker {
       });
     }
 
+    const effectiveTag = tokioChannelTag || tag;
+
     const responsePromise = op_user_worker_fetch_send(
       this.key,
       requestRid,
       requestBodyRid,
-      tag.streamRid,
-      tag.watcherRid,
+      effectiveTag?.streamRid ?? -1,
+      effectiveTag?.watcherRid ?? -1,
     );
 
     const [requestBodyPromiseResult, responsePromiseResult] = await Promise

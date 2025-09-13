@@ -434,22 +434,36 @@ export async function req(service, urlOrRequest, options = {}) {
 		request = {
 			url: urlOrRequest.url,
 			method: urlOrRequest.method,
-			headers: headers,
-			body: urlOrRequest.body ? await urlOrRequest.text() : undefined,
-			...options
+			headers: headers
 		};
+		
+		if (urlOrRequest.body) {
+			request.body = await urlOrRequest.text();
+		}
 	} else {
 		request = {
 			url: urlOrRequest,
 			method: options.method || 'GET',
-			headers: options.headers || {},
-			body: options.body,
-			...options
+			headers: options.headers || {}
 		};
+		
+		if (options.body !== undefined) {
+			request.body = options.body;
+		}
 	}
 
 	try {
-		const httpResponse = await op_req({service: service, request: request});
+		const messageToSend = {service: service, request: request};
+		const httpResponse = await op_req(messageToSend);
+		
+		if (httpResponse && typeof httpResponse === 'object' && httpResponse.status && httpResponse.body !== undefined) {
+			const response = new Response(httpResponse.body, {
+				status: httpResponse.status,
+				statusText: httpResponse.statusText,
+				headers: httpResponse.headers
+			});
+			return response;
+		}
 		
 		return httpResponse;
 	} catch (error) {
@@ -483,10 +497,38 @@ export function createRequestListener(onMessage) {
 					if (onMessage && typeof onMessage === 'function') {
 						const requestId = message.id;
 						const originalMessage = message.message;
+						if (!originalMessage || !originalMessage.request) {
+							continue;
+						}
+						
+						const requestOptions = {
+							method: originalMessage.request.method,
+							headers: originalMessage.request.headers
+						};
+						
+						if (originalMessage.request.body !== undefined && 
+							originalMessage.request.body !== null &&
+							originalMessage.request.method !== 'GET' && 
+							originalMessage.request.method !== 'HEAD') {
+							requestOptions.body = originalMessage.request.body;
+						}
+						
+						const request = new Request(originalMessage.request.url, requestOptions);
+						
+						const kSupabaseTag = Symbol.for("kSupabaseTag");
+						request[kSupabaseTag] = {
+							type: "tokio_channel",
+							watcherRid: -1,
+							streamRid: listenerId,
+							channelRid: listenerId
+						};
 						
 						const respond = (response) => op_req_respond(requestId, response);
 						
-						onMessage(originalMessage, respond);
+						onMessage({ 
+							service: originalMessage.service,
+							request: request  // Request object with special tokio channel tag
+						}, respond);
 					}
 					
 					controller.enqueue(message);
@@ -519,27 +561,54 @@ export class TrexHttpClient {
 			}
 		}
 
-		return await req(this.service, url, options);
+		const response = await req(this.service, url, options);
+		
+		if (response instanceof Response) {
+			try {
+				const data = await response.json();
+
+				return {
+					data: data,
+					status: response.status,
+					statusText: response.statusText,
+					headers: Object.fromEntries(response.headers.entries()),
+					config: config,
+					request: config
+				};
+			} catch (error) {
+				const textData = await response.text().catch(() => "");
+				
+				return {
+					data: {},
+					status: response.status,
+					statusText: response.statusText,
+					headers: Object.fromEntries(response.headers.entries()),
+					config: config,
+					request: config
+				};
+			}
+		}
+		return response;
 	}
 
 	async get(url, config = {}) {
-		return this.request({ ...config, method: 'GET', url });
+		return await this.request({ ...config, method: 'GET', url });
 	}
 
 	async post(url, data, config = {}) {
-		return this.request({ ...config, method: 'POST', url, data });
+		return await this.request({ ...config, method: 'POST', url, data });
 	}
 
 	async put(url, data, config = {}) {
-		return this.request({ ...config, method: 'PUT', url, data });
+		return await this.request({ ...config, method: 'PUT', url, data });
 	}
 
 	async patch(url, data, config = {}) {
-		return this.request({ ...config, method: 'PATCH', url, data });
+		return await this.request({ ...config, method: 'PATCH', url, data });
 	}
 
 	async delete(url, config = {}) {
-		return this.request({ ...config, method: 'DELETE', url });
+		return await this.request({ ...config, method: 'DELETE', url });
 	}
 }
 
