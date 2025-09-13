@@ -102,6 +102,10 @@ static DB_CREDENTIALS: LazyLock<Arc<Mutex<String>>> = LazyLock::new(|| {
   )))
 });
 
+static REQUEST_CHANNEL: LazyLock<Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>> = LazyLock::new(|| {
+  Arc::new(Mutex::new(None))
+});
+
 pub async fn start_sql_server(ip: &str, port: u16, auth_type: AuthType) {
   let factory = Arc::new(TrexDuckDBFactory {
     handler: Arc::new(TrexDuckDB::new(&TREX_DB)),
@@ -862,6 +866,77 @@ impl Resource for QueryStreamResource {
   }
 }
 
+pub struct RequestResource {
+  receiver: Arc<Mutex<mpsc::Receiver<JsonValue>>>,
+}
+
+impl Resource for RequestResource {
+  fn name(&self) -> std::borrow::Cow<str> {
+    "RequestResource".into()
+  }
+}
+
+#[op2]
+#[serde]
+fn op_req(#[serde] message: JsonValue) -> Result<serde_json::Value, AnyError> {
+  let channel_guard = REQUEST_CHANNEL.lock().unwrap();
+  if let Some(sender) = channel_guard.as_ref() {
+    match sender.try_send(message) {
+      Ok(()) => Ok(serde_json::Value::Bool(true)),
+      Err(_) => Ok(serde_json::Value::Bool(false)), // Channel full or receiver dropped
+    }
+  } else {
+    Ok(serde_json::Value::Bool(false)) // No active listeners
+  }
+}
+
+#[op2]
+#[serde]
+fn op_req_listen(state: &mut OpState) -> Result<ResourceId, AnyError> {
+  let (sender, receiver) = mpsc::channel::<JsonValue>(1000);
+  
+  // Update the global channel
+  {
+    let mut channel_guard = REQUEST_CHANNEL.lock().unwrap();
+    *channel_guard = Some(sender);
+  }
+  
+  let resource = RequestResource {
+    receiver: Arc::new(Mutex::new(receiver)),
+  };
+  Ok(state.resource_table.add(resource))
+}
+
+#[allow(clippy::await_holding_lock)]
+#[op2(async)]
+#[serde]
+async fn op_req_next(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<Option<JsonValue>, AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<RequestResource>(rid)?;
+
+  let mut rx = resource.receiver.lock().unwrap();
+  let next_message = rx.recv().await;
+
+  if next_message.is_none() {
+    // Clean up the global channel when receiver is done
+    {
+      let mut channel_guard = REQUEST_CHANNEL.lock().unwrap();
+      *channel_guard = None;
+    }
+    
+    state
+      .borrow_mut()
+      .resource_table
+      .take::<RequestResource>(rid)?;
+  }
+  Ok(next_message)
+}
+
 #[op2]
 #[serde]
 fn op_execute_query_stream(
@@ -934,7 +1009,10 @@ deno_core::extension!(
         op_set_dbc,
         op_copy_tables,
         op_execute_query_stream,
-        op_execute_query_stream_next
+        op_execute_query_stream_next,
+        op_req,
+        op_req_listen,
+        op_req_next
     ],
     esm_entry_point = "ext:trex/trex_lib.js",
     esm = [

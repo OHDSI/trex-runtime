@@ -19,7 +19,10 @@ const {
 	op_get_dbc,
 	op_set_dbc,
 	op_execute_query_stream,
-	op_execute_query_stream_next
+	op_execute_query_stream_next,
+	op_req,
+	op_req_listen,
+	op_req_next
 } = ops;
 
 export { op_add_replication, op_exit };
@@ -418,5 +421,37 @@ export class PluginManager {
 	install(pkg) {
 		op_install_plugin(pkg, this.#path);
 	}
+}
+
+export function req(service, request) {
+	return op_req({service: service, request: request});
+}
+
+export function createRequestListener(onMessage) {
+	const listenerId = op_req_listen();
+	
+	return new ReadableStream({
+		async start(controller) {
+			try {
+				while (true) {
+					const message = await op_req_next(listenerId);
+					if (message === null) {
+						controller.close();
+						break;
+					}
+					
+					// Call the provided callback function
+					if (onMessage && typeof onMessage === 'function') {
+						onMessage(message);
+					}
+					
+					controller.enqueue(message);
+				}
+			} catch (error) {
+				console.error("Request listener error:", error);
+				controller.error(error);
+			}
+		}
+	});
 }
 
