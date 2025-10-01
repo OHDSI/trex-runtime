@@ -184,7 +184,7 @@ export class TrexConnection  {
             console.log("Duckdb client created for streaming");
             console.log(temp);
 
-            executeQueryStream(this.connection.database, temp, flattenParameter(parameters))
+            executeQueryStream(this.connection.__database, temp, flattenParameter(parameters))
                 .then(stream => {
                     callback(null, stream);
                 })
