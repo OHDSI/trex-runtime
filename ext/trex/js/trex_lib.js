@@ -100,10 +100,6 @@ export async function prompt(xprompt, model = null) {
 export class DatabaseManager {
 	static #dbm;
 
-	// Information regarding attached cdw-svc duckdb file
-	#attached_cdw_svc_file_path = null;
-	#attached_cdw_svc_file_mtime = null;
-
 	#contructor() {}
 
 	static getDatabaseManager() {
@@ -173,33 +169,16 @@ export class DatabaseManager {
 
 
 
-    add_cdw_config_duckdb_connection() {
+  add_cdw_config_duckdb_connection() {
     /*
-		Checks if there is a duckdb file in /usr/src/cdw_data/dynamically_generated, if there is a file there, use it.
-		Else fallback to using the built in duckdb file in /usr/src/cdw_data/built_in
+		Connects to duckdb file in built in duckdb file in /usr/src/cdw_data/built_in
 		*/
-    const [duckdb_file_path, file_mtime] =
-      `${CDW_BUILT_IN_DIR}/${CDW_DUCKDB_FILE_DATABASE_CODE}_${CDW_DUCKDB_FILE_SCHEMA_NAME}`;
-
-    if (
-      this.#attached_cdw_svc_file_path === null || // File not attached yet
-      this.#attached_cdw_svc_file_mtime === null || // File not attached yet
-      duckdb_file_path !== this.#attached_cdw_svc_file_path || // There is a new dynamically created cdw-svc duckdb file
-      file_mtime > this.#attached_cdw_svc_file_mtime // There is a new dynamically created cdw-svc duckdb file
-    ) {
-      op_execute_query(
-        "memory",
-        `DETACH DATABASE IF EXISTS ${CDW_DUCKDB_FILE_SCHEMA_NAME}`,
-        []
-      );
-      op_execute_query(
-        "memory",
-        `ATTACH IF NOT EXISTS '${duckdb_file_path}' AS ${CDW_DUCKDB_FILE_SCHEMA_NAME} (READ_ONLY)`,
-        []
-      );
-    }
-    this.#attached_cdw_svc_file_path = duckdb_file_path;
-    this.#attached_cdw_svc_file_mtime = file_mtime;
+    const duckdb_file_path = `${CDW_BUILT_IN_DIR}/${CDW_DUCKDB_FILE_DATABASE_CODE}_${CDW_DUCKDB_FILE_SCHEMA_NAME}`;
+    op_execute_query(
+      "memory",
+      `ATTACH IF NOT EXISTS '${duckdb_file_path}' AS ${CDW_DUCKDB_FILE_SCHEMA_NAME} (READ_ONLY)`,
+      []
+    );
   }
 
 
