@@ -76,7 +76,7 @@ async function  test_dbquery4() {
 async function  test_dbquery5() {
    
         const dbm = Trex.userDatabaseManager();
-        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", {"duckdb": (n:any) => n})
+        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", "demo_cdm", {"duckdb": (n:any) => n})
 
         const res = conn.execute("select count(1) from $$SCHEMA$$.person where person_id < ?",[{value:4000}], ((err:any,res:any) => {
             console.log(res);
@@ -198,7 +198,7 @@ const tests = {
     "dbquery #5 (analytics interface)": test_dbquery5,
     "dbquery #6 (pg conn)": async () => {
         const dbm = Trex.userDatabaseManager();
-        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", {"duckdb": (n:any) => n})
+        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", "demo_cdm", {"duckdb": (n:any) => n})
         const res = conn.execute_write("select count(1) from $$SCHEMA$$.person where person_id < ?",[{value:4000}], ((err:any,res:any) => {
 
    // const res = conn.executeUpdate("insert into demo_cdm.person (person_id, gender_concept_id, year_of_birth, month_of_birth, day_of_birth, birth_datetime, race_concept_id, ethnicity_concept_id, location_id, provider_id, care_site_id, person_source_value, gender_source_value, gender_source_concept_id, race_source_value, race_source_concept_id, ethnicity_source_value, ethnicity_source_concept_id) VALUES (31337, 0, 0, 0, 0, '1990-01-01', 0, 0, 0, 0, 0, '', '', 0, '', 0, '', 0)", [], ((err:any,res:any) => {
@@ -217,7 +217,7 @@ const tests = {
             let resx = await connx.execute("delete from demo_cdm.person where person_id > ?", [10000]);
             console.log(resx);
             const dbm = Trex.userDatabaseManager();
-            const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", {"duckdb": (n:any) => n})
+            const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", "demo_cdm", {"duckdb": (n:any) => n})
             //const res = conn.execute_write("select count(1) from $$SCHEMA$$.person where person_id < ?",[{value:4000}], ((err:any,res:any) => {
 
             const res = conn.executeUpdate(
@@ -260,7 +260,7 @@ const tests = {
     "dbquery #6": test_dbquery6,
     "dbquery json": async () => {
         const dbm = Trex.userDatabaseManager();
-        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", {"duckdb": (n:any) => n})
+        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", "demo_cdm", {"duckdb": (n:any) => n})
         const res1 = conn.execute("create table if not exists test (id number primary key, test json)",[], ((err:any,res:any) => {
             console.log(err);
             if(!err)
@@ -276,7 +276,7 @@ const tests = {
     },
     "dbquery stream": async () => {
         const dbm = Trex.userDatabaseManager();
-        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", {"duckdb": (n:any) => n})
+        const conn = dbm.getConnection('demo_database', 'demo_cdm', "demo_cdm", "demo_cdm", {"duckdb": (n:any) => n})
         
         conn.executeStreamQuery(
             "select person_id, gender_concept_id, year_of_birth from $$SCHEMA$$.person where person_id < ? order by person_id",

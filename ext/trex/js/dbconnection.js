@@ -24,6 +24,7 @@ export class TrexConnection  {
     writeConn;
     schema;
     vocabSchemaName;
+    resultSchemaName;
     dialect;
     translatefn;
 
@@ -34,6 +35,7 @@ export class TrexConnection  {
         writeConn,
         schemaName,
         vocabSchemaName,
+        resultSchemaName,
         dialect,
         translatefn, 
     ) {
@@ -41,6 +43,7 @@ export class TrexConnection  {
         this.writeConn = writeConn
         this.schemaName = schemaName;
         this.vocabSchemaName = vocabSchemaName;
+        this.resultSchemaName = resultSchemaName;
         this.dialect = dialect;
         this.translatefn = translatefn[dialect];
     }
@@ -140,6 +143,7 @@ export class TrexConnection  {
             temp,
             this.schemaName,
             this.vocabSchemaName,
+            this.resultSchemaName,
             parameters
         );
     }
