@@ -275,7 +275,7 @@ export class UserDatabaseManager {
 	}
 
 
-	getConnection(db_id, schema, vocab_schema, translationMap) {
+	getConnection(db_id, schema, vocab_schema, result_schema, translationMap) {
 		const dbc = this.getDatabaseCredentials();
 		let dialect = "duckdb";
 		if (db_id != CDW_DUCKDB_FILE_DATABASE_CODE) {
@@ -286,9 +286,9 @@ export class UserDatabaseManager {
 			}
 		}
 		if(dialect !== 'hana') {
-			return new TrexConnection(new TrexDB(db_id), new TrexDB(`${db_id}`), schema,vocab_schema,'duckdb',translationMap);
+			return new TrexConnection(new TrexDB(db_id), new TrexDB(`${db_id}`), schema,vocab_schema,result_schema,'duckdb',translationMap);
 		} else {
-			return new TrexConnection(new HanaDB(db_id), new HanaDB(`${db_id}`), schema,vocab_schema,'hana',translationMap);
+			return new TrexConnection(new HanaDB(db_id), new HanaDB(`${db_id}`), schema,vocab_schema,result_schema,'hana',translationMap);
 		}
 	}
 }
