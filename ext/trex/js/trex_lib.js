@@ -377,11 +377,11 @@ export class HanaDB extends TrexDB {
 		return new Promise((resolve, reject) => {
 			try {
 				const nparams= map_params(params);
-				console.log(`DB: ${super.__database} SQL: ${sql}`);
+				console.log(`DB: ${super.getdatabase()} SQL: ${sql}`);
 				const dbm = DatabaseManager.getDatabaseManager();
-				const c = dbm.getCredentials().filter(c => c.id === super.__database)[0]
+				const c = dbm.getCredentials().filter(c => c.id === super.getdatabase())[0]
 				const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
-				resolve(JSON.parse(op_execute_query(super.__database, `select * from hana_scan('${sql}', 'hdbsql://${adminCredentials.username}:${adminCredentials.password}@${c.host}:${c.port}/${c.name}')'`, nparams)));
+				resolve(JSON.parse(op_execute_query(super.getdatabase(), `select * from hana_scan('${sql}', 'hdbsql://${adminCredentials.username}:${adminCredentials.password}@${c.host}:${c.port}/${c.name}')`, nparams)));
 			} catch(e) {
 				reject(e);
 			}
