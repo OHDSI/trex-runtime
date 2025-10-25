@@ -390,9 +390,8 @@ impl TrexServerConfig {
     let main_service_path_normalized =
       normalize_path_to_file_url(&self.main_service_path);
 
-    let event_worker_path_normalized = self
-      .event_worker_path
-      .and_then(|path| {
+    let event_worker_path_normalized =
+      self.event_worker_path.and_then(|path| {
         if path.is_empty() {
           None
         } else {
