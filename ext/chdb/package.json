@@ -3,7 +3,7 @@
     "version": "0.5.0",
     "description": "chdb",
     "scripts": {
-      "prepack": "curl -sL https://lib.chdb.io | sudo bash && make configure && make release && mv build/release/extension/*/*_extension ."
+      "prepack": "sudo apt install build-essential && curl -sL https://lib.chdb.io | sudo bash && make configure && make release && mv build/release/extension/*/*_extension ."
     },
     "author": "",
     "license": "Apache-2.0",
