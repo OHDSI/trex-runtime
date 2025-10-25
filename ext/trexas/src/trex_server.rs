@@ -35,7 +35,7 @@ fn normalize_path_to_file_url(path: &str) -> String {
   } else {
     std::env::current_dir()
       .ok()
-      .and_then(|cwd| Some(cwd.join(path_obj)))
+      .map(|cwd| cwd.join(path_obj))
       .unwrap_or_else(|| path_obj.to_path_buf())
   };
 
@@ -392,14 +392,13 @@ impl TrexServerConfig {
 
     let event_worker_path_normalized = self
       .event_worker_path
-      .map(|path| {
+      .and_then(|path| {
         if path.is_empty() {
           None
         } else {
           Some(normalize_path_to_file_url(&path))
         }
-      })
-      .flatten();
+      });
 
     // Parse inspector option from string if provided
     let inspector_option = if let Some(ref inspector_str) = self.inspector {

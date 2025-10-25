@@ -59,7 +59,7 @@ fn normalize_path_to_file_url(path: &str) -> String {
   } else {
     std::env::current_dir()
       .ok()
-      .and_then(|cwd| Some(cwd.join(path_obj)))
+      .map(|cwd| cwd.join(path_obj))
       .unwrap_or_else(|| path_obj.to_path_buf())
   };
 
