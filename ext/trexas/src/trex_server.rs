@@ -28,7 +28,7 @@ fn normalize_path_to_file_url(path: &str) -> String {
   if path.starts_with("file://") {
     return path.to_string();
   }
-  
+
   let path_obj = Path::new(path);
   let abs_path = if path_obj.is_absolute() {
     path_obj.to_path_buf()
@@ -38,14 +38,14 @@ fn normalize_path_to_file_url(path: &str) -> String {
       .and_then(|cwd| Some(cwd.join(path_obj)))
       .unwrap_or_else(|| path_obj.to_path_buf())
   };
-  
+
   // If it's a directory, append index.ts as the default entrypoint
   let final_path = if abs_path.is_dir() {
     abs_path.join("index.ts")
   } else {
     abs_path
   };
-  
+
   format!("file://{}", final_path.display())
 }
 
@@ -62,15 +62,15 @@ fn parse_inspector_option(s: &str) -> Result<InspectorOption> {
       s
     );
   }
-  
+
   let mode = parts[0];
   let host = parts[1];
   let port_str = parts[2];
-  
+
   let addr: SocketAddr = format!("{}:{}", host, port_str)
     .parse()
     .map_err(|e| anyhow::anyhow!("Failed to parse socket address: {}", e))?;
-  
+
   match mode {
     "inspect" => Ok(InspectorOption::Inspect(addr)),
     "inspect-brk" => Ok(InspectorOption::WithBreak(addr)),
@@ -190,11 +190,11 @@ impl TrexServerManagerWrapper {
 
             // Signal that server is built and ready
             let _ = result_tx.send(Ok("Server starting".to_string()));
-            
+
             eprintln!("[TREX-EXT] Server listening on {}", config_clone.addr);
-            
+
             let _ = server.listen().await;
-            
+
             eprintln!("[TREX-EXT] Server stopped listening");
           }
           Err(e) => {
@@ -203,7 +203,8 @@ impl TrexServerManagerWrapper {
             for (i, cause) in e.chain().enumerate() {
               eprintln!("[TREX-EXT]   {}: {}", i, cause);
             }
-            let _ = result_tx.send(Err(anyhow::anyhow!("Failed to build server: {}", e)));
+            let _ = result_tx
+              .send(Err(anyhow::anyhow!("Failed to build server: {}", e)));
           }
         }
 
@@ -386,15 +387,19 @@ impl TrexServerConfig {
       .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
 
     // Normalize paths to file:// URLs for proper Deno module resolution
-    let main_service_path_normalized = normalize_path_to_file_url(&self.main_service_path);
-    
-    let event_worker_path_normalized = self.event_worker_path.map(|path| {
-      if path.is_empty() {
-        None
-      } else {
-        Some(normalize_path_to_file_url(&path))
-      }
-    }).flatten();
+    let main_service_path_normalized =
+      normalize_path_to_file_url(&self.main_service_path);
+
+    let event_worker_path_normalized = self
+      .event_worker_path
+      .map(|path| {
+        if path.is_empty() {
+          None
+        } else {
+          Some(normalize_path_to_file_url(&path))
+        }
+      })
+      .flatten();
 
     // Parse inspector option from string if provided
     let inspector_option = if let Some(ref inspector_str) = self.inspector {
@@ -420,13 +425,16 @@ impl TrexServerConfig {
       allow_main_inspector: self.allow_main_inspector,
       tcp_nodelay: self.tcp_nodelay,
       graceful_exit_deadline_sec: self.graceful_exit_deadline_sec,
-      graceful_exit_keepalive_deadline_ms: self.graceful_exit_keepalive_deadline_ms,
+      graceful_exit_keepalive_deadline_ms: self
+        .graceful_exit_keepalive_deadline_ms,
       event_worker_exit_deadline_sec: self.event_worker_exit_deadline_sec,
       request_wait_timeout_ms: self.request_wait_timeout_ms,
       request_idle_timeout_ms: self.request_idle_timeout_ms,
       request_read_timeout_ms: self.request_read_timeout_ms,
       request_buffer_size: self.request_buffer_size.map(|s| s as u64),
-      beforeunload_wall_clock_pct: self.beforeunload_wall_clock_pct.map(|p| p as u8),
+      beforeunload_wall_clock_pct: self
+        .beforeunload_wall_clock_pct
+        .map(|p| p as u8),
       beforeunload_cpu_pct: self.beforeunload_cpu_pct.map(|p| p as u8),
       beforeunload_memory_pct: self.beforeunload_memory_pct.map(|p| p as u8),
       import_map_path: self.import_map_path,

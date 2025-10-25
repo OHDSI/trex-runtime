@@ -52,7 +52,7 @@ fn normalize_path_to_file_url(path: &str) -> String {
   if path.starts_with("file://") {
     return path.to_string();
   }
-  
+
   let path_obj = Path::new(path);
   let abs_path = if path_obj.is_absolute() {
     path_obj.to_path_buf()
@@ -62,14 +62,14 @@ fn normalize_path_to_file_url(path: &str) -> String {
       .and_then(|cwd| Some(cwd.join(path_obj)))
       .unwrap_or_else(|| path_obj.to_path_buf())
   };
-  
+
   // If it's a directory, append index.ts as the default entrypoint
   let final_path = if abs_path.is_dir() {
     abs_path.join("index.ts")
   } else {
     abs_path
   };
-  
+
   format!("file://{}", final_path.display())
 }
 
@@ -144,8 +144,9 @@ impl VScalar for StartTrexServerScalar {
       .unwrap_or_else(|_| "127.0.0.1:8000".parse().unwrap());
 
     // Normalize paths to file:// URLs for proper Deno module resolution
-    let main_service_path_normalized = normalize_path_to_file_url(&main_service_path);
-    
+    let main_service_path_normalized =
+      normalize_path_to_file_url(&main_service_path);
+
     let event_worker_opt = if event_worker_path.is_empty() {
       None
     } else {
