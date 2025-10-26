@@ -367,8 +367,8 @@ fn run_llama_model(
 
 #[op2(fast)]
 fn op_install_plugin(#[string] name: String, #[string] dir: String) {
-  Command::new("npx")
-    .args(["bun", "install", "-f", "--no-cache", "--no-save", &name])
+  Command::new("bun")
+    .args(["install", "-f", "--no-cache", "--no-save", &name])
     .current_dir(dir)
     .status()
     .expect("failed to execute process");

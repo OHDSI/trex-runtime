@@ -26,14 +26,14 @@ echo "" >> "$OUTPUT_DOCKERFILE"
 if [ -f "$EXTENSION_DOCKERFILE" ]; then
     # Extract everything before ### INCLUDE_BASE ### marker
     if grep -q "### INCLUDE_BASE ###" "$EXTENSION_DOCKERFILE"; then
-        echo "# ===== BEFORE section from $EXTENSION_DOCKERFILE =====" >> "$OUTPUT_DOCKERFILE"
+        echo "# ===== BEFORE section =====" >> "$OUTPUT_DOCKERFILE"
         sed -n '1,/### INCLUDE_BASE ###/p' "$EXTENSION_DOCKERFILE" | grep -v "### INCLUDE_BASE ###" | grep -v "^# Use the marker" >> "$OUTPUT_DOCKERFILE"
         echo "" >> "$OUTPUT_DOCKERFILE"
     fi
 fi
 
 # Add base Dockerfile content, adjusting paths
-echo "# ===== Base from $BASE_DOCKERFILE =====" >> "$OUTPUT_DOCKERFILE"
+echo "# ===== Base =====" >> "$OUTPUT_DOCKERFILE"
 # Remove syntax line, replace $BASEPATH with Trex/ext/bao, and remove CMD line from base
 grep -v "^# syntax=" "$BASE_DOCKERFILE" | grep -v "^CMD " | sed 's|\$BASEPATH|Trex/ext/bao|g' | sed 's|ENV BASEPATH=.*|ENV BASEPATH=Trex/ext/bao|' >> "$OUTPUT_DOCKERFILE"
 echo "" >> "$OUTPUT_DOCKERFILE"
@@ -41,7 +41,7 @@ echo "" >> "$OUTPUT_DOCKERFILE"
 # If extension exists, add AFTER section
 if [ -f "$EXTENSION_DOCKERFILE" ]; then
     if grep -q "### INCLUDE_BASE ###" "$EXTENSION_DOCKERFILE"; then
-        echo "# ===== AFTER section from $EXTENSION_DOCKERFILE =====" >> "$OUTPUT_DOCKERFILE"
+        echo "# ===== AFTER section =====" >> "$OUTPUT_DOCKERFILE"
         sed -n '/### INCLUDE_BASE ###/,$p' "$EXTENSION_DOCKERFILE" | tail -n +2 >> "$OUTPUT_DOCKERFILE"
         echo "✓ Combined: BEFORE + $BASE_DOCKERFILE + AFTER -> $OUTPUT_DOCKERFILE"
     else
