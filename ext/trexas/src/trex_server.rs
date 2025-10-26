@@ -150,7 +150,8 @@ impl TrexServerManagerWrapper {
         if let (Some(cert_path), Some(key_path)) =
           (&config_clone.tls_cert_path, &config_clone.tls_key_path)
         {
-          if let Ok(tls) = Self::create_tls_config_static(cert_path, key_path) {
+          let tls_port = config_clone.tls_port.unwrap_or(443);
+          if let Ok(tls) = Self::create_tls_config_static(cert_path, key_path, tls_port) {
             builder.tls(tls);
           }
         }
@@ -233,6 +234,7 @@ impl TrexServerManagerWrapper {
   fn create_tls_config_static(
     cert_path: &str,
     key_path: &str,
+    port: u16,
   ) -> Result<base::server::Tls> {
     use std::fs;
 
@@ -241,7 +243,6 @@ impl TrexServerManagerWrapper {
     let key_data = fs::read(key_path)
       .map_err(|e| anyhow::anyhow!("Failed to read private key file: {}", e))?;
 
-    let port = 443;
     base::server::Tls::new(port, &key_data, &cert_data)
   }
 }
@@ -315,6 +316,8 @@ pub struct TrexServerConfig {
   pub tls_cert_path: Option<String>,
   #[serde(default)]
   pub tls_key_path: Option<String>,
+  #[serde(default)]
+  pub tls_port: Option<u16>,
   #[serde(default)]
   pub static_patterns: Vec<String>,
   #[serde(default)]
