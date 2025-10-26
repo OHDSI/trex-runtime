@@ -1,0 +1,10 @@
+
+
+### INCLUDE_BASE ###
+
+RUN mkdir -p ./core
+COPY ./core ./core
+
+CMD ["bun", "run", "start"]
+
+
