@@ -25,6 +25,7 @@ pub struct ServerConfig {
   // TLS configuration
   pub tls_cert_path: Option<String>,
   pub tls_key_path: Option<String>,
+  pub tls_port: Option<u16>,
 
   // Static patterns
   pub static_patterns: Vec<String>,
@@ -67,6 +68,7 @@ impl std::fmt::Debug for ServerConfig {
       .field("user_worker_policy", &"<WorkerPoolPolicy>")
       .field("tls_cert_path", &self.tls_cert_path)
       .field("tls_key_path", &self.tls_key_path)
+      .field("tls_port", &self.tls_port)
       .field("static_patterns", &self.static_patterns)
       .field("inspector", &self.inspector)
       .field("no_module_cache", &self.no_module_cache)
@@ -113,7 +115,8 @@ impl Default for ServerConfig {
       user_worker_policy: None,
       tls_cert_path: None,
       tls_key_path: None,
-      static_patterns: Vec::new(),
+      tls_port: None,
+      static_patterns: vec![],
       inspector: None,
       no_module_cache: false,
       allow_main_inspector: false,
@@ -198,14 +201,15 @@ impl ServerHandle {
 }
 
 /// Create TLS configuration from file paths
-fn create_tls_config(cert_path: &str, key_path: &str) -> Result<Tls> {
+fn create_tls_config(
+  cert_path: &str,
+  key_path: &str,
+  port: u16,
+) -> Result<Tls> {
   let cert_data = fs::read(cert_path)
     .map_err(|e| anyhow::anyhow!("Failed to read certificate file: {}", e))?;
   let key_data = fs::read(key_path)
     .map_err(|e| anyhow::anyhow!("Failed to read private key file: {}", e))?;
-
-  // Extract port from the certificate path or use default
-  let port = 443; // Default HTTPS port
 
   Tls::new(port, &key_data, &cert_data)
 }
@@ -218,7 +222,8 @@ pub async fn start_server(config: ServerConfig) -> Result<ServerHandle, Error> {
   if let (Some(cert_path), Some(key_path)) =
     (&config.tls_cert_path, &config.tls_key_path)
   {
-    let tls = create_tls_config(cert_path, key_path)?;
+    let port = config.tls_port.unwrap_or(443);
+    let tls = create_tls_config(cert_path, key_path, port)?;
     builder.tls(tls);
   }
 

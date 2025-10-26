@@ -160,6 +160,7 @@ impl VScalar for StartTrexServerScalar {
       user_worker_policy: None,
       tls_cert_path: None,
       tls_key_path: None,
+      tls_port: None,
       static_patterns: vec![],
       inspector: None,
       no_module_cache: false,
