@@ -151,7 +151,9 @@ impl TrexServerManagerWrapper {
           (&config_clone.tls_cert_path, &config_clone.tls_key_path)
         {
           let tls_port = config_clone.tls_port.unwrap_or(443);
-          if let Ok(tls) = Self::create_tls_config_static(cert_path, key_path, tls_port) {
+          if let Ok(tls) =
+            Self::create_tls_config_static(cert_path, key_path, tls_port)
+          {
             builder.tls(tls);
           }
         }
