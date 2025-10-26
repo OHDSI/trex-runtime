@@ -554,7 +554,7 @@ pub async fn create_module_loader_for_eszip(
 ) -> Result<RuntimeProviders, AnyError> {
   let migrated = eszip.migrated();
   let current_exe_path = std::env::current_exe().unwrap();
-  let current_exe_name =
+  let _current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
 
   let permission_desc_parser =
@@ -584,7 +584,7 @@ pub async fn create_module_loader_for_eszip(
   } else {
     std::env::temp_dir()
   }
-  .join("sb-compile-trex");
+  .join("sb-compile-trex"));
 
   let node_modules = metadata.node_modules()?;
   let root_dir_url =
