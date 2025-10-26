@@ -1,0 +1,25 @@
+{
+  "name": "bao",
+  "version": "0.1.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "start": "mkdir -p /usr/src/cert ; echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem & echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem & nbb -m bao.core -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/main --event-worker-path /usr/src/event-worker",
+    "startdev": "mkdir -p /usr/src/cert ; echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem & echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem & nbb -m bao.core -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event --enable-inspector --inspector-host 0.0.0.0 --inspector-port 9229",
+    "watch": "mkdir -p /usr/src/cert ; echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem & echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem & npx nodemon --watch /usr/src/core -e ts --exec nbb -m bao.core -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event --enable-inspector --inspector-host 0.0.0.0 --inspector-port 9229",
+    "health": "curl -f http://localhost:33001/_internal/health || exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@trex/as": "^0.5.0-1761460303-9cd40c7d9de31bf1da6132cf07bbad8f1bd8a2bc",
+    "@trex/chdb": "^0.5.0-1761460223-9cd40c7d9de31bf1da6132cf07bbad8f1bd8a2bc",
+    "@trex/circe": "^0.0.1-1761460455-9cd40c7d9de31bf1da6132cf07bbad8f1bd8a2bc",
+    "@trex/hana": "^0.5.0-1761460394-9cd40c7d9de31bf1da6132cf07bbad8f1bd8a2bc",
+    "@trex/llama": "^0.5.0-1761460172-9cd40c7d9de31bf1da6132cf07bbad8f1bd8a2bc",
+    "@trex/pgwire": "^0.5.0-1761460092-9cd40c7d9de31bf1da6132cf07bbad8f1bd8a2bc",
+    "duckdb": "1.4.0",
+    "minimist": "^1.2.8",
+    "nbb": "^1.3.204"
+  }
+}
