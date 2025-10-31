@@ -1,4 +1,5 @@
 pub mod clients;
+pub mod connection;
 pub mod conversions;
 pub mod pipeline;
 pub mod sql;
@@ -72,7 +73,9 @@ static TREX_DB: LazyLock<Arc<Mutex<Connection>>> = LazyLock::new(|| {
   } else {
     let _ = conn.execute("LOAD circe", []);
   }
-  Arc::new(Mutex::new(conn))
+  let conn_arc = Arc::new(Mutex::new(conn));
+  let _ = connection::init_owned_connection(conn_arc.clone());
+  conn_arc
 });
 static DB_CREDENTIALS: LazyLock<Arc<Mutex<String>>> = LazyLock::new(|| {
   Arc::new(Mutex::new(String::from(
@@ -86,9 +89,16 @@ static REQUEST_CHANNEL: LazyLock<RequestChannelType> =
 static PENDING_REQUESTS: LazyLock<PendingRequestsMap> =
   LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+fn get_active_connection() -> Arc<Mutex<Connection>> {
+  connection::get_connection().unwrap_or_else(|| {
+    TREX_DB.clone()
+  })
+}
+
 pub async fn start_sql_server(ip: &str, port: u16, auth_type: AuthType) {
+  let conn = get_active_connection();
   let factory = Arc::new(TrexDuckDBFactory {
-    handler: Arc::new(TrexDuckDB::new(&TREX_DB)),
+    handler: Arc::new(TrexDuckDB::new(&conn)),
     auth_type,
   });
   let _server_addr = format!("{ip}:{port}");
@@ -230,9 +240,10 @@ fn op_copy_tables(
 ) {
   warn!("TREX START TABLE COPY: {duckdb_file}");
   let command = ReplicateCommand::CopyTable { tables };
+  let conn = get_active_connection();
   tokio::spawn(async move {
     trex_replicate(
-      &TREX_DB,
+      &conn,
       command,
       duckdb_file.as_str(),
       db_host.as_str(),
@@ -263,9 +274,10 @@ fn op_add_replication(
     publication,
     slot_name,
   };
+  let conn = get_active_connection();
   tokio::spawn(async move {
     trex_replicate(
-      &TREX_DB,
+      &conn,
       command,
       duckdb_file.as_str(),
       db_host.as_str(),
@@ -609,7 +621,8 @@ fn execute_query(
   sql: String,
   params: Vec<TrexType>,
 ) -> Result<String, AnyError> {
-  let conn = &*TREX_DB.lock().unwrap();
+  let conn_arc = get_active_connection();
+  let conn = &*conn_arc.lock().unwrap();
   let _ = conn
     .execute(&format!("USE {database}"), [])
     .inspect_err(|e| warn!("{e}"));
@@ -803,9 +816,10 @@ fn op_execute_query_stream(
   #[serde] params: Vec<TrexType>,
 ) -> Result<ResourceId, AnyError> {
   let (sender, receiver) = mpsc::channel::<String>(1000);
+  let conn_arc = get_active_connection();
   tokio::spawn(async move {
     tokio::task::spawn_blocking(move || {
-      let conn = &*TREX_DB.lock().unwrap();
+      let conn = &*conn_arc.lock().unwrap();
       if conn.execute(&format!("USE {database}"), []).is_err() {
         return;
       }

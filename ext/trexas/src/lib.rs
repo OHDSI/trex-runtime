@@ -463,6 +463,12 @@ pub unsafe fn extension_entrypoint(
 ) -> Result<(), Box<dyn Error>> {
   store_shared_connection(&con)?;
 
+  if let Some(shared_conn) = get_shared_connection() {
+    if let Err(e) = trex::connection::init_shared_connection(shared_conn) {
+      eprintln!("Warning: Failed to initialize trex with shared connection: {}", e);
+    }
+  }
+
   con
     .register_scalar_function::<TrexVersionScalar>("trex_version")
     .expect("Failed to register trex_version scalar function");
