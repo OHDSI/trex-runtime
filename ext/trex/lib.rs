@@ -367,11 +367,58 @@ fn run_llama_model(
 
 #[op2(fast)]
 fn op_install_plugin(#[string] name: String, #[string] dir: String) {
-  Command::new("bun")
-    .args(["install", "-f", "--no-cache", "--no-save", &name])
-    .current_dir(dir)
-    .status()
-    .expect("failed to execute process");
+  let bun_path = if std::path::Path::new("/usr/local/bin/bun").exists() {
+    Some("/usr/local/bin/bun".to_string())
+  } else if Command::new("bun").arg("--version").output().is_ok() {
+    Some("bun".to_string())
+  } else {
+    Command::new("which")
+      .arg("bun")
+      .output()
+      .ok()
+      .and_then(|output| {
+        if output.status.success() {
+          String::from_utf8(output.stdout)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        } else {
+          None
+        }
+      })
+      .or_else(|| {
+        Command::new("where")
+          .arg("bun")
+          .output()
+          .ok()
+          .and_then(|output| {
+            if output.status.success() {
+              String::from_utf8(output.stdout)
+                .ok()
+                .map(|s| s.lines().next().unwrap_or("").trim().to_string())
+                .filter(|s| !s.is_empty())
+            } else {
+              None
+            }
+          })
+      })
+  };
+
+  match bun_path {
+    Some(path) => {
+      Command::new(&path)
+        .args(["install", "-f", "--no-cache", "--no-save", &name])
+        .current_dir(dir)
+        .status()
+        .expect("failed to execute process");
+    }
+    None => {
+      eprintln!(
+        "Warning: bun not found in PATH, skipping plugin installation for: {}",
+        name
+      );
+    }
+  }
 }
 
 #[op2(fast)]
