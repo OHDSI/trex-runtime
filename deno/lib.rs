@@ -116,7 +116,10 @@ impl DenoOptions {
   }
 
   pub fn unstable_sloppy_imports(&self) -> bool {
-    self.workspace().has_unstable("sloppy-imports")
+    self
+      .builder
+      .unstable_sloppy_imports
+      .unwrap_or_else(|| self.workspace().has_unstable("sloppy-imports"))
   }
 
   fn byonm_enabled(&self) -> bool {
@@ -361,6 +364,7 @@ pub struct DenoOptionsBuilder {
   config: Option<ConfigMode>,
   type_check_mode: Option<TypeCheckMode>,
   unstable_detect_cjs: Option<bool>,
+  unstable_sloppy_imports: Option<bool>,
   use_byonm: Option<bool>,
   vendor: Option<bool>,
   no_npm: Option<bool>,
@@ -385,6 +389,7 @@ impl DenoOptionsBuilder {
       config: None,
       type_check_mode: None,
       unstable_detect_cjs: None,
+      unstable_sloppy_imports: None,
       use_byonm: None,
       vendor: None,
       no_npm: None,
@@ -437,6 +442,19 @@ impl DenoOptionsBuilder {
 
   pub fn set_unstable_detect_cjs(&mut self, value: Option<bool>) -> &mut Self {
     self.unstable_detect_cjs = value;
+    self
+  }
+
+  pub fn unstable_sloppy_imports(mut self, value: bool) -> Self {
+    self.unstable_sloppy_imports = Some(value);
+    self
+  }
+
+  pub fn set_unstable_sloppy_imports(
+    &mut self,
+    value: Option<bool>,
+  ) -> &mut Self {
+    self.unstable_sloppy_imports = value;
     self
   }
 

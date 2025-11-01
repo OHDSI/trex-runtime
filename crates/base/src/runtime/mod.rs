@@ -580,6 +580,12 @@ where
 
           let mut builder = DenoOptionsBuilder::new();
 
+          // Extract unstableSloppyImports from context if provided
+          if let Some(unstable_sloppy_imports) = context.get("unstableSloppyImports")
+            .and_then(|v| v.as_bool()) {
+            builder.set_unstable_sloppy_imports(Some(unstable_sloppy_imports));
+          }
+
           if let Some(module_url) = main_module_url.as_ref() {
             builder.set_entrypoint(Some(module_url.to_file_path().unwrap()));
           }
