@@ -102,6 +102,7 @@ jobs:
             RUNNER: ubuntu-24.04
           - PKGPATH: ./ext/pgwire
           - PKGPATH: ./ext/trexas
+          - PKGPATH: ./ext/tpm
 
     runs-on: ${{ matrix.RUNNER || needs.pick_runner.outputs.random_runner }}
 
