@@ -16,6 +16,7 @@ duckdb.workspace = true
 duckdb-loadable-macros = "0.1.9"
 libduckdb-sys = { version = "1.4.1", features = ["loadable-extension"] }
 trex_cli = { path = "../../cli", package = "cli" }
+trex = { path = "../trex", package = "trex_core" }
 base = { path = "../../crates/base" }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }

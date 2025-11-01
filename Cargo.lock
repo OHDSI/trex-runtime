@@ -9710,6 +9710,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "trex_core",
 ]
 
 [[package]]

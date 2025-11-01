@@ -1,6 +1,7 @@
 extern crate duckdb;
 extern crate duckdb_loadable_macros;
 extern crate libduckdb_sys;
+extern crate trex;
 
 use duckdb::{
   core::{DataChunkHandle, Inserter, LogicalTypeHandle, LogicalTypeId},
@@ -462,6 +463,15 @@ pub unsafe fn extension_entrypoint(
   con: Connection,
 ) -> Result<(), Box<dyn Error>> {
   store_shared_connection(&con)?;
+
+  if let Some(shared_conn) = get_shared_connection() {
+    if let Err(e) = trex::connection::init_shared_connection(shared_conn) {
+      eprintln!(
+        "Warning: Failed to initialize trex with shared connection: {}",
+        e
+      );
+    }
+  }
 
   con
     .register_scalar_function::<TrexVersionScalar>("trex_version")
