@@ -11,7 +11,7 @@ COPY $BASEPATH/scripts/install_onnx.sh ./scripts
 
 RUN ./scripts/install_onnx.sh $ONNXRUNTIME_VERSION linux linux/amd64 /root/onnxruntime
 
-FROM oven/bun:1-debian AS base
+FROM node:24-bookworm AS base
 
 COPY --from=ort /root/onnxruntime/lib/libonnxruntime.so* /usr/lib/
 
@@ -31,24 +31,21 @@ RUN mkdir -p /usr/local/lib && \
     rm -rf /tmp/libduckdb-linux-amd64.zip /tmp/duckdb && \
     ldconfig
 
-COPY $BASEPATH/scripts/install-bb.sh ./scripts/
-RUN chmod +x ./scripts/install-bb.sh && ./scripts/install-bb.sh
-
 RUN curl -sL https://lib.chdb.io | bash
 
 RUN mkdir -p /usr/src
 
 WORKDIR /usr/src
 
-COPY $BASEPATH/deno.json $BASEPATH/package.json $BASEPATH/bun.lock $BASEPATH/.npmrc $BASEPATH/nbb.edn ./
+COPY $BASEPATH/deno.json $BASEPATH/package.json $BASEPATH/package-lock.json $BASEPATH/.npmrc $BASEPATH/nbb.edn ./
 
-RUN bun install
+RUN npm install -g nbb
+
+RUN npm install
 
 COPY $BASEPATH/src ./src
 COPY $BASEPATH/main ./main
 COPY $BASEPATH/event-worker ./event-worker
-
-RUN bunx nbb -e "(require '[bao.core])" || true
 
 RUN mkdir -p ./cert
 
