@@ -147,10 +147,14 @@ Options:
             (load-trex-extensions conn)
             (println "\n🚀 Starting servers...")
             ;; Start pgwire server
-            (p/let [pgwire-result (query conn (str "SELECT start_pgwire_server('" pgwire-host "', " pgwire-port ", 'password', '') as result"))]
-              (println "PgWire server:" (get-in pgwire-result [0 :result]))
-              (when (re-find #"Error|error" (get-in pgwire-result [0 :result] ""))
-                (throw (js/Error. (str "Failed to start pgwire server: " (get-in pgwire-result [0 :result]))))))
+            (p/let [pgwire-password (.-TREX_SQL_PASSWORD (.-env js/process))]
+              (when-not pgwire-password
+                (js/console.error "Error: TREX_SQL_PASSWORD environment variable is not set")
+                (js/process.exit 1))
+              (p/let [pgwire-result (query conn (str "SELECT start_pgwire_server('" pgwire-host "', " pgwire-port ", '" pgwire-password "', '') as result"))]
+                (println "PgWire server:" (get-in pgwire-result [0 :result]))
+                (when (re-find #"Error|error" (get-in pgwire-result [0 :result] ""))
+                  (throw (js/Error. (str "Failed to start pgwire server: " (get-in pgwire-result [0 :result])))))))
             ;; Start trexas server with config
             (p/let [trexas-result (query conn (str "SELECT trex_start_server_with_config('" trexas-config "') as result"))]
               (println "Trexas server:" (get-in trexas-result [0 :result]))
