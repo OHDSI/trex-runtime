@@ -35,6 +35,19 @@
              (reject err)
              (resolve true))))))))
 
+(defn has-avx-support?
+  []
+  (try
+    (let [os (js/require "os")]
+      (when (or (= (.-arch os) "x64") (= (.arch os) "x64"))
+        (try
+          (let [cpuinfo (fs/readFileSync "/proc/cpuinfo" "utf8")]
+            (boolean (re-find #"\bavx\b" cpuinfo)))
+          (catch :default e
+            false))))
+    (catch :default e
+      false)))
+
 (defn load-trex-extensions
   [conn]
   (p/let [trex-path (path/join "node_modules" "@trex")
@@ -54,11 +67,12 @@
                               (catch :default e []))
                   ext-file (first (filter #(re-find #"\.duckdb_extension$" %) ext-files))
                   ext-path (when ext-file (path/join dir-path ext-file))
-                  ext-name (when ext-file (clojure.string/replace ext-file #"\.duckdb_extension$" ""))]
-            :when ext-path]
+                  ext-name (when ext-file (clojure.string/replace ext-file #"\.duckdb_extension$" ""))
+                  skip-extension? (and (= ext-name "llama") (not (has-avx-support?)))]
+            :when (and ext-path (not skip-extension?))]
         (p/do!
           (js/console.log (str "Loading extension: " ext-name))
-          (execute conn (str "LOAD '" ext-path "'")))))))
+          (execute conn (str "LOAD '" ext-path "'")))))))))
 
 
 ;; Execute immediately when loaded
