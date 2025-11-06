@@ -72,7 +72,7 @@
             :when (and ext-path (not skip-extension?))]
         (p/do!
           (js/console.log (str "Loading extension: " ext-name))
-          (execute conn (str "LOAD '" ext-path "'"))))))
+          (execute conn (str "LOAD '" ext-path "'")))))))
 
 
 ;; Execute immediately when loaded
@@ -204,5 +204,3 @@ Options:
                      (.close conn)
                      (.close db)
                      (js/process.exit 1))))))
-
-
