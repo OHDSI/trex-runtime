@@ -204,6 +204,7 @@ Deno.serve(async (req: Request) => {
       context: {
         useReadSyncFileAPI: true,
         otel: otelAttributes,
+        unstableSloppyImports: true,
       },
       otelConfig: {
         tracing_enabled: true,

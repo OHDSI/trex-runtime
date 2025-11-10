@@ -464,8 +464,11 @@ impl deno_resolver::sloppy_imports::SloppyImportResolverFs
     &self,
     path: &Path,
   ) -> Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry> {
+    eprintln!("DEBUG SloppyImportsCachedFs::stat_sync: path = {:?}", path);
+    
     if let Some(cache) = &self.cache {
       if let Some(entry) = cache.get(path) {
+        eprintln!("DEBUG SloppyImportsCachedFs::stat_sync: cache hit, entry = {:?}", entry);
         return *entry;
       }
     }
@@ -479,6 +482,8 @@ impl deno_resolver::sloppy_imports::SloppyImportResolverFs
         None
       }
     });
+    
+    eprintln!("DEBUG SloppyImportsCachedFs::stat_sync: stat result = {:?}", entry);
 
     if let Some(cache) = &self.cache {
       cache.insert(path.to_owned(), entry);
