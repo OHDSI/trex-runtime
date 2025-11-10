@@ -222,9 +222,11 @@ windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media
 
 [patch.crates-io]
 # Local path patches for Deno 2.5.6 upgrade development
-deno_core = { path = "thridparty/supabase/deno_core" }
+# Note: Can't use local paths for deno_core and rusty_v8 due to workspace complexity
+# Keeping git references for now, will update after fork upgrades
+deno_core = { git = "https://github.com/supabase/deno_core", branch = "324-supabase" }
 eszip = { path = "thridparty/supabase/eszip" }
-v8 = { path = "thridparty/supabase/rusty_v8" }
+v8 = { git = "https://github.com/supabase/rusty_v8", tag = "v130.0.7" }
 
 deno_unsync = { path = "./vendor/deno_unsync" }
 deno_fetch = { path = "./vendor/deno_fetch" }
