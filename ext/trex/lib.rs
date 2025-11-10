@@ -6,7 +6,6 @@ pub mod sql;
 use std::process;
 
 use base64::{engine::general_purpose, Engine as _};
-use chrono;
 use conversions::table::TableName;
 use deno_core::error::AnyError;
 use deno_core::op2;
