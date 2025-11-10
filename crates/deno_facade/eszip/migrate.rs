@@ -504,6 +504,7 @@ mod v2 {
       ca_data: None,
       unsafely_ignore_certificate_errors: None,
       node_modules: None,
+      base_path: None,
     };
 
     v2_eszip.add_opaque_data(

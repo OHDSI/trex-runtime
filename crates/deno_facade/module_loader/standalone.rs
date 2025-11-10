@@ -144,6 +144,7 @@ pub struct SharedModuleLoaderState {
   pub(crate) node_resolver: Arc<NodeResolver>,
   pub(crate) vfs: Arc<FileBackedVfs>,
   pub(crate) sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
+  pub(crate) base_path: Option<String>,
 }
 
 #[derive(Clone)]
@@ -299,8 +300,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
                   "Sloppy imports: final_specifier = {}",
                   final_specifier
                 );
-                let real_path_base =
-                  std::env::current_dir().unwrap().join(stripped);
+                // Use base_path from metadata if available, otherwise fallback to current_dir()
+                let base_dir = if let Some(ref base_path) = self.shared.base_path {
+                  std::path::PathBuf::from(base_path)
+                } else {
+                  std::env::current_dir().unwrap()
+                };
+                let real_path_base = base_dir.join(stripped);
 
                 // Try different path variations for sloppy imports resolution:
                 // 1. If it has .js/.mjs extension, try .ts/.mts variant
@@ -343,8 +349,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
                       if let Ok(resolved_path) =
                         resolved_specifier.to_file_path()
                       {
+                        // Use base_path from metadata if available, otherwise fallback to current_dir()
+                        let base_dir = if let Some(ref base_path) = self.shared.base_path {
+                          std::path::PathBuf::from(base_path)
+                        } else {
+                          std::env::current_dir().unwrap()
+                        };
                         if let Ok(rel_path) = resolved_path
-                          .strip_prefix(std::env::current_dir().unwrap())
+                          .strip_prefix(&base_dir)
                         {
                           let vfs_path = std::path::PathBuf::from(
                             "/var/tmp/sb-compile-trex",
@@ -448,8 +460,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
                     "🔍 Sloppy imports (error fallback): trying specifier = {}",
                     specifier
                   );
-                  let real_path_base =
-                    std::env::current_dir().unwrap().join(stripped);
+                  // Use base_path from metadata if available, otherwise fallback to current_dir()
+                  let base_dir = if let Some(ref base_path) = self.shared.base_path {
+                    std::path::PathBuf::from(base_path)
+                  } else {
+                    std::env::current_dir().unwrap()
+                  };
+                  let real_path_base = base_dir.join(stripped);
 
                   let paths_to_try: Vec<std::path::PathBuf> =
                     if let Some(ext) = real_path_base.extension() {
@@ -486,8 +503,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
                         if let Ok(resolved_path) =
                           resolved_specifier.to_file_path()
                         {
+                          // Use base_path from metadata if available, otherwise fallback to current_dir()
+                          let base_dir = if let Some(ref base_path) = self.shared.base_path {
+                            std::path::PathBuf::from(base_path)
+                          } else {
+                            std::env::current_dir().unwrap()
+                          };
                           if let Ok(rel_path) = resolved_path
-                            .strip_prefix(std::env::current_dir().unwrap())
+                            .strip_prefix(&base_dir)
                           {
                             let vfs_path = std::path::PathBuf::from(
                               "/var/tmp/sb-compile-trex",
@@ -1046,6 +1069,7 @@ pub async fn create_module_loader_for_eszip(
       sloppy_imports_resolver: Some(Arc::new(CliSloppyImportsResolver::new(
         SloppyImportsCachedFs::new(Arc::new(RealFs)),
       ))),
+      base_path: metadata.base_path.clone(),
     }),
   };
 

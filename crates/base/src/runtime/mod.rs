@@ -603,6 +603,10 @@ where
             bail!("could not find an appropriate entrypoint");
           }
           let mut metadata = Metadata::default();
+          // Store the base path for sloppy imports resolution
+          if let Ok(base_path) = base_dir_url.to_file_path() {
+            metadata.base_path = Some(base_path.to_string_lossy().to_string());
+          }
           let eszip = generate_binary_eszip(
             &mut metadata,
             Arc::new(emitter_factory),
