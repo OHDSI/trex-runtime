@@ -589,6 +589,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
     eprintln!("Looking for module in eszip: {}", original_specifier);
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       eprintln!("Module not found in eszip: {}", original_specifier);
+      
+      // Debug: print all available eszip specifiers to help diagnose the issue
+      eprintln!("=== Available eszip specifiers ===");
+      let all_specifiers = self.shared.eszip.eszip.specifiers();
+      for (idx, spec) in all_specifiers.iter().enumerate() {
+        eprintln!("  [{}] {}", idx, spec);
+      }
+      eprintln!("=== Total: {} specifiers ===", all_specifiers.len());
+      
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
         "Module not found: {}",
         original_specifier
