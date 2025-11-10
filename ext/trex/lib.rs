@@ -6,6 +6,7 @@ pub mod sql;
 use std::process;
 
 use base64::{engine::general_purpose, Engine as _};
+use chrono;
 use conversions::table::TableName;
 use deno_core::error::AnyError;
 use deno_core::op2;
@@ -580,11 +581,19 @@ fn field_value_to_json(
     }
     DataType::Date32 => {
       let arr = array.as_any().downcast_ref::<Date32Array>().unwrap();
-      JsonValue::from(arr.value(row))
+      let days = arr.value(row);
+      // Convert to ISO 8601 date string (YYYY-MM-DD)
+      let timestamp = days as i64 * 86400; // seconds in a day
+      let datetime = chrono::DateTime::from_timestamp(timestamp, 0)
+        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+      JsonValue::String(datetime.format("%Y-%m-%d").to_string())
     }
     DataType::Date64 => {
       let arr = array.as_any().downcast_ref::<Date64Array>().unwrap();
-      JsonValue::from(arr.value(row))
+      let millis = arr.value(row);
+      let datetime = chrono::DateTime::from_timestamp_millis(millis)
+        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+      JsonValue::String(datetime.format("%Y-%m-%d").to_string())
     }
     DataType::Time32(_) => {
       let arr = array.as_any().downcast_ref::<Time32SecondArray>().unwrap();
@@ -602,28 +611,39 @@ fn field_value_to_json(
         .as_any()
         .downcast_ref::<TimestampSecondArray>()
         .unwrap();
-      JsonValue::from(arr.value(row))
+      let seconds = arr.value(row);
+      let datetime = chrono::DateTime::from_timestamp(seconds, 0)
+        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+      JsonValue::String(datetime.to_rfc3339())
     }
     DataType::Timestamp(TimeUnit::Millisecond, _) => {
       let arr = array
         .as_any()
         .downcast_ref::<TimestampMillisecondArray>()
         .unwrap();
-      JsonValue::from(arr.value(row))
+      let millis = arr.value(row);
+      let datetime = chrono::DateTime::from_timestamp_millis(millis)
+        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+      JsonValue::String(datetime.to_rfc3339())
     }
     DataType::Timestamp(TimeUnit::Microsecond, _) => {
       let arr = array
         .as_any()
         .downcast_ref::<TimestampMicrosecondArray>()
         .unwrap();
-      JsonValue::from(arr.value(row))
+      let micros = arr.value(row);
+      let datetime = chrono::DateTime::from_timestamp_micros(micros)
+        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH);
+      JsonValue::String(datetime.to_rfc3339())
     }
     DataType::Timestamp(TimeUnit::Nanosecond, _) => {
       let arr = array
         .as_any()
         .downcast_ref::<TimestampNanosecondArray>()
         .unwrap();
-      JsonValue::from(arr.value(row))
+      let nanos = arr.value(row);
+      let datetime = chrono::DateTime::from_timestamp_nanos(nanos);
+      JsonValue::String(datetime.to_rfc3339())
     }
     DataType::Decimal128(_, scale) => {
       let arr = array.as_any().downcast_ref::<Decimal128Array>().unwrap();

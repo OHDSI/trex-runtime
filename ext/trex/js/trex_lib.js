@@ -354,8 +354,15 @@ export class TrexDB {
 					return btoa(binary);
 				};
 				const atlasB64 = toBase64(atlasStr);
-				let query = `select circe_json_to_sql(${atlasB64} , '{"cdmSchema":"${cdmSchema}","resultSchema": "${cdmSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}')`;
-				resolve({sql: op_execute_query(this.__database, query, [])});
+				let query = `select circe_json_to_sql('${atlasB64}' , '{"cdmSchema":"${cdmSchema}","resultSchema": "${cdmSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}')`;
+				const result = op_execute_query(this.__database, query, []);
+				// Extract the SQL from the result - the circe_json_to_sql function returns the SQL as a result
+				if (result && result.length > 0 && result[0]) {
+					const sqlValue = Object.values(result[0])[0];
+					resolve({sql: sqlValue});
+				} else {
+					resolve({sql: ''});
+				}
 
 			} catch(e) {
 				reject(e);
