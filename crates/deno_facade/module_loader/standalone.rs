@@ -370,6 +370,54 @@ impl ModuleLoader for EmbeddedModuleLoader {
           }
         }
 
+        // If the final specifier is a .js/.mjs path but the eszip
+        // contains the TypeScript source (.ts/.mts), prefer returning
+        // the VFS specifier that matches the eszip entry. This handles
+        // cases where runtime imports use .js but the eszip was built
+        // from .ts sources.
+        if let Some(ext) = final_specifier.path().rsplit('.').next() {
+          // crude check for js/mjs endings
+        }
+
+        if let Some(ext) = final_specifier.path().rsplit('.').next() {
+          let ext = ext.to_ascii_lowercase();
+          if ext == "js" || ext == "mjs" {
+            if let Ok(final_path) = final_specifier.to_file_path() {
+              // create a corresponding .ts/.mts VFS path
+              let mut alt_path = final_path.clone();
+              if ext == "js" {
+                alt_path.set_extension("ts");
+              } else {
+                alt_path.set_extension("mts");
+              }
+
+              if let Ok(alt_spec) = ModuleSpecifier::from_file_path(&alt_path) {
+                // map to VFS location
+                if let Ok(rel_path) =
+                  alt_path.strip_prefix(std::env::current_dir().unwrap())
+                {
+                  let vfs_alt =
+                    std::path::PathBuf::from("/var/tmp/sb-compile-trex")
+                      .join(rel_path);
+                  if let Ok(vfs_alt_spec) =
+                    ModuleSpecifier::from_file_path(&vfs_alt)
+                  {
+                    eprintln!("Looking for module in eszip: {}", vfs_alt_spec);
+                    if let Some(_m) =
+                      self.shared.eszip.get_module(&vfs_alt_spec)
+                    {
+                      eprintln!("Found module in eszip: {}", vfs_alt_spec);
+                      return Ok(vfs_alt_spec);
+                    } else {
+                      eprintln!("Module not found in eszip: {}", vfs_alt_spec);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         Ok(final_specifier)
       }
       Err(err)
