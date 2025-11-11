@@ -354,7 +354,7 @@ export class TrexDB {
 					return btoa(binary);
 				};
 				const atlasB64 = toBase64(atlasStr);
-				let query = `select circe_json_to_sql('${atlasB64}' , '{"cdmSchema":"${cdmSchema}","resultSchema": "${cdmSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}')`;
+				let query = `select circe_sql_translate(circe_json_to_sql('${atlasB64}' , '{"cdmSchema":"${cdmSchema}","resultSchema": "${cdmSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}'), 'duckdb') as sql`;
 				const resultStr = op_execute_query(this.__database, query, []);
 				const result = JSON.parse(resultStr);
 				

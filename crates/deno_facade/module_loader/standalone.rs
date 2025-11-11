@@ -295,71 +295,28 @@ impl ModuleLoader for EmbeddedModuleLoader {
               if let Ok(stripped) =
                 path.strip_prefix("/var/tmp/sb-compile-trex")
               {
-                eprintln!(
-                  "Sloppy imports: final_specifier = {}",
-                  final_specifier
-                );
-                let real_path_base =
-                  std::env::current_dir().unwrap().join(stripped);
-
-                // Try different path variations for sloppy imports resolution:
-                // 1. If it has .js/.mjs extension, try .ts/.mts variant
-                // 2. Also try the original path (no extension or already .ts)
-                let paths_to_try: Vec<std::path::PathBuf> =
-                  if let Some(ext) = real_path_base.extension() {
-                    let ext_str = ext.to_string_lossy();
-                    if ext_str == "js" {
-                      let mut ts_path = real_path_base.clone();
-                      ts_path.set_extension("ts");
-                      vec![ts_path, real_path_base]
-                    } else if ext_str == "mjs" {
-                      let mut mts_path = real_path_base.clone();
-                      mts_path.set_extension("mts");
-                      vec![mts_path, real_path_base]
-                    } else {
-                      vec![real_path_base]
-                    }
-                  } else {
-                    vec![real_path_base]
-                  };
-
-                for real_path in paths_to_try {
-                  if let Ok(real_specifier) =
-                    ModuleSpecifier::from_file_path(&real_path)
-                  {
-                    eprintln!(
-                      "Sloppy imports: trying real_specifier = {}",
-                      real_specifier
-                    );
-                    if let Some(resolution) = sloppy_resolver.resolve(
-                      &real_specifier,
-                      SloppyImportsResolutionKind::Execution,
-                    ) {
-                      let resolved_specifier = resolution.into_specifier();
-                      eprintln!(
-                        "Sloppy imports: resolved to = {}",
-                        resolved_specifier
-                      );
-                      if let Ok(resolved_path) =
-                        resolved_specifier.to_file_path()
+                let real_path = std::env::current_dir().unwrap().join(stripped);
+                if let Ok(real_specifier) =
+                  ModuleSpecifier::from_file_path(&real_path)
+                {
+                  if let Some(resolution) = sloppy_resolver.resolve(
+                    &real_specifier,
+                    SloppyImportsResolutionKind::Execution,
+                  ) {
+                    let resolved_specifier = resolution.into_specifier();
+                    // Convert back to VFS path
+                    if let Ok(resolved_path) = resolved_specifier.to_file_path()
+                    {
+                      if let Ok(rel_path) = resolved_path
+                        .strip_prefix(std::env::current_dir().unwrap())
                       {
-                        if let Ok(rel_path) = resolved_path
-                          .strip_prefix(std::env::current_dir().unwrap())
+                        let vfs_path =
+                          std::path::PathBuf::from("/var/tmp/sb-compile-trex")
+                            .join(rel_path);
+                        if let Ok(vfs_specifier) =
+                          ModuleSpecifier::from_file_path(&vfs_path)
                         {
-                          let vfs_path = std::path::PathBuf::from(
-                            "/var/tmp/sb-compile-trex",
-                          )
-                          .join(rel_path);
-
-                          if let Ok(vfs_specifier) =
-                            ModuleSpecifier::from_file_path(&vfs_path)
-                          {
-                            eprintln!(
-                              "Sloppy imports: returning VFS specifier = {}",
-                              vfs_specifier
-                            );
-                            return Ok(vfs_specifier);
-                          }
+                          return Ok(vfs_specifier);
                         }
                       }
                     }
@@ -386,83 +343,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         }
         Err(err.into())
       }
-      Err(err) => {
-        // Try sloppy imports as a fallback for resolution errors
-        if referrer.scheme() == "file" {
-          if let Some(sloppy_resolver) = &self.shared.sloppy_imports_resolver {
-            // Try to resolve the original specifier relative to referrer
-            if let Ok(resolved_url) = referrer.join(specifier) {
-              if let Ok(path) = resolved_url.to_file_path() {
-                if let Ok(stripped) =
-                  path.strip_prefix("/var/tmp/sb-compile-trex")
-                {
-                  eprintln!(
-                    "🔍 Sloppy imports (error fallback): trying specifier = {}",
-                    specifier
-                  );
-                  let real_path_base =
-                    std::env::current_dir().unwrap().join(stripped);
-
-                  let paths_to_try: Vec<std::path::PathBuf> =
-                    if let Some(ext) = real_path_base.extension() {
-                      let ext_str = ext.to_string_lossy();
-                      if ext_str == "js" {
-                        let mut ts_path = real_path_base.clone();
-                        ts_path.set_extension("ts");
-                        vec![ts_path, real_path_base]
-                      } else if ext_str == "mjs" {
-                        let mut mts_path = real_path_base.clone();
-                        mts_path.set_extension("mts");
-                        vec![mts_path, real_path_base]
-                      } else {
-                        vec![real_path_base]
-                      }
-                    } else {
-                      vec![real_path_base]
-                    };
-
-                  for real_path in paths_to_try {
-                    if let Ok(real_specifier) =
-                      ModuleSpecifier::from_file_path(&real_path)
-                    {
-                      eprintln!("Sloppy imports (error fallback): trying real_specifier = {}", real_specifier);
-                      if let Some(resolution) = sloppy_resolver.resolve(
-                        &real_specifier,
-                        SloppyImportsResolutionKind::Execution,
-                      ) {
-                        let resolved_specifier = resolution.into_specifier();
-                        eprintln!(
-                          "Sloppy imports (error fallback): resolved to = {}",
-                          resolved_specifier
-                        );
-                        if let Ok(resolved_path) =
-                          resolved_specifier.to_file_path()
-                        {
-                          if let Ok(rel_path) = resolved_path
-                            .strip_prefix(std::env::current_dir().unwrap())
-                          {
-                            let vfs_path = std::path::PathBuf::from(
-                              "/var/tmp/sb-compile-trex",
-                            )
-                            .join(rel_path);
-                            if let Ok(vfs_specifier) =
-                              ModuleSpecifier::from_file_path(&vfs_path)
-                            {
-                              eprintln!("Sloppy imports (error fallback): returning VFS specifier = {}", vfs_specifier);
-                              return Ok(vfs_specifier);
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        Err(err.into())
-      }
+      Err(err) => Err(err.into()),
     }
   }
 
@@ -538,15 +419,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    eprintln!("Looking for module in eszip: {}", original_specifier);
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
-      eprintln!("Module not found in eszip: {}", original_specifier);
       return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
         "Module not found: {}",
         original_specifier
       ))));
     };
-    eprintln!("Found module in eszip: {}", module.specifier);
 
     let original_specifier = original_specifier.clone();
     let media_type = MediaType::from_specifier(&module.specifier);
