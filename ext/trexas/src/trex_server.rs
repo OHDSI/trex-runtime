@@ -226,7 +226,7 @@ impl TrexServerManagerWrapper {
       threads.insert(server_id.clone(), thread_handle);
     }
 
-    match result_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+    match result_rx.recv_timeout(std::time::Duration::from_secs(180)) {
       Ok(Ok(_)) => Ok(format!("Started Trex server: {}", server_id)),
       Ok(Err(e)) => Err(e),
       Err(_) => Err(anyhow::anyhow!("Server start timeout")),
