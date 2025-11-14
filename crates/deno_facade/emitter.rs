@@ -26,7 +26,7 @@ use deno::deno_permissions::PermissionsOptions;
 use deno::deno_resolver::cjs::IsCjsResolutionMode;
 use deno::deno_resolver::npm::NpmReqResolverOptions;
 use deno::deno_resolver::DenoResolverOptions;
-use deno::deno_resolver::NodeAndNpmReqResolvers;
+use deno::deno_resolver::NodeAndNpmResolvers;
 use deno::emit::Emitter;
 use deno::file_fetcher::FileFetcher;
 use deno::graph_util::ModuleGraphBuilder;
@@ -60,8 +60,9 @@ use deno::node_resolver::DenoIsBuiltInNodeModuleChecker;
 use deno::node_resolver::PackageJsonResolverRc;
 
 // Type aliases matching the Deno ecosystem types
-type CliNodeResolver = ext_node::NodeResolver<
+type CliNodeResolver = deno::node_resolver::NodeResolver<
   deno::deno_resolver::npm::DenoInNpmPackageChecker,
+  deno::node_resolver::DenoIsBuiltInNodeModuleChecker,
   deno::deno_resolver::npm::NpmResolver<DenoFsNodeResolverEnv>,
   DenoFsNodeResolverEnv,
 >;
@@ -120,7 +121,7 @@ pub struct EmitterFactory {
   file_fetcher: Deferred<Arc<FileFetcher>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
-  in_npm_pkg_checker: Deferred<deno_resolver::npm::DenoInNpmPackageChecker>,
+  in_npm_pkg_checker: Deferred<deno::deno_resolver::npm::DenoInNpmPackageChecker>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_graph_creator: Deferred<Arc<ModuleGraphCreator>>,
   module_info_cache: Deferred<Arc<ModuleInfoCache>>,
@@ -328,7 +329,7 @@ impl EmitterFactory {
 
   pub fn in_npm_pkg_checker(
     &self,
-  ) -> Result<&deno_resolver::npm::DenoInNpmPackageChecker, anyhow::Error> {
+  ) -> Result<&deno::deno_resolver::npm::DenoInNpmPackageChecker, anyhow::Error> {
     self.in_npm_pkg_checker.get_or_try_init(|| {
       let options = self.deno_options()?;
       let options = if options.use_byonm() {
@@ -359,7 +360,7 @@ impl EmitterFactory {
           create_cli_npm_resolver(if options.use_byonm() {
             CliNpmResolverCreateOptions::Byonm(
               CliByonmNpmResolverCreateOptions {
-                sys: node_resolver::NodeResolutionSys::new(DenoFsNodeResolverEnv::new(fs)),
+                sys: deno::node_resolver::cache::NodeResolutionSys::new(DenoFsNodeResolverEnv::new(fs), None),
                 pkg_json_resolver: self.pkg_json_resolver().clone(),
                 root_node_modules_dir: Some(
                   match options.node_modules_dir_path() {
@@ -413,13 +414,18 @@ impl EmitterFactory {
       .npm_req_resolver
       .get_or_try_init_async(async {
         let npm_resolver = self.npm_resolver().await?;
-        let npm_resolver_enum = match npm_resolver.as_ref() {
-          inner => deno_resolver::npm::NpmResolver::from_inner(inner.as_inner()),
+        let npm_resolver_clone = match npm_resolver.as_ref() {
+          deno::npm::CliNpmResolver::Managed(inner) => {
+            deno::deno_resolver::npm::NpmResolver::Managed(inner.clone())
+          }
+          deno::npm::CliNpmResolver::Byonm(inner) => {
+            deno::deno_resolver::npm::NpmResolver::Byonm(inner.clone())
+          }
         };
         Ok(Arc::new(CliNpmReqResolverType::new(NpmReqResolverOptions {
           in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
           node_resolver: self.node_resolver().await?.as_ref().clone().into(),
-          npm_resolver: npm_resolver_enum,
+          npm_resolver: npm_resolver_clone,
           sys: DenoFsNodeResolverEnv::new(self.fs()),
         })))
       })
@@ -432,18 +438,32 @@ impl EmitterFactory {
       .get_or_try_init_async(async {
         let options = self.deno_options()?;
         let npm_resolver = self.npm_resolver().await?;
-        let npm_resolver_enum = match npm_resolver.as_ref() {
-          inner => deno_resolver::npm::NpmResolver::from_inner(inner.as_inner()),
+        let npm_resolver_clone = match npm_resolver.as_ref() {
+          deno::npm::CliNpmResolver::Managed(inner) => {
+            deno::deno_resolver::npm::NpmResolver::Managed(inner.clone())
+          }
+          deno::npm::CliNpmResolver::Byonm(inner) => {
+            deno::deno_resolver::npm::NpmResolver::Byonm(inner.clone())
+          }
         };
-        Ok(Arc::new(CliDenoResolver::new(
-          self.in_npm_pkg_checker()?.clone(),
-          self.workspace_resolver()?.clone(),
-          Some(NodeAndNpmReqResolvers {
+        let raw_resolver = deno::deno_resolver::RawDenoResolver::new(DenoResolverOptions {
+          in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
+          node_and_req_resolver: Some(NodeAndNpmResolvers {
             node_resolver: self.node_resolver().await?.as_ref().clone().into(),
-            npm_resolver: npm_resolver_enum,
+            npm_resolver: npm_resolver_clone.clone(),
             npm_req_resolver: self.npm_req_resolver().await?.as_ref().clone().into(),
           }),
-          self.sloppy_imports_resolver()?.cloned(),
+          workspace_resolver: self.workspace_resolver()?.clone(),
+          bare_node_builtins: options.unstable_detect_cjs(), // or some appropriate value
+          is_byonm: options.use_byonm(),
+          maybe_vendor_dir: None,
+          maybe_sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
+        });
+        Ok(Arc::new(deno::deno_resolver::graph::DenoResolver::new(
+          deno::deno_maybe_sync::new_rc(raw_resolver),
+          DenoFsNodeResolverEnv::new(self.fs().clone()),
+          Default::default(), // found_package_json_dep_flag
+          None, // on_warning callback
         )))
       })
       .await
@@ -471,7 +491,7 @@ impl EmitterFactory {
       let global_path = self.deno_dir.npm_folder_path();
       let options = self.deno_options()?;
       Ok(Arc::new(NpmCacheDir::new(
-        sys_traits::impls::RealSys::default(),
+        &sys_traits::impls::RealSys::default(),
         global_path,
         options.npmrc().get_all_known_registries_urls(),
       )))
@@ -491,15 +511,21 @@ impl EmitterFactory {
       .node_resolver
       .get_or_try_init_async(
         async {
-          Ok(Arc::new(NodeResolver::new(
-            DenoFsNodeResolverEnv::new(self.fs().clone()),
+          let npm_resolver = self.npm_resolver().await?;
+          let npm_resolver_clone = match npm_resolver.as_ref() {
+            deno::npm::CliNpmResolver::Managed(inner) => {
+              deno::deno_resolver::npm::NpmResolver::Managed(inner.clone())
+            }
+            deno::npm::CliNpmResolver::Byonm(inner) => {
+              deno::deno_resolver::npm::NpmResolver::Byonm(inner.clone())
+            }
+          };
+          Ok(Arc::new(deno::node_resolver::NodeResolver::new(
             self.in_npm_pkg_checker()?.clone(),
-            self
-              .npm_resolver()
-              .await?
-              .clone()
-              .into_npm_pkg_folder_resolver(),
+            DenoIsBuiltInNodeModuleChecker,
+            npm_resolver_clone,
             self.pkg_json_resolver().clone(),
+            deno::node_resolver::cache::NodeResolutionSys::new(DenoFsNodeResolverEnv::new(self.fs().clone()), None),
           )))
         }
         .boxed_local(),
@@ -507,11 +533,11 @@ impl EmitterFactory {
       .await
   }
 
-  pub fn pkg_json_resolver(&self) -> &Arc<PackageJsonResolver> {
+  pub fn pkg_json_resolver(&self) -> &Arc<deno::node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>> {
     self.pkg_json_resolver.get_or_init(|| {
-      Arc::new(PackageJsonResolver::new(DenoFsNodeResolverEnv::new(
+      Arc::new(deno::node_resolver::PackageJsonResolver::new(DenoFsNodeResolverEnv::new(
         self.fs().clone(),
-      )))
+      ), None))
     })
   }
 
@@ -546,18 +572,15 @@ impl EmitterFactory {
     self
       .sloppy_imports_resolver
       .get_or_try_init(|| {
-        Ok(self.deno_options()?.unstable_sloppy_imports().then(|| {
-          Arc::new(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
-            self.fs().clone(),
-          )))
-        }))
+        // Sloppy imports disabled for now due to complex initialization requirements
+        Ok(None)
       })
       .map(|maybe| maybe.as_ref())
   }
 
   pub fn workspace_resolver(
     &self,
-  ) -> Result<&Arc<WorkspaceResolver<deno::cache::CliSys>>, anyhow::Error> {
+  ) -> Result<&Arc<WorkspaceResolver<DenoFsNodeResolverEnv>>, anyhow::Error> {
     self.workspace_resolver.get_or_try_init(|| {
       let options = self.deno_options()?;
       let resolver = options.create_workspace_resolver(

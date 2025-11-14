@@ -132,13 +132,13 @@ impl WorkspaceEszip {
 pub struct SharedModuleLoaderState {
   pub(crate) root_path: PathBuf,
   pub(crate) eszip: WorkspaceEszip,
-  pub(crate) workspace_resolver: WorkspaceResolver<deno::cache::CliSys>,
+  pub(crate) workspace_resolver: WorkspaceResolver<DenoFsNodeResolverEnv>,
   pub(crate) cjs_tracker: Arc<CjsTracker>,
   pub(crate) node_code_translator: Arc<CliNodeCodeTranslator>,
   pub(crate) npm_module_loader: Arc<NpmModuleLoader>,
-  pub(crate) npm_req_resolver: Arc<CliNpmReqResolver>,
+  pub(crate) npm_req_resolver: Arc<dyn deno::resolver::CliNpmReqResolver>,
   pub(crate) npm_resolver: Arc<dyn CliNpmResolver>,
-  pub(crate) node_resolver: Arc<NodeResolver>,
+  pub(crate) node_resolver: Arc<CliNodeResolver>,
   pub(crate) vfs: Arc<FileBackedVfs>,
 }
 
@@ -155,16 +155,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
     specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
-        return Err(anyhow!(format!(
+        return Err(JsErrorBox::type_error(format!(
           "Expected to resolve main module, got {:?} instead.",
           kind
         )));
       }
 
-      deno_core::resolve_path(".", &self.shared.root_path)?
+      deno_core::resolve_path(".", &self.shared.root_path)
+        .map_err(|e| JsErrorBox::type_error(format!("{:#}", e)))?
     } else {
       ModuleSpecifier::parse(referrer).map_err(|err| {
         JsErrorBox::type_error(format!("Referrer uses invalid specifier: {}", err))
@@ -173,7 +174,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let referrer_kind = if self
       .shared
       .cjs_tracker
-      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
+      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))
+      .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?
     {
       ResolutionMode::Require
     } else {
@@ -196,7 +198,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     let mapped_resolution =
-      self.shared.workspace_resolver.resolve(specifier, &referrer);
+      self.shared.workspace_resolver.resolve(specifier, &referrer, deno::deno_resolver::workspace::ResolutionKind::Execution);
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -223,7 +225,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         sub_path,
         alias,
         ..
-      }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
+      }) => match dep_result.as_ref().map_err(|e| JsErrorBox::generic(format!("{:#}", AnyError::from(e.clone()))))? {
         PackageJsonDepValue::Req(req) => self
           .shared
           .npm_req_resolver
@@ -234,7 +236,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(AnyError::from),
+          .map_err(|e| JsErrorBox::generic(format!("{:#}", AnyError::from(e)))),
 
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
@@ -243,7 +245,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
               alias,
               version_req,
-            )?;
+            )
+            .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
           Ok(
             self
               .shared
@@ -260,7 +263,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
         PackageJsonDepValue::File(_) => {
           // file: protocol dependencies are not supported in standalone mode
-          Err(AnyError::msg(format!(
+          Err(JsErrorBox::type_error(format!(
             "file: protocol dependencies are not supported in package.json (dependency: {})",
             alias
           )))
@@ -268,14 +271,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
         PackageJsonDepValue::JsrReq(_) => {
           // jsr: protocol dependencies are not supported in standalone mode
-          Err(AnyError::msg(format!(
+          Err(JsErrorBox::type_error(format!(
             "jsr: protocol dependencies are not supported in package.json (dependency: {})",
             alias
           )))
         }
       },
-      Ok(MappedResolution::Normal { specifier, .. })
-      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
+      Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -313,15 +315,15 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if let Ok(Some(res)) = maybe_res {
           return Ok(res.into_url());
         }
-        Err(err.into())
+        Err(JsErrorBox::type_error(format!("{:#}", err)))
       }
-      Err(err) => Err(err.into()),
+      Err(err) => Err(JsErrorBox::type_error(format!("{:#}", err))),
     }
   }
 
   fn get_host_defined_options<'s>(
     &self,
-    scope: &mut deno_core::v8::HandleScope<'s>,
+    scope: &mut deno_core::v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
     let name = deno_core::ModuleSpecifier::parse(name).ok()?;
@@ -336,24 +338,38 @@ impl ModuleLoader for EmbeddedModuleLoader {
   fn load(
     &self,
     original_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
+    maybe_referrer: Option<&deno_core::ModuleLoadReferrer>,
     _is_dynamic: bool,
     _requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     let include_source_map = self.include_source_map;
 
     if original_specifier.scheme() == "data" {
-      let data_url_text =
-        match deno_graph::source::RawDataUrl::parse(original_specifier)
-          .and_then(|url| url.decode())
-        {
-          Ok(response) => response,
-          Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
-              format!("{:#}", err),
-            )));
+      let data_url_text = match data_url::DataUrl::process(original_specifier.as_str()) {
+        Ok(data_url) => {
+          let (bytes, _) = match data_url.decode_to_vec() {
+            Ok(result) => result,
+            Err(err) => {
+              return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
+                format!("Failed to decode data URL: {:#}", err),
+              )));
+            }
+          };
+          match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(err) => {
+              return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
+                format!("Data URL is not valid UTF-8: {:#}", err),
+              )));
+            }
           }
-        };
+        }
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
+            format!("Invalid data URL: {:#}", err),
+          )));
+        }
+      };
 
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
@@ -373,8 +389,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let code_source = npm_module_loader
-            .load(&original_specifier, maybe_referrer.as_ref())
-            .await?;
+            .load(&original_specifier, maybe_referrer.as_ref().map(|r| &r.specifier))
+            .await
+            .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
 
           Ok(deno_core::ModuleSource::new_with_redirect(
             match code_source.media_type {
@@ -440,7 +457,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
               &module.specifier,
               Some(code.to_string().into()),
             )
-            .await?;
+            .await
+            .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
           let module_source = match source {
             Cow::Owned(source) => ModuleSourceCode::String(source.into()),
             Cow::Borrowed(source) => {
@@ -513,32 +531,34 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
     permissions: &mut dyn ext_node::NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    if self.shared.vfs.open_file(path).is_ok() {
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
+    if self.shared.vfs.open_file(&path).is_ok() {
       // allow reading if the file is in the virtual fs
-      return Ok(Cow::Borrowed(path));
+      return Ok(path);
     }
 
     self
       .shared
       .npm_resolver
-      .ensure_read_permission(permissions, path)
+      .ensure_read_permission(permissions, path.as_ref())
+      .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
+    Ok(path)
   }
 
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, AnyError> {
-    let file_entry = self.shared.vfs.open_file(path)?;
-    let file_bytes = file_entry.read_all_sync()?;
-    Ok(from_utf8_lossy_cow(file_bytes))
+  ) -> Result<deno_core::FastString, JsErrorBox> {
+    let file_entry = self.shared.vfs.open_file(path).map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
+    let file_bytes = file_entry.read_all_sync().map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
+    Ok(from_utf8_lossy_cow(file_bytes).to_string().into())
   }
 
   fn is_maybe_cjs(
     &self,
     specifier: &Url,
-  ) -> Result<bool, deno::node_resolver::errors::ClosestPkgJsonError> {
+  ) -> Result<bool, deno::node_resolver::errors::PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
@@ -555,10 +575,10 @@ struct StandaloneRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox> {
     self.cell.get_or_try_init(|| {
       get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
-        .map_err(|err| err.into())
+        .map_err(|err| JsErrorBox::generic(format!("{:#}", err)))
     })
   }
 }

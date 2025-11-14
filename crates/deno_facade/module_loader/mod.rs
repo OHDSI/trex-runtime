@@ -7,6 +7,8 @@ use deno::PermissionsContainer;
 use deno_core::ModuleLoader;
 use eszip_trait::EszipStaticFiles;
 use ext_node::NodeExtInitServices;
+use deno::deno_resolver::npm::DenoInNpmPackageChecker;
+use ext_node::DenoFsNodeResolverEnv;
 use fs::virtual_fs::FileBackedVfs;
 use url::Url;
 
@@ -18,7 +20,7 @@ pub mod util;
 pub struct RuntimeProviders {
   pub migrated: bool,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: NodeExtInitServices,
+  pub node_services: NodeExtInitServices<DenoInNpmPackageChecker, deno::deno_resolver::npm::NpmResolver<DenoFsNodeResolverEnv>, DenoFsNodeResolverEnv>,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub permissions: PermissionsContainer,
   pub metadata: Metadata,
