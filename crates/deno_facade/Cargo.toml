@@ -12,6 +12,8 @@ path = "lib.rs"
 deno.workspace = true
 deno_config.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
+sys_traits.workspace = true
 
 eszip_trait.workspace = true
 fs.workspace = true

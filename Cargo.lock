@@ -2514,6 +2514,7 @@ dependencies = [
  "rkyv",
  "scopeguard",
  "serde",
+ "sys_traits",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
@@ -3818,7 +3819,6 @@ checksum = "d817e038c30374a4bcb22f94d0a8a0e216958d4c3dcde369b1439fec4bdda6e6"
 [[package]]
 name = "eszip"
 version = "0.104.0"
-source = "git+https://github.com/p-hoffmann/eszip?branch=supabase-v0.104.0#f1e72e0269e3e45bb4d3e472c463afb0c8ec9744"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3894,6 +3894,7 @@ version = "0.1.0"
 dependencies = [
  "deno",
  "deno_core",
+ "deno_error",
  "ext_node",
 ]
 

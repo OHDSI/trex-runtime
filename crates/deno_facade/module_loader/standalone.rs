@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsCreateDirAll;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -10,7 +12,6 @@ use base64::Engine;
 use deno::args::CacheSetting;
 use deno::args::NpmInstallDepsProvider;
 use deno::cache::Caches;
-use deno::cache::DenoCacheEnvFsAdapter;
 use deno::cache::DenoDirProvider;
 use deno::cache::NodeAnalysisCache;
 use deno::deno_ast::MediaType;
@@ -49,11 +50,11 @@ use deno::resolver::NpmModuleLoader;
 use deno::standalone::binary;
 use deno::util::text_encoding::from_utf8_lossy_cow;
 use deno::PermissionsContainer;
-use deno_config::workspace::MappedResolution;
+use deno::deno_resolver::workspace::MappedResolution;
+use deno::deno_resolver::workspace::WorkspaceResolver;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_resolver::workspace::WorkspaceResolver;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::FastString;
@@ -166,7 +167,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       deno_core::resolve_path(".", &self.shared.root_path)?
     } else {
       ModuleSpecifier::parse(referrer).map_err(|err| {
-        type_error(format!("Referrer uses invalid specifier: {}", err))
+        JsErrorBox::type_error(format!("Referrer uses invalid specifier: {}", err))
       })?
     };
     let referrer_kind = if self
@@ -348,7 +349,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         {
           Ok(response) => response,
           Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
+            return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
               format!("{:#}", err),
             )));
           }
@@ -391,7 +392,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     }
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
-      return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+      return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(format!(
         "Module not found: {}",
         original_specifier
       ))));
@@ -406,7 +407,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     {
       Ok(is_maybe_cjs) => is_maybe_cjs,
       Err(err) => {
-        return deno_core::ModuleLoadResponse::Sync(Err(type_error(format!(
+        return deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(format!(
           "{:?}",
           err
         ))));
@@ -416,7 +417,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     deno_core::ModuleLoadResponse::Async(
       async move {
         let code = module.inner.source().await.ok_or_else(|| {
-          type_error(format!("Module not found: {}", original_specifier))
+          JsErrorBox::type_error(format!("Module not found: {}", original_specifier))
         })?;
 
         if module.inner.kind == ModuleKind::Wasm {
@@ -430,7 +431,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
         }
 
         let code = arc_u8_to_arc_str(code)
-          .map_err(|_| type_error("Module source is not utf-8"))?;
+          .map_err(|_| JsErrorBox::type_error("Module source is not utf-8"))?;
 
         if is_maybe_cjs {
           let source = shared
@@ -490,7 +491,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               ModuleKind::JavaScript => ModuleType::JavaScript,
               ModuleKind::Json => ModuleType::Json,
               ModuleKind::Jsonc => {
-                return Err(type_error("jsonc modules not supported"))
+                return Err(JsErrorBox::type_error("jsonc modules not supported"))
               }
               ModuleKind::OpaqueData | ModuleKind::Wasm => {
                 unreachable!();
@@ -646,7 +647,7 @@ pub async fn create_module_loader_for_eszip(
   };
 
   let npm_cache_dir = Arc::new(NpmCacheDir::new(
-    &DenoCacheEnvFsAdapter(fs.as_ref()),
+    sys_traits::impls::RealSys::default(),
     root_node_modules_path,
     npmrc.get_all_known_registries_urls(),
   ));

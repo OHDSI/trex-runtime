@@ -648,7 +648,7 @@ impl EszipDataSection {
       modules,
       specifier,
       |module| match module {
-        EszipV2Module::Module { ref mut source, .. } => source,
+        EszipV2Module::Module { source, .. } => source,
         _ => panic!("invalid module type"),
       },
       new_slot_fn,
@@ -667,7 +667,7 @@ impl EszipDataSection {
       specifier,
       |module| match module {
         EszipV2Module::Module {
-          ref mut source_map, ..
+          source_map, ..
         } => source_map,
         _ => panic!("invalid module type"),
       },
@@ -730,7 +730,7 @@ pub async fn generate_binary_eszip(
           let workspace = deno_options.workspace();
           workspace
             .root_pkg_json()
-            .and_then(|it| it.main(deno_package_json::NodeModuleKind::Cjs))
+            .and_then(|it| it.main())
             .map(|it| CreateGraphArgs::File(workspace.root_dir_path().join(it)))
         })
         .flatten()

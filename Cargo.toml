@@ -267,7 +267,8 @@ windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media
 [patch.crates-io]
 # Deno 2.5.6 upgrade - using p-hoffmann forks with upgraded dependencies
 deno_core = { git = "https://github.com/p-hoffmann/deno_core", branch = "supabase-v0.363.0" }
-eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.104.0" }
+# Using local eszip with Section method visibility fixes
+eszip = { path = "./thridparty/eszip" }
 # Using local rusty_v8 with temporal_rs v0.1.1 fix
 v8 = { path = "./thridparty/supabase/rusty_v8" }
 

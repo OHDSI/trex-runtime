@@ -879,7 +879,7 @@ deno_core::extension!(deno_node,
   },
 );
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DenoFsNodeResolverEnv {
   fs: deno_fs::FileSystemRc,
 }
@@ -1119,6 +1119,18 @@ impl sys_traits::BaseFsReadDir for DenoFsNodeResolverEnv {
     });
 
     Ok(Box::new(iter))
+  }
+}
+
+impl sys_traits::EnvCurrentDir for DenoFsNodeResolverEnv {
+  fn env_current_dir(&self) -> std::io::Result<std::path::PathBuf> {
+    std::env::current_dir()
+  }
+}
+
+impl sys_traits::BaseEnvVar for DenoFsNodeResolverEnv {
+  fn base_env_var_os(&self, key: &std::ffi::OsStr) -> Option<std::ffi::OsString> {
+    std::env::var_os(key)
   }
 }
 

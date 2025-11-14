@@ -127,7 +127,7 @@ impl Metadata {
       };
 
       lookup.insert(
-        normalize_path(mapped_base_dir_path.as_ref().join(path)),
+        normalize_path(mapped_base_dir_path.as_ref().join(path).into()).to_path_buf(),
         specifier.to_string(),
       );
     }

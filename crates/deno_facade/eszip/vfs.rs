@@ -132,7 +132,7 @@ where
       // traverse and add all the node_modules directories in the workspace
       let mut pending_dirs = VecDeque::new();
       pending_dirs
-        .push_back(deno_options.workspace().root_dir().to_file_path().unwrap());
+        .push_back(deno_options.workspace().root_dir().dir_path().to_path_buf());
       while let Some(pending_dir) = pending_dirs.pop_front() {
         let mut entries = std::fs::read_dir(&pending_dir)
           .with_context(|| {
