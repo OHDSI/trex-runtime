@@ -1,7 +1,5 @@
 use deno::PermissionsContainer;
-use deno_core::error::not_supported;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 use deno_core::op2;
 use deno_core::OpState;
 use ext_node::NODE_ENV_VAR_ALLOWLIST;
@@ -31,13 +29,13 @@ fn op_set_env(
   _state: &mut OpState,
   #[string] _key: String,
   #[string] _value: String,
-) -> Result<(), AnyError> {
-  Err(not_supported())
+) -> Result<(), JsErrorBox> {
+  Err(JsErrorBox::not_supported("Setting environment variables is not supported"))
 }
 
 #[op2]
 #[serde]
-fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
+fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, JsErrorBox> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
   let env_vars = state.borrow::<EnvVars>();
   Ok(env_vars.0.clone())
@@ -48,7 +46,7 @@ fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
 fn op_get_env(
   state: &mut OpState,
   #[string] key: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, JsErrorBox> {
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
@@ -56,11 +54,11 @@ fn op_get_env(
   }
 
   if key.is_empty() {
-    return Err(type_error("Key is an empty string."));
+    return Err(JsErrorBox::type_error("Key is an empty string."));
   }
 
   if key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error(format!(
+    return Err(JsErrorBox::type_error(format!(
       "Key contains invalid characters: {:?}",
       key
     )));

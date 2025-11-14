@@ -425,11 +425,11 @@ impl deno_fs::FileSystem for StaticFs {
         path_ref.to_path_buf()
       };
 
-      let normalized = normalize_path(path_buf);
+      let normalized = normalize_path(Cow::Owned(path_buf));
 
       if let Some(file) = self
         .static_files
-        .get(&normalized)
+        .get(normalized.as_ref())
         .and_then(|it| eszip.ensure_module(it))
       {
         let Some(res) = std::thread::scope(|s| {
@@ -463,7 +463,8 @@ impl deno_fs::FileSystem for StaticFs {
     &'a self,
     path: CheckedPathBuf,
   ) -> FsResult<Cow<'static, [u8]>> {
-    self.read_file_sync(&path)
+    let checked = CheckedPath::unsafe_new(Cow::Borrowed(&*path));
+    self.read_file_sync(&checked)
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {

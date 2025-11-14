@@ -159,7 +159,7 @@ impl Quota {
     self.make_sync_fn()()
   }
 
-  fn make_sync_fn(&self) -> impl FnOnce() -> FsResult<usize> {
+  fn make_sync_fn(&self) -> impl FnOnce() -> FsResult<usize> + Send + 'static {
     fn get_dir_size(path: PathBuf) -> io::Result<u64> {
       use std::fs;
 

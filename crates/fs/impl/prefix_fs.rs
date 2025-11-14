@@ -447,15 +447,21 @@ where
     let oldpath_matches = (&**oldpath).starts_with(&self.prefix);
     let newpath_matches = (&**newpath).starts_with(&self.prefix);
     if oldpath_matches || newpath_matches {
+      let old_stripped;
       let old = if oldpath_matches {
-        let stripped = (&**oldpath).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        old_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**oldpath).strip_prefix(&self.prefix).unwrap()
+        ));
+        &old_stripped
       } else {
         oldpath
       };
+      let new_stripped;
       let new = if newpath_matches {
-        let stripped = (&**newpath).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        new_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**newpath).strip_prefix(&self.prefix).unwrap()
+        ));
+        &new_stripped
       } else {
         newpath
       };
@@ -503,15 +509,21 @@ where
     let path_matches = (&**path).starts_with(&self.prefix);
     let new_path_matches = (&**new_path).starts_with(&self.prefix);
     if path_matches || new_path_matches {
+      let p_stripped;
       let p = if path_matches {
-        let stripped = (&**path).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        p_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**path).strip_prefix(&self.prefix).unwrap()
+        ));
+        &p_stripped
       } else {
         path
       };
+      let np_stripped;
       let np = if new_path_matches {
-        let stripped = (&**new_path).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        np_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**new_path).strip_prefix(&self.prefix).unwrap()
+        ));
+        &np_stripped
       } else {
         new_path
       };
@@ -554,7 +566,7 @@ where
     if (&**path).starts_with(&self.prefix) {
       let stripped = (&**path).strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
-      self.fs.stat_sync(checked)
+      self.fs.stat_sync(&checked)
     } else {
       self
         .base_fs
@@ -581,7 +593,7 @@ where
     if (&**path).starts_with(&self.prefix) {
       let stripped = (&**path).strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
-      self.fs.lstat_sync(checked)
+      self.fs.lstat_sync(&checked)
     } else {
       self
         .base_fs
@@ -608,7 +620,7 @@ where
     if (&**path).starts_with(&self.prefix) {
       let stripped = (&**path).strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
-      self.fs.realpath_sync(checked)
+      self.fs.realpath_sync(&checked)
     } else {
       self
         .base_fs
@@ -635,7 +647,7 @@ where
     if (&**path).starts_with(&self.prefix) {
       let stripped = (&**path).strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
-      self.fs.read_dir_sync(checked)
+      self.fs.read_dir_sync(&checked)
     } else {
       self
         .base_fs
@@ -663,15 +675,21 @@ where
     let oldpath_matches = (&**oldpath).starts_with(&self.prefix);
     let newpath_matches = (&**newpath).starts_with(&self.prefix);
     if oldpath_matches || newpath_matches {
+      let old_stripped;
       let old = if oldpath_matches {
-        let stripped = (&**oldpath).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        old_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**oldpath).strip_prefix(&self.prefix).unwrap()
+        ));
+        &old_stripped
       } else {
         oldpath
       };
+      let new_stripped;
       let new = if newpath_matches {
-        let stripped = (&**newpath).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        new_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**newpath).strip_prefix(&self.prefix).unwrap()
+        ));
+        &new_stripped
       } else {
         newpath
       };
@@ -719,15 +737,21 @@ where
     let oldpath_matches = (&**oldpath).starts_with(&self.prefix);
     let newpath_matches = (&**newpath).starts_with(&self.prefix);
     if oldpath_matches || newpath_matches {
+      let old_stripped;
       let old = if oldpath_matches {
-        let stripped = (&**oldpath).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        old_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**oldpath).strip_prefix(&self.prefix).unwrap()
+        ));
+        &old_stripped
       } else {
         oldpath
       };
+      let new_stripped;
       let new = if newpath_matches {
-        let stripped = (&**newpath).strip_prefix(&self.prefix).unwrap();
-        CheckedPath::unsafe_new(Cow::Borrowed(stripped))
+        new_stripped = CheckedPath::unsafe_new(Cow::Borrowed(
+          (&**newpath).strip_prefix(&self.prefix).unwrap()
+        ));
+        &new_stripped
       } else {
         newpath
       };
@@ -837,7 +861,7 @@ where
     if (&**path).starts_with(&self.prefix) {
       let stripped = (&**path).strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
-      self.fs.read_link_sync(checked)
+      self.fs.read_link_sync(&checked)
     } else {
       self
         .base_fs
