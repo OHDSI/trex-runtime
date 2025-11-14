@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use deno_core::error::bad_resource;
-use deno_core::error::bad_resource_id;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -22,7 +19,7 @@ deno_core::extension!(runtime_http_start, ops = [op_http_start]);
 fn op_http_start(
   state: &mut OpState,
   #[smi] stream_rid: ResourceId,
-) -> Result<(ResourceId, ResourceId), AnyError> {
+) -> Result<(ResourceId, ResourceId), crate::RuntimeError> {
   if let Ok(resource_rc) =
     state.resource_table.take::<TokioDuplexResource>(stream_rid)
   {
@@ -30,7 +27,7 @@ fn op_http_start(
     // process of starting a HTTP server on top of this connection, so we just return a bad
     // resource error. See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
-      .map_err(|_| bad_resource("Duplex stream is currently in use"))?;
+      .map_err(|_| crate::RuntimeError::Runtime("Duplex stream is currently in use".to_string()))?;
 
     let (id, stream) = resource.into_inner();
     let token = state
@@ -51,5 +48,5 @@ fn op_http_start(
     return Ok((conn, conn_watcher));
   }
 
-  Err(bad_resource_id())
+  Err(crate::RuntimeError::Runtime("Bad resource ID".to_string()).into())
 }

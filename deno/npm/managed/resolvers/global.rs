@@ -18,6 +18,7 @@ use ext_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
+use node_resolver::UrlOrPathRef;
 
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
@@ -75,16 +76,17 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     use deno_npm::resolution::PackageNotFoundFromReferrerError;
+    let referrer_url = referrer.url()?;
     let Some(referrer_cache_folder_id) = self
       .cache
-      .resolve_package_folder_id_from_specifier(referrer)
+      .resolve_package_folder_id_from_specifier(referrer_url)
     else {
       return Err(
         ReferrerNotFoundError {
-          referrer: referrer.clone(),
+          referrer: referrer.display(),
           referrer_extra: None,
         }
         .into(),
@@ -99,7 +101,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         None => Err(
           PackageNotFoundError {
             package_name: name.to_string(),
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             referrer_extra: Some(format!(
               "{} -> {}",
               referrer_cache_folder_id,
@@ -112,7 +114,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       Err(err) => match *err {
         PackageNotFoundFromReferrerError::Referrer(cache_folder_id) => Err(
           ReferrerNotFoundError {
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             referrer_extra: Some(cache_folder_id.to_string()),
           }
           .into(),
@@ -123,7 +125,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         } => Err(
           PackageNotFoundError {
             package_name: name,
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             referrer_extra: Some(cache_folder_id_referrer.to_string()),
           }
           .into(),

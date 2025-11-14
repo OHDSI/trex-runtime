@@ -1,11 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::op2;
-use deno_core::v8;
+use std::ptr::NonNull;
+
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
-use std::ptr::NonNull;
+use deno_core::op2;
+use deno_core::v8;
+use deno_error::JsErrorBox;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -16,11 +18,10 @@ pub fn op_v8_cached_data_version_tag() -> u32 {
 
 #[op2(fast)]
 pub fn op_v8_get_heap_statistics(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[buffer] buffer: &mut [f64],
 ) {
-  let mut stats = v8::HeapStatistics::default();
-  scope.get_heap_statistics(&mut stats);
+  let stats = scope.get_heap_statistics();
 
   buffer[0] = stats.total_heap_size() as f64;
   buffer[1] = stats.total_heap_size_executable() as f64;
@@ -30,7 +31,7 @@ pub fn op_v8_get_heap_statistics(
   buffer[5] = stats.heap_size_limit() as f64;
   buffer[6] = stats.malloced_memory() as f64;
   buffer[7] = stats.peak_malloced_memory() as f64;
-  buffer[8] = stats.does_zap_garbage() as f64;
+  buffer[8] = if stats.does_zap_garbage() { 1.0 } else { 0.0 };
   buffer[9] = stats.number_of_native_contexts() as f64;
   buffer[10] = stats.number_of_detached_contexts() as f64;
   buffer[11] = stats.total_global_handles_size() as f64;
@@ -46,14 +47,19 @@ pub struct SerializerDelegate {
   obj: v8::Global<v8::Object>,
 }
 
-impl<'a> v8::cppgc::GarbageCollected for Serializer<'a> {
-  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+// SAFETY: we're sure this can be GCed
+unsafe impl v8::cppgc::GarbageCollected for Serializer<'_> {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Serializer"
+  }
 }
 
 impl SerializerDelegate {
   fn obj<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Object> {
     v8::Local::new(scope, &self.obj)
   }
@@ -62,33 +68,35 @@ impl SerializerDelegate {
 impl v8::ValueSerializerImpl for SerializerDelegate {
   fn get_shared_array_buffer_id<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     shared_array_buffer: v8::Local<'s, v8::SharedArrayBuffer>,
   ) -> Option<u32> {
     let obj = self.obj(scope);
     let key = FastString::from_static("_getSharedArrayBufferId")
       .v8_string(scope)
+      .unwrap()
       .into();
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(fun) = v.try_cast::<v8::Function>() {
-        return fun
-          .call(scope, obj.into(), &[shared_array_buffer.into()])
-          .and_then(|ret| ret.uint32_value(scope));
-      }
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(fun) = v.try_cast::<v8::Function>()
+    {
+      return fun
+        .call(scope, obj.into(), &[shared_array_buffer.into()])
+        .and_then(|ret| ret.uint32_value(scope));
     }
     None
   }
-  fn has_custom_host_object(&self, _isolate: &mut v8::Isolate) -> bool {
+  fn has_custom_host_object(&self, _isolate: &v8::Isolate) -> bool {
     false
   }
   fn throw_data_clone_error<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     message: v8::Local<'s, v8::String>,
   ) {
     let obj = self.obj(scope);
     let key = FastString::from_static("_getDataCloneError")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       let fun = v
@@ -105,19 +113,20 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 
   fn write_host_object<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     object: v8::Local<'s, v8::Object>,
     _value_serializer: &dyn ValueSerializerHelper,
   ) -> Option<bool> {
     let obj = self.obj(scope);
     let key = FastString::from_static("_writeHostObject")
       .v8_string(scope)
+      .unwrap()
       .into();
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(v) = v.try_cast::<v8::Function>() {
-        v.call(scope, obj.into(), &[object.into()])?;
-        return Some(true);
-      }
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(v) = v.try_cast::<v8::Function>()
+    {
+      v.call(scope, obj.into(), &[object.into()])?;
+      return Some(true);
     }
 
     None
@@ -125,7 +134,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 
   fn is_host_object<'s>(
     &self,
-    _scope: &mut v8::HandleScope<'s>,
+    _scope: &mut v8::PinScope<'s, '_>,
     _object: v8::Local<'s, v8::Object>,
   ) -> Option<bool> {
     // should never be called because has_custom_host_object returns false
@@ -136,7 +145,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
 #[op2]
 #[cppgc]
 pub fn op_v8_new_serializer(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   obj: v8::Local<v8::Object>,
 ) -> Serializer<'static> {
   let obj = v8::Global::new(scope, obj);
@@ -201,7 +210,7 @@ pub fn op_v8_write_uint64(#[cppgc] ser: &Serializer, hi: u32, lo: u32) {
 
 #[op2(nofast, reentrant)]
 pub fn op_v8_write_value(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] ser: &Serializer,
   value: v8::Local<v8::Value>,
 ) {
@@ -221,40 +230,57 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
-impl<'a> deno_core::GarbageCollected for Deserializer<'a> {}
+// SAFETY: we're sure this can be GCed
+unsafe impl deno_core::GarbageCollected for Deserializer<'_> {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 
-pub struct DeserializerDelegate {
-  obj: v8::Global<v8::Object>,
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"Deserializer"
+  }
 }
 
-impl GarbageCollected for DeserializerDelegate {
-  fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
+pub struct DeserializerDelegate {
+  obj: v8::TracedReference<v8::Object>,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for DeserializerDelegate {
+  fn trace(&self, visitor: &mut v8::cppgc::Visitor) {
+    visitor.trace(&self.obj);
+  }
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"DeserializerDelegate"
+  }
 }
 
 impl v8::ValueDeserializerImpl for DeserializerDelegate {
   fn read_host_object<'s>(
     &self,
-    scope: &mut v8::HandleScope<'s>,
+    scope: &mut v8::PinScope<'s, '_>,
     _value_deserializer: &dyn v8::ValueDeserializerHelper,
   ) -> Option<v8::Local<'s, v8::Object>> {
-    let obj = v8::Local::new(scope, &self.obj);
+    let obj = self.obj.get(scope).unwrap();
     let key = FastString::from_static("_readHostObject")
       .v8_string(scope)
+      .unwrap()
       .into();
-    let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
-    if let Some(v) = obj.get(scope, key) {
-      if let Ok(v) = v.try_cast::<v8::Function>() {
-        let result = v.call(scope, obj.into(), &[])?;
-        match result.try_cast() {
-          Ok(res) => return Some(res),
-          Err(_) => {
-            let msg =
-              FastString::from_static("readHostObject must return an object")
-                .v8_string(scope);
-            let error = v8::Exception::type_error(scope, msg);
-            scope.throw_exception(error);
-            return None;
-          }
+    let scope = std::pin::pin!(v8::AllowJavascriptExecutionScope::new(scope));
+    let scope = &mut scope.init();
+    if let Some(v) = obj.get(scope, key)
+      && let Ok(v) = v.try_cast::<v8::Function>()
+    {
+      let result = v.call(scope, obj.into(), &[])?;
+      match result.try_cast() {
+        Ok(res) => return Some(res),
+        Err(_) => {
+          let msg =
+            FastString::from_static("readHostObject must return an object")
+              .v8_string(scope)
+              .unwrap();
+          let error = v8::Exception::type_error(scope, msg);
+          scope.throw_exception(error);
+          return None;
         }
       }
     }
@@ -265,16 +291,14 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
 #[op2]
 #[cppgc]
 pub fn op_v8_new_deserializer(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   obj: v8::Local<v8::Object>,
   buffer: v8::Local<v8::ArrayBufferView>,
-) -> Result<Deserializer<'static>, deno_core::error::AnyError> {
+) -> Result<Deserializer<'static>, JsErrorBox> {
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
   let backing_store = buffer.get_backing_store().ok_or_else(|| {
-    deno_core::error::generic_error(
-      "deserialization buffer has no backing store",
-    )
+    JsErrorBox::generic("deserialization buffer has no backing store")
   })?;
   let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
     // SAFETY: the offset is valid for the underlying buffer because we're getting it directly from v8
@@ -287,7 +311,7 @@ pub fn op_v8_new_deserializer(
   } else {
     (&[] as &[u8], None::<NonNull<u8>>)
   };
-  let obj = v8::Global::new(scope, obj);
+  let obj = v8::TracedReference::new(scope, obj);
   let inner = v8::ValueDeserializer::new(
     scope,
     Box::new(DeserializerDelegate { obj }),
@@ -316,17 +340,17 @@ pub fn op_v8_transfer_array_buffer_de(
 #[op2(fast)]
 pub fn op_v8_read_double(
   #[cppgc] deser: &Deserializer,
-) -> Result<f64, deno_core::error::AnyError> {
+) -> Result<f64, JsErrorBox> {
   let mut double = 0f64;
   if !deser.inner.read_double(&mut double) {
-    return Err(deno_core::error::type_error("ReadDouble() failed"));
+    return Err(JsErrorBox::type_error("ReadDouble() failed"));
   }
   Ok(double)
 }
 
 #[op2(nofast)]
 pub fn op_v8_read_header(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[cppgc] deser: &Deserializer,
 ) -> bool {
   let context = scope.get_current_context();
@@ -354,10 +378,10 @@ pub fn op_v8_read_raw_bytes(
 #[op2(fast)]
 pub fn op_v8_read_uint32(
   #[cppgc] deser: &Deserializer,
-) -> Result<u32, deno_core::error::AnyError> {
+) -> Result<u32, JsErrorBox> {
   let mut value = 0;
   if !deser.inner.read_uint32(&mut value) {
-    return Err(deno_core::error::type_error("ReadUint32() failed"));
+    return Err(JsErrorBox::type_error("ReadUint32() failed"));
   }
 
   Ok(value)
@@ -367,10 +391,10 @@ pub fn op_v8_read_uint32(
 #[serde]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
-) -> Result<(u32, u32), deno_core::error::AnyError> {
+) -> Result<(u32, u32), JsErrorBox> {
   let mut val = 0;
   if !deser.inner.read_uint64(&mut val) {
-    return Err(deno_core::error::type_error("ReadUint64() failed"));
+    return Err(JsErrorBox::type_error("ReadUint64() failed"));
   }
 
   Ok(((val >> 32) as u32, val as u32))
@@ -383,7 +407,7 @@ pub fn op_v8_get_wire_format_version(#[cppgc] deser: &Deserializer) -> u32 {
 
 #[op2(reentrant)]
 pub fn op_v8_read_value<'s>(
-  scope: &mut v8::HandleScope<'s>,
+  scope: &mut v8::PinScope<'s, '_>,
   #[cppgc] deser: &Deserializer,
 ) -> v8::Local<'s, v8::Value> {
   let context = scope.get_current_context();

@@ -9,7 +9,6 @@ use context::SendRequestResult;
 use deno::deno_http::HttpRequestReader;
 use deno::deno_http::HttpStreamReadResource;
 use deno::deno_permissions::PermissionsOptions;
-use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
@@ -278,16 +277,13 @@ pub async fn op_user_worker_create(
   };
 
   match result_rx.await {
-    Err(err) => Err(custom_error(
-      "InvalidWorkerCreation",
-      format!(
-        "{:#}",
-        AnyError::from(err).context("failed to create worker")
-      ),
+    Err(err) => Err(anyhow::anyhow!(
+      "{}",
+      AnyError::from(err).context("failed to create worker")
     )),
 
     Ok(Err(err)) => {
-      Err(custom_error("InvalidWorkerCreation", format!("{err:#}")))
+      Err(anyhow::anyhow!("{err:#}"))
     }
     Ok(Ok(v)) => Ok((v.key.to_string(), v.reused)),
   }
@@ -605,14 +601,14 @@ pub async fn op_user_worker_fetch_send(
 
       match err.downcast_ref() {
         Some(err @ WorkerError::RequestCancelledBySupervisor) => {
-          return Err(custom_error("WorkerRequestCancelled", err.to_string()));
+          return Err(anyhow::anyhow!(err.to_string()));
         }
         Some(err @ WorkerError::WorkerAlreadyRetired) => {
-          return Err(custom_error("WorkerAlreadyRetired", err.to_string()));
+          return Err(anyhow::anyhow!(err.to_string()));
         }
 
         None => {
-          return Err(custom_error("InvalidWorkerResponse", err.to_string()));
+          return Err(anyhow::anyhow!(err.to_string()));
         }
       }
     }

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use deno_config::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_core::serde_json;
 use deno_semver::Version;
 use indexmap::IndexMap;

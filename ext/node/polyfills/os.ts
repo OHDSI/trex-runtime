@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -31,14 +31,20 @@ import {
   op_node_os_user_info,
 } from "ext:core/ops";
 
-import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { osCalls } from "ext:os/os.js";
-// import { Buffer } from "ext:deno_node/internal/buffer.mjs";
+import { osUptime } from "ext:deno_os/30_os.js";
+import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 import { primordials } from "ext:core/mod.js";
-const { StringPrototypeEndsWith, StringPrototypeSlice } = primordials;
+import { validateInt32 } from "ext:deno_node/internal/validators.mjs";
+import { denoErrorToNodeSystemError } from "ext:deno_node/internal/errors.ts";
+
+const {
+  ObjectDefineProperties,
+  StringPrototypeEndsWith,
+  StringPrototypeSlice,
+} = primordials;
 
 export const constants = os;
 
@@ -141,17 +147,7 @@ export function arch(): string {
 (tmpdir as any)[Symbol.toPrimitive] = (): string | null => tmpdir();
 
 export function cpus(): CPUCoreInfo[] {
-  return [{
-    model: "",
-    speed: 0,
-    times: {
-      user: 0,
-      nice: 0,
-      sys: 0,
-      idle: 0,
-      irq: 0,
-    },
-  }];
+  return op_cpus();
 }
 
 /**
@@ -181,14 +177,17 @@ export function freemem(): number {
 
 /** Not yet implemented */
 export function getPriority(pid = 0): number {
-  validateIntegerRange(pid, "pid");
-  return op_node_os_get_priority(pid);
+  validateInt32(pid, "pid");
+  try {
+    return op_node_os_get_priority(pid);
+  } catch (error) {
+    throw denoErrorToNodeSystemError(error as Error, "uv_os_getpriority");
+  }
 }
 
 /** Returns the string path of the current user's home directory. */
 export function homedir(): string | null {
-  // return op_homedir();
-  return "/home/deno";
+  return op_homedir();
 }
 
 /** Returns the host name of the operating system as a string. */
@@ -272,10 +271,15 @@ export function setPriority(pid: number, priority?: number) {
     priority = pid;
     pid = 0;
   }
-  validateIntegerRange(pid, "pid");
-  validateIntegerRange(priority, "priority", -20, 19);
 
-  op_node_os_set_priority(pid, priority);
+  validateInt32(pid, "pid");
+  validateInt32(priority, "priority", -20, 19);
+
+  try {
+    op_node_os_set_priority(pid, priority);
+  } catch (error) {
+    throw denoErrorToNodeSystemError(error as Error, "uv_os_setpriority");
+  }
 }
 
 /** Returns the operating system's default directory for temporary files as a string. */
@@ -332,33 +336,33 @@ export function type(): string {
 
 /** Returns the Operating System uptime in number of seconds. */
 export function uptime(): number {
-  return osCalls.osUptime();
+  return osUptime();
 }
 
 export function userInfo(
   options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
-  // let uid = Deno.uid();
-  // let gid = Deno.gid();
+  let uid = Deno.uid();
+  let gid = Deno.gid();
 
-  // if (isWindows) {
-  //   uid = -1;
-  //   gid = -1;
-  // }
-  // let { username, homedir, shell } = op_node_os_user_info(uid);
+  if (isWindows) {
+    uid = -1;
+    gid = -1;
+  }
+  let { username, homedir, shell } = op_node_os_user_info(uid);
 
-  // if (options?.encoding === "buffer") {
-  //   homedir = homedir ? Buffer.from(homedir) : homedir;
-  //   shell = shell ? Buffer.from(shell) : shell;
-  //   username = Buffer.from(username);
-  // }
+  if (options?.encoding === "buffer") {
+    homedir = homedir ? Buffer.from(homedir) : homedir;
+    shell = shell ? Buffer.from(shell) : shell;
+    username = Buffer.from(username);
+  }
 
   return {
-    uid: osCalls.uid(),
-    gid: osCalls.gid(),
-    homedir: homedir(),
-    shell: null,
-    username: "",
+    uid,
+    gid,
+    homedir,
+    shell,
+    username,
   };
 }
 
@@ -370,7 +374,7 @@ export function availableParallelism(): number {
 export const EOL = isWindows ? "\r\n" : "\n";
 export const devNull = isWindows ? "\\\\.\\nul" : "/dev/null";
 
-export default {
+const mod = {
   availableParallelism,
   arch,
   cpus,
@@ -391,7 +395,31 @@ export default {
   uptime,
   userInfo,
   version,
-  constants,
-  EOL,
-  devNull,
 };
+
+ObjectDefineProperties(mod, {
+  constants: {
+    __proto__: null,
+    configurable: false,
+    enumerable: true,
+    value: constants,
+  },
+  EOL: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    writable: false,
+    value: EOL,
+  },
+  devNull: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    writable: false,
+    value: devNull,
+  },
+});
+
+// NB(Tango992): we want to have a default exports from this module for ES imports,
+// as well as make it work with `require` in such a way that the object properties are set correctly.
+export { mod as "module.exports", mod as default };

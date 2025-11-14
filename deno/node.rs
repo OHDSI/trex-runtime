@@ -4,22 +4,31 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_graph::ParsedSourceStore;
+use deno_error::JsErrorBox;
+use deno_graph::ast::ParsedSourceStore;
+use deno_permissions::CheckedPathBuf;
 use ext_node::DenoFsNodeResolverEnv;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::CjsCodeAnalyzer;
+use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::impls::RealSys;
 
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CjsTracker;
 
-pub type CliNodeCodeTranslator =
-  NodeCodeTranslator<CliCjsCodeAnalyzer, DenoFsNodeResolverEnv>;
+pub type CliNodeCodeTranslator = NodeCodeTranslator<
+  CliCjsCodeAnalyzer,
+  deno_resolver::npm::DenoInNpmPackageChecker,
+  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  deno_resolver::npm::NpmResolver<RealSys>,
+  RealSys,
+>;
 
 /// Resolves a specifier that is pointing into a node_modules folder.
 ///
@@ -29,11 +38,10 @@ pub type CliNodeCodeTranslator =
 /// folder might not exist at that time.
 pub fn resolve_specifier_into_node_modules(
   specifier: &ModuleSpecifier,
-  fs: &dyn deno_fs::FileSystem,
+  fs: deno_fs::FileSystemRc,
 ) -> ModuleSpecifier {
-  node_resolver::resolve_specifier_into_node_modules(specifier, &|path| {
-    fs.realpath_sync(path).map_err(|err| err.into_io_error())
-  })
+  let env = DenoFsNodeResolverEnv::new(fs);
+  node_resolver::resolve_specifier_into_node_modules(&env, specifier)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,13 +157,15 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<Cow<'a, str>>,
-  ) -> Result<ExtNodeCjsAnalysis<'a>, AnyError> {
+    esm_analysis_mode: EsmAnalysisMode,
+  ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
       None => {
         if let Ok(path) = specifier.to_file_path() {
+          let checked_path = CheckedPathBuf::unsafe_new(path);
           if let Ok(source_from_file) =
-            self.fs.read_text_file_lossy_async(path, None).await
+            self.fs.read_text_file_lossy_async(checked_path).await
           {
             source_from_file
           } else {
@@ -172,9 +182,9 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
         }
       }
     };
-    let analysis = self.inner_cjs_analysis(specifier, &source).await?;
+    let analysis = self.inner_cjs_analysis(specifier, &source).await.map_err(|e| JsErrorBox::generic(e.to_string()))?;
     match analysis {
-      CliCjsAnalysis::Esm => Ok(ExtNodeCjsAnalysis::Esm(source)),
+      CliCjsAnalysis::Esm => Ok(ExtNodeCjsAnalysis::Esm(source, None)),
       CliCjsAnalysis::Cjs { exports, reexports } => {
         Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
           exports,

@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_fs::AccessCheckCb;
 use deno_fs::FileSystem;
 use deno_fs::FsDirEntry;
 use deno_fs::FsFileType;
@@ -10,6 +9,7 @@ use deno_io::fs::File;
 use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_permissions::{CheckedPath, CheckedPathBuf};
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;

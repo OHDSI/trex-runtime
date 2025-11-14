@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -96,6 +96,9 @@ export function checkPrime(
 
   let op = op_node_check_prime_bytes_async;
   if (typeof candidate === "bigint") {
+    if (candidate < 0) {
+      throw new ERR_OUT_OF_RANGE("candidate", ">= 0", candidate);
+    }
     op = op_node_check_prime_async;
   } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
     throw new ERR_INVALID_ARG_TYPE(
@@ -298,7 +301,18 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
   return Buffer.from(padded, "hex");
 }
 
-export const randomUUID = () => globalThis.crypto.randomUUID();
+export function randomUUID(options) {
+  if (options !== undefined) {
+    validateObject(options, "options");
+  }
+  const {
+    disableEntropyCache = false,
+  } = options || {};
+
+  validateBoolean(disableEntropyCache, "options.disableEntropyCache");
+
+  return globalThis.crypto.randomUUID();
+}
 
 export default {
   checkPrime,

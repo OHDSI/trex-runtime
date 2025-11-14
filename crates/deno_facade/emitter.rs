@@ -17,8 +17,8 @@ use deno::deno_ast::EmitOptions;
 use deno::deno_ast::SourceMapOption;
 use deno::deno_cache_dir::npm::NpmCacheDir;
 use deno::deno_cache_dir::HttpCache;
-use deno::deno_config::workspace::PackageJsonDepResolution;
-use deno::deno_config::workspace::WorkspaceResolver;
+use deno::deno_resolver::workspace::PackageJsonDepResolution;
+use deno::deno_resolver::workspace::WorkspaceResolver;
 use deno::deno_npm::npm_rc::ResolvedNpmRc;
 use deno::deno_permissions::Permissions;
 use deno::deno_permissions::PermissionsOptions;
@@ -119,7 +119,7 @@ pub struct EmitterFactory {
   resolver: Deferred<Arc<CliResolver>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   sloppy_imports_resolver: Deferred<Option<Arc<CliSloppyImportsResolver>>>,
-  workspace_resolver: Deferred<Arc<WorkspaceResolver>>,
+  workspace_resolver: Deferred<Arc<WorkspaceResolver<deno::cache::CliSys>>>,
 
   cache_strategy: Option<CacheSetting>,
   deno_dir: DenoDir,
@@ -537,7 +537,7 @@ impl EmitterFactory {
 
   pub fn workspace_resolver(
     &self,
-  ) -> Result<&Arc<WorkspaceResolver>, anyhow::Error> {
+  ) -> Result<&Arc<WorkspaceResolver<deno::cache::CliSys>>, anyhow::Error> {
     self.workspace_resolver.get_or_try_init(|| {
       let options = self.deno_options()?;
       let resolver = options.create_workspace_resolver(

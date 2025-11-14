@@ -11,6 +11,7 @@ use anyhow::Error;
 use base_rt::BlockingScopeCPUUsageMetricExt;
 use deno_core::error::AnyError;
 use deno_core::op2;
+use deno_error::JsErrorBox;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
@@ -143,8 +144,8 @@ async fn init_gte(state: Rc<RefCell<OpState>>) -> Result<(), Error> {
               None,
             )
             .map_err(AnyError::from)
-            .and_then(|it| {
-              tokio::fs::read(it).into_future().map_err(AnyError::from)
+            .and_then(|it| async move {
+              tokio::fs::read(it).await.map_err(AnyError::from)
             })
             .await
             .and_then(|it| Tokenizer::from_bytes(it).map_err(AnyError::msg))
@@ -308,11 +309,11 @@ async fn run_gte(
 pub async fn op_ai_init_model(
   state: Rc<RefCell<OpState>>,
   #[string] name: String,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   if name == "gte-small" {
-    init_gte(state).await
+    init_gte(state).await.map_err(|e| JsErrorBox::generic(e.to_string()))
   } else {
-    bail!("model not supported")
+    Err(JsErrorBox::generic("model not supported"))
   }
 }
 
@@ -324,17 +325,17 @@ pub async fn op_ai_run_model(
   #[string] prompt: String,
   mean_pool: bool,
   normalize: bool,
-) -> Result<Vec<f32>, AnyError> {
+) -> Result<Vec<f32>, JsErrorBox> {
   if name == "gte-small" {
-    run_gte(state, prompt, mean_pool, normalize).await
+    run_gte(state, prompt, mean_pool, normalize).await.map_err(|e| JsErrorBox::generic(e.to_string()))
   } else {
-    bail!("model not supported")
+    Err(JsErrorBox::generic("model not supported"))
   }
 }
 
 #[op2(async)]
 #[bigint]
-pub async fn op_ai_try_cleanup_unused_session() -> Result<usize, anyhow::Error>
+pub async fn op_ai_try_cleanup_unused_session() -> Result<usize, JsErrorBox>
 {
-  session::cleanup().await
+  session::cleanup().await.map_err(|e| JsErrorBox::generic(e.to_string()))
 }

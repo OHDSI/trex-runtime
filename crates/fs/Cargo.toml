@@ -16,6 +16,7 @@ deno_core.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
 deno_npm.workspace = true
+deno_permissions.workspace = true
 deno_semver.workspace = true
 
 eszip_trait.workspace = true

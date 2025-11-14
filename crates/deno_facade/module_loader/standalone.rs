@@ -51,8 +51,7 @@ use deno::util::text_encoding::from_utf8_lossy_cow;
 use deno::PermissionsContainer;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::WorkspaceResolver;
-use deno_core::error::generic_error;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -132,7 +131,7 @@ impl WorkspaceEszip {
 pub struct SharedModuleLoaderState {
   pub(crate) root_path: PathBuf,
   pub(crate) eszip: WorkspaceEszip,
-  pub(crate) workspace_resolver: WorkspaceResolver,
+  pub(crate) workspace_resolver: WorkspaceResolver<deno::cache::CliSys>,
   pub(crate) cjs_tracker: Arc<CjsTracker>,
   pub(crate) node_code_translator: Arc<CliNodeCodeTranslator>,
   pub(crate) npm_module_loader: Arc<NpmModuleLoader>,
@@ -158,7 +157,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
   ) -> Result<ModuleSpecifier, AnyError> {
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
-        return Err(generic_error(format!(
+        return Err(anyhow!(format!(
           "Expected to resolve main module, got {:?} instead.",
           kind
         )));
@@ -256,6 +255,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 NodeResolutionKind::Execution,
               )?,
           )
+        }
+
+        PackageJsonDepValue::File(_) => {
+          // file: protocol dependencies are not supported in standalone mode
+          Err(AnyError::msg(format!(
+            "file: protocol dependencies are not supported in package.json (dependency: {})",
+            alias
+          )))
+        }
+
+        PackageJsonDepValue::JsrReq(_) => {
+          // jsr: protocol dependencies are not supported in standalone mode
+          Err(AnyError::msg(format!(
+            "jsr: protocol dependencies are not supported in package.json (dependency: {})",
+            alias
+          )))
         }
       },
       Ok(MappedResolution::Normal { specifier, .. })
@@ -777,7 +792,7 @@ pub async fn create_module_loader_for_eszip(
             .iter()
             .map(|it| {
               Ok::<_, AnyError>(ResolverWorkspaceJsrPackage {
-                is_patch: false,
+                is_link: false,
                 base: root_dir_url
                   .join(&it.relative_base)
                   .with_context(|| "failed to parse base url")?,
@@ -789,6 +804,9 @@ pub async fn create_module_loader_for_eszip(
             .collect::<Result<_, _>>()?,
           pkg_jsons,
           serialized_workspace_resolver.pkg_json_resolution,
+          Default::default(), // sloppy_imports_options
+          Default::default(), // fs_cache_options
+          deno::cache::CliSys::default(), // sys
         )
       },
       cjs_tracker: cjs_tracker.clone(),

@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Error;
-use deno_config::workspace::SpecifiedImportMap;
+use deno_resolver::workspace::SpecifiedImportMap;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use std::fs;

@@ -13,14 +13,17 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_permissions::OpenAccessKind;
 use deno_core::futures::StreamExt;
 use deno_fs::FileSystem;
+use deno_permissions::CheckedPath;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 
 use ext_node::NodePermissions;
 use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::UrlOrPathRef;
 
 use crate::npm::CliNpmTarballCache;
 use crate::npm::PackageCaching;
@@ -48,7 +51,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
@@ -105,7 +108,7 @@ impl RegistryReadPermissionChecker {
         |path: &Path| -> Result<Option<PathBuf>, AnyError> {
           match cache.get(path) {
             Some(canon) => Ok(Some(canon.clone())),
-            None => match self.fs.realpath_sync(path) {
+            None => match self.fs.realpath_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path))) {
               Ok(canon) => {
                 cache.insert(path.to_path_buf(), canon.clone());
                 Ok(Some(canon))
@@ -114,7 +117,7 @@ impl RegistryReadPermissionChecker {
                 if e.kind() == ErrorKind::NotFound {
                   return Ok(None);
                 }
-                Err(AnyError::from(e)).with_context(|| {
+                Err(AnyError::from(e.into_io_error())).with_context(|| {
                   format!("failed canonicalizing '{}'", path.display())
                 })
               }
@@ -134,7 +137,9 @@ impl RegistryReadPermissionChecker {
       }
     }
 
-    permissions.check_read_path(path).map_err(Into::into)
+    permissions.check_open(Cow::Borrowed(path), OpenAccessKind::Read, None)
+      .map(|checked| checked.into_path())
+      .map_err(Into::into)
   }
 }
 
@@ -147,7 +152,7 @@ pub async fn cache_packages(
   for package in packages {
     futures_unordered.push(async move {
       tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
+        .ensure_package(&package.id.nv, package.dist.as_ref().unwrap())
         .await
     });
   }

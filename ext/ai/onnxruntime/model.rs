@@ -85,7 +85,7 @@ impl<'a> ToV8<'a> for ModelInfo {
 
   fn to_v8(
     self,
-    scope: &mut deno_core::v8::HandleScope<'a>,
+    scope: &mut deno_core::v8::PinScope<'a, '_>,
   ) -> std::result::Result<
     deno_core::v8::Local<'a, deno_core::v8::Value>,
     Self::Error,

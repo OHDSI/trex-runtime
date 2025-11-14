@@ -78,7 +78,7 @@ impl Emitter {
                   module.is_script,
                 )?,
               ),
-              &module.source,
+              &module.source.text,
             )
             .boxed_local(),
         );

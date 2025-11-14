@@ -1,24 +1,36 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::mem::MaybeUninit;
 
-use crate::NodePermissions;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_permissions::PermissionCheckError;
+use sys_traits::EnvHomeDir;
+
+use crate::NodePermissions;
 
 mod cpus;
 pub mod priority;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum OsError {
+  #[class(inherit)]
   #[error(transparent)]
-  Priority(priority::PriorityError),
+  Priority(#[inherit] priority::PriorityError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
-  #[error("Failed to get cpu info")]
-  FailedToGetCpuInfo,
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
+  #[class(inherit)]
   #[error("Failed to get user info")]
-  FailedToGetUserInfo(#[source] std::io::Error),
+  FailedToGetUserInfo(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
 }
 
 #[op2(fast, stack_trace)]
@@ -124,8 +136,8 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   use std::os::windows::ffi::OsStringExt;
 
   use windows_sys::Win32::Foundation::CloseHandle;
-  use windows_sys::Win32::Foundation::GetLastError;
   use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+  use windows_sys::Win32::Foundation::GetLastError;
   use windows_sys::Win32::Foundation::HANDLE;
   use windows_sys::Win32::System::Threading::GetCurrentProcess;
   use windows_sys::Win32::System::Threading::OpenProcessToken;
@@ -213,47 +225,41 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_geteuid<P>(
-  _state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
-  // {
-  //   let permissions = state.borrow_mut::<P>();
-  //   permissions.check_sys("uid", "node:os.geteuid()")?;
-  // }
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("uid", "node:os.geteuid()")?;
+  }
 
-  // #[cfg(windows)]
-  // let euid = 0;
-  // #[cfg(unix)]
-  // // SAFETY: Call to libc geteuid.
-  // let euid = unsafe { libc::geteuid() };
+  #[cfg(windows)]
+  let euid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc geteuid.
+  let euid = unsafe { libc::geteuid() };
 
-  // Ok(euid)
-  Ok(0)
+  Ok(euid)
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_getegid<P>(
-  _state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
+pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
-  // {
-  //   let permissions = state.borrow_mut::<P>();
-  //   permissions.check_sys("getegid", "node:os.getegid()")?;
-  // }
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_sys("getegid", "node:os.getegid()")?;
+  }
 
-  // #[cfg(windows)]
-  // let egid = 0;
-  // #[cfg(unix)]
-  // // SAFETY: Call to libc getegid.
-  // let egid = unsafe { libc::getegid() };
+  #[cfg(windows)]
+  let egid = 0;
+  #[cfg(unix)]
+  // SAFETY: Call to libc getegid.
+  let egid = unsafe { libc::getegid() };
 
-  // Ok(egid)
-  Ok(0)
+  Ok(egid)
 }
 
 #[op2(stack_trace)]
@@ -267,14 +273,14 @@ where
     permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
-  cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
+  Ok(cpus::cpu_info().unwrap_or_default())
 }
 
 #[op2(stack_trace)]
 #[string]
 pub fn op_homedir<P>(
   state: &mut OpState,
-) -> Result<Option<String>, deno_core::error::AnyError>
+) -> Result<Option<String>, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -283,5 +289,9 @@ where
     permissions.check_sys("homedir", "node:os.homedir()")?;
   }
 
-  Ok(home::home_dir().map(|path| path.to_string_lossy().to_string()))
+  Ok(
+    sys_traits::impls::RealSys
+      .env_home_dir()
+      .map(|path| path.to_string_lossy().into_owned()),
+  )
 }

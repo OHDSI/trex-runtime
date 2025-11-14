@@ -868,16 +868,16 @@ pub async fn generate_binary_eszip(
                 &m.specifier,
                 m.media_type,
                 module_kind,
-                &m.source,
+                &m.source.text,
               )
               .await?;
             source.into_bytes()
           } else {
-            m.source.as_bytes().to_vec()
+            m.source.text.as_bytes().to_vec()
           };
           Some(source)
         }
-        deno_graph::Module::Json(m) => Some(m.source.as_bytes().to_vec()),
+        deno_graph::Module::Json(m) => Some(m.source.text.as_bytes().to_vec()),
         deno_graph::Module::Wasm(m) => Some(m.source.to_vec()),
         deno_graph::Module::Npm(_)
         | deno_graph::Module::Node(_)
