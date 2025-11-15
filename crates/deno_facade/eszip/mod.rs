@@ -18,6 +18,7 @@ use deno::deno_package_json;
 use deno::deno_path_util;
 use deno::deno_path_util::normalize_path;
 use deno::npm::InnerCliNpmResolverRef;
+use deno::deno_permissions::CheckedPathBuf;
 use deno::standalone::binary::NodeModules;
 use deno::standalone::binary::SerializedResolverWorkspaceJsrPackage;
 use deno::standalone::binary::SerializedWorkspaceResolver;
@@ -719,7 +720,7 @@ pub async fn generate_binary_eszip(
       Some(CreateGraphArgs::File(if !path.is_absolute() {
         let initial_cwd =
           std::env::current_dir().with_context(|| "failed getting cwd")?;
-        normalize_path(initial_cwd.join(path))
+        normalize_path(std::borrow::Cow::Borrowed(&initial_cwd.join(path))).into_owned()
       } else {
         path.to_path_buf()
       }))
@@ -730,7 +731,7 @@ pub async fn generate_binary_eszip(
           let workspace = deno_options.workspace();
           workspace
             .root_pkg_json()
-            .and_then(|it| it.main())
+            .and_then(|it| it.main.as_deref())
             .map(|it| CreateGraphArgs::File(workspace.root_dir_path().join(it)))
         })
         .flatten()
@@ -763,7 +764,7 @@ pub async fn generate_binary_eszip(
   .unwrap();
 
   let root_dir_url = compile::resolve_root_dir_from_specifiers(
-    emitter_factory.deno_options()?.workspace().root_dir(),
+    emitter_factory.deno_options()?.workspace().root_dir().dir_url().as_ref(),
     graph.specifiers().map(|(s, _)| s).chain(
       deno_options
         .node_modules_dir_path()
@@ -890,7 +891,10 @@ pub async fn generate_binary_eszip(
             &file_path,
             match maybe_source {
               Some(source) => source,
-              None => RealFs.read_file_sync(&file_path, None)?.into_owned(),
+              None => {
+                let checked_path = CheckedPathBuf::unsafe_new(file_path.clone());
+                RealFs.read_file_sync(&checked_path.as_checked_path())?.into_owned()
+              },
             },
           )
           .with_context(|| {
@@ -964,6 +968,7 @@ pub async fn generate_binary_eszip(
     }),
     jsr_pkgs: workspace_resolver
       .jsr_packages()
+      .into_iter()
       .map(|it| SerializedResolverWorkspaceJsrPackage {
         relative_base: root_dir_url.specifier_key(&it.base).into_owned(),
         name: it.name.clone(),

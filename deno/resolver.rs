@@ -36,19 +36,20 @@ use thiserror::Error;
 
 use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
+use crate::cache::CliSys;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<deno_resolver::npm::DenoInNpmPackageChecker, RealSys>;
+pub type CjsTracker = deno_resolver::cjs::CjsTracker<deno_resolver::npm::DenoInNpmPackageChecker, CliSys>;
 pub type CliSloppyImportsResolver =
-  SloppyImportsResolver<RealSys>;
+  SloppyImportsResolver<CliSys>;
 pub type CliDenoResolver = deno_resolver::graph::DenoResolver<
   deno_resolver::npm::DenoInNpmPackageChecker,
   node_resolver::DenoIsBuiltInNodeModuleChecker,
-  deno_resolver::npm::NpmResolver<RealSys>,
-  RealSys,
+  deno_resolver::npm::NpmResolver<CliSys>,
+  CliSys,
 >;
 
 // Trait for npm package requirement resolution

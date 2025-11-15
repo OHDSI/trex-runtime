@@ -31,7 +31,7 @@ pub async fn create_eszip_from_graph_raw(
   check_warn_tsconfig(&ts_config_result);
   let (transpile_options, _) =
     deno::args::ts_config_to_transpile_and_emit_options(
-      ts_config_result.ts_config,
+      deno::deno_config::deno_json::CompilerOptions(ts_config_result.ts_config.0),
     )?;
   let emit_options = emitter.emit_options();
 
