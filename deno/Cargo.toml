@@ -13,6 +13,7 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_core.workspace = true
 boxed_error.workspace = true
 deno_error.workspace = true
+temporal_capi.workspace = true
 
 deno_cache_dir.workspace = true
 deno_config = { workspace = true, features = ["workspace"] }

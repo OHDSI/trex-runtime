@@ -68,6 +68,8 @@ use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::ResolutionKind;
 use deno_core::RuntimeOptions;
+use deno_resolver::npm;
+use sys_traits;
 use deno_facade::cert_provider::get_root_cert_store_provider;
 use deno_facade::generate_binary_eszip;
 use deno_facade::metadata::Entrypoint;
@@ -176,9 +178,7 @@ impl MemCheck {
       return 0;
     };
 
-    let mut stats = HeapStatistics::default();
-
-    isolate.get_heap_statistics(&mut stats);
+    let stats = isolate.get_heap_statistics();
 
     // NOTE: https://stackoverflow.com/questions/41541843/nodejs-v8-getheapstatistics-method
     let malloced_bytes = if SHOULD_INCLUDE_MALLOCED_MEMORY_ON_MEMCHECK
@@ -269,9 +269,9 @@ impl GetRuntimeContext for DefaultRuntimeContext {}
 struct GlobalMainContext(v8::Global<v8::Context>);
 
 impl GlobalMainContext {
-  fn to_local_context<'s>(
+  fn to_local_context<'s, 'i>(
     &self,
-    scope: &mut v8::HandleScope<'s, ()>,
+    scope: &v8::PinScope<'s, 'i, ()>,
   ) -> v8::Local<'s, v8::Context> {
     v8::Local::new(scope, &self.0)
   }
@@ -374,7 +374,7 @@ fn cleanup_js_runtime(runtime: &mut JsRuntime) {
   isolate.set_slot(locker);
 
   {
-    let _scope = runtime.handle_scope();
+    let _scope = v8::HandleScope::new(runtime.v8_isolate());
   }
 }
 
@@ -408,7 +408,7 @@ impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
   fn drop(&mut self) {
     if self.conf.is_user_worker() {
       self.js_runtime.v8_isolate().remove_gc_prologue_callback(
-        mem_check_gc_prologue_callback_fn,
+        mem_check_gc_prologue_callback_fn as _,
         Arc::as_ptr(&self.mem_check) as *mut _,
       );
     }
@@ -577,7 +577,7 @@ where
             .set_no_npm(no_npm)
             .set_import_map_path(maybe_import_map_path.clone());
 
-          emitter_factory.set_deno_options(builder.build()?);
+          emitter_factory.set_deno_options(builder.build().await?);
 
           let deno_options = emitter_factory.deno_options()?;
           if !is_some_entry_point
@@ -585,7 +585,7 @@ where
             && deno_options
               .workspace()
               .root_pkg_json()
-              .and_then(|it| it.main(deno_package_json::NodeModuleKind::Cjs))
+              .and_then(|it| it.main.as_ref())
               .is_none()
           {
             bail!("could not find an appropriate entrypoint");
@@ -741,67 +741,51 @@ where
         })?;
 
         let extensions = vec![
-          deno_telemetry::deno_telemetry::init_ops(),
-          deno_webidl::deno_webidl::init_ops(),
-          deno_console::deno_console::init_ops(),
-          deno_url::deno_url::init_ops(),
-          deno_web::deno_web::init_ops::<PermissionsContainer>(
-            Arc::new(deno_web::BlobStore::default()),
-            None,
-          ),
-          deno_webgpu::deno_webgpu::init_ops(),
-          deno_canvas::deno_canvas::init_ops(),
-          deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
-            deno_fetch::Options {
-              user_agent: deno::versions::user_agent().to_string(),
-              root_cert_store_provider: Some(root_cert_store_provider.clone()),
-              ..Default::default()
-            },
-          ),
-          deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
-            deno::versions::user_agent().to_string(),
-            Some(root_cert_store_provider.clone()),
-            None,
-          ),
+          deno_telemetry::deno_telemetry::init(),
+          deno_webidl::deno_webidl::init(),
+          deno_console::deno_console::init(),
+          deno_url::deno_url::init(),
+          deno_web::deno_web::lazy_init::<PermissionsContainer>(),
+          deno_webgpu::deno_webgpu::init(),
+          deno_canvas::deno_canvas::init(),
+          deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
+          deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
           // TODO: support providing a custom seed for crypto
-          deno_crypto::deno_crypto::init_ops(None),
-          deno_broadcast_channel::deno_broadcast_channel::init_ops(
-            deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-          ),
-          deno_net::deno_net::init_ops::<PermissionsContainer>(
-            Some(root_cert_store_provider),
-            None,
-          ),
-          deno_tls::deno_tls::init_ops(),
-          deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(
-            deno_http::Options::default(),
-          ),
-          deno_io::deno_io::init_ops(Some(stdio)),
-          deno_fs::deno_fs::init_ops::<PermissionsContainer>(fs.clone()),
-          ext_ai::ai::init_ops(),
-          ext_env::env::init_ops(),
-          ext_os::os::init_ops(),
-          ext_workers::user_workers::init_ops(),
-          ext_event_worker::user_event_worker::init_ops(),
-          ext_event_worker::js_interceptors::js_interceptors::init_ops(),
-          ext_runtime::runtime_bootstrap::init_ops::<PermissionsContainer>(
+          deno_crypto::deno_crypto::lazy_init(),
+          deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
+            deno_broadcast_channel::InMemoryBroadcastChannel,
+          >(),
+          deno_net::deno_net::lazy_init::<PermissionsContainer>(),
+          deno_tls::deno_tls::init(),
+          deno_http::deno_http::lazy_init(),
+          deno_io::deno_io::lazy_init(),
+          deno_fs::deno_fs::lazy_init::<PermissionsContainer>(),
+          ext_ai::ai::init(),
+          ext_env::env::init(),
+          ext_os::os::init(),
+          ext_workers::user_workers::init(),
+          ext_event_worker::user_event_worker::init(),
+          ext_event_worker::js_interceptors::js_interceptors::init(),
+          ext_runtime::runtime_bootstrap::init::<PermissionsContainer>(
             Some(main_module_url.clone()),
           ),
-          ext_runtime::runtime_net::init_ops(),
-          ext_runtime::runtime_http::init_ops(),
-          ext_runtime::runtime_http_start::init_ops(),
+          ext_runtime::runtime_net::init(),
+          ext_runtime::runtime_http::init(),
+          ext_runtime::runtime_http_start::init(),
           // NOTE(AndresP): Order is matters. Otherwise, it will lead to hard
           // errors such as SIGBUS depending on the platform.
-          ext_node::deno_node::init_ops::<PermissionsContainer>(
-            Some(node_services),
-            fs,
-          ),
-          deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
-          deno::runtime::ops::permissions::deno_permissions::init_ops(),
-          ops::permissions::base_runtime_permissions::init_ops_and_esm(
+          ext_node::deno_node::lazy_init::<
+            PermissionsContainer,
+            deno_resolver::npm::DenoInNpmPackageChecker,
+            npm::NpmResolver<sys_traits::impls::RealSys>,
+            sys_traits::impls::RealSys,
+          >(),
+          deno_cache::deno_cache::lazy_init(),
+          deno::runtime::ops::permissions::deno_permissions::init(),
+          ops::permissions::base_runtime_permissions::init(
             permissions,
           ),
-          ext_runtime::runtime::init_ops(),
+          ext_runtime::runtime::init(),
         ];
 
         let mut create_params = None;
@@ -878,14 +862,10 @@ where
           is_main: true,
           inspector: has_inspector,
           create_params,
-          get_error_class_fn: Some(&deno::errors::get_error_class_name),
           shared_array_buffer_store: None,
           compiled_wasm_module_store: None,
           startup_snapshot: snapshot::snapshot(),
           module_loader: Some(module_loader),
-          import_meta_resolve_callback: Some(Box::new(
-            import_meta_resolve_callback,
-          )),
           ..Default::default()
         };
 
@@ -893,8 +873,13 @@ where
 
         let dispatch_fns = {
           let context = js_runtime.main_context();
-          let scope = &mut js_runtime.handle_scope();
-          let context_local = v8::Local::new(scope, context);
+          // New V8 API requires pinning scopes
+          let scope_storage = std::pin::pin!(v8::HandleScope::new(js_runtime.v8_isolate()));
+          let mut handle_scope = scope_storage.init();
+          let context_local = v8::Local::new(&handle_scope, context);
+          // Create ContextScope to get HandleScope<Context> instead of HandleScope<()>
+          let mut context_scope = v8::ContextScope::new(&mut handle_scope, context_local);
+          let scope = &mut context_scope;
           let global_obj = context_local.global(scope);
           let bootstrap_str =
             v8::String::new_external_onebyte_static(scope, b"bootstrap")
@@ -961,9 +946,9 @@ where
 
         if is_user_worker {
           js_runtime.v8_isolate().add_gc_prologue_callback(
-            mem_check_gc_prologue_callback_fn,
+            mem_check_gc_prologue_callback_fn as _,
             Arc::as_ptr(&mem_check) as *mut _,
-            GCType::ALL,
+            GCType::kGCTypeAll,
           );
 
           js_runtime
@@ -998,7 +983,7 @@ where
 
         debug!("bootstrap");
 
-        bootstrap.js_runtime.v8_isolate().dispose_scope_root();
+        // dispose_scope_root() has been removed in V8 140.x - scope cleanup is now automatic
         bootstrap.js_runtime.v8_isolate().exit();
 
         let has_inspector = bootstrap.has_inspector;
@@ -1046,8 +1031,13 @@ where
             };
 
             let context = locker.main_context();
-            let scope = &mut locker.handle_scope();
-            let context_local = v8::Local::new(scope, context);
+            // New V8 API requires pinning scopes
+            let scope_storage = std::pin::pin!(v8::HandleScope::new(locker.v8_isolate()));
+            let mut handle_scope = scope_storage.init();
+            let context_local = v8::Local::new(&handle_scope, context);
+            // Create ContextScope to get HandleScope<Context> instead of HandleScope<()>
+            let mut context_scope = v8::ContextScope::new(&mut handle_scope, context_local);
+            let scope = &mut context_scope;
             let global_obj = context_local.global(scope);
             let bootstrap_str = v8::String::new_external_onebyte_static(
               scope,
@@ -1265,7 +1255,7 @@ where
     let id = match ret {
       Ok(Ok(v)) => v,
       Ok(Err(err)) => {
-        return Err(err);
+        return Err(err.into());
       }
       Err(err) => {
         return Err(err).context("failed to load the module");
@@ -1326,7 +1316,6 @@ where
       let handle = Handle::current();
 
       spawn_blocking_non_send(|| {
-        let _wall = deno_core::unsync::set_wall().drop_guard();
         let init = scopeguard::guard(self.runtime_state.init.clone(), |v| {
           v.lower();
         });
@@ -1414,7 +1403,7 @@ where
 
         maybe_mod_result = &mut mod_ret_rx => {
           debug!("received module evaluate {:#?}", maybe_mod_result);
-          maybe_mod_result
+          maybe_mod_result.map_err(Into::into)
         }
 
         event_loop_result = event_loop_fut => {
@@ -1423,10 +1412,10 @@ where
               anyhow!(
                 "event loop error while evaluating the module: {}",
                 err
-              )
+              ).into()
             )
           } else {
-            mod_ret_rx.await
+            mod_ret_rx.await.map_err(|e| e.into())
           }
         }
       };
@@ -1548,8 +1537,7 @@ where
 
       let wait_for_inspector = if has_inspector {
         let inspector = js_runtime.inspector();
-        let inspector_ref = inspector.borrow();
-        let sessions_state = inspector_ref.sessions_state();
+        let sessions_state = inspector.sessions_state();
         sessions_state.has_active || sessions_state.has_blocking
       } else {
         false
@@ -1668,7 +1656,7 @@ where
 
       match poll_result {
         Poll::Pending => Poll::Pending,
-        Poll::Ready(err @ Err(_)) => Poll::Ready(err),
+        Poll::Ready(Err(err)) => Poll::Ready(Err(err.into())),
         Poll::Ready(Ok(())) => {
           if !state.is_event_loop_completed() {
             state.event_loop_completed.raise();
@@ -1732,12 +1720,11 @@ where
         server.inspector = ?inspector.option
       );
       let inspector_impl = self.js_runtime.inspector();
-      let mut inspector_impl_ref = inspector_impl.borrow_mut();
 
       if inspector.option.is_with_break() {
-        inspector_impl_ref.wait_for_session_and_break_on_next_statement();
+        inspector_impl.wait_for_session_and_break_on_next_statement();
       } else if inspector.option.is_with_wait() {
-        inspector_impl_ref.wait_for_session();
+        inspector_impl.wait_for_session();
       }
     }
   }
@@ -1856,24 +1843,13 @@ type TerminateExecutionIfCancelledReturnType =
 #[allow(dead_code)]
 struct Scope<'s> {
   context: v8::Local<'s, v8::Context>,
-  scope: Either<v8::HandleScope<'s, v8::Context>, v8::CallbackScope<'s, ()>>,
+  scope: Either<v8::ScopeStorage<v8::CallbackScope<'s, ()>>, v8::ScopeStorage<v8::CallbackScope<'s, ()>>>,
 }
 
 impl<'s> Scope<'s> {
-  fn context_scope<'l>(
-    &'l mut self,
-  ) -> v8::ContextScope<'l, v8::HandleScope<'s>> {
-    let context = self.context;
-    v8::ContextScope::new(
-      self
-        .scope
-        .as_mut()
-        .map_left(|it| &mut **it)
-        .map_right(|it| &mut **it)
-        .into_inner(),
-      context,
-    )
-  }
+  // Removed context_scope() method - scope creation now inlined where needed
+  // This follows the rusty_v8 v140.x pattern where scopes must be created inline
+  // due to pinning requirements
 }
 
 pub struct IsolateWithCancellationToken<'l>(
@@ -1921,31 +1897,34 @@ where
       .unwrap()
       .clone();
 
-    let mut scope = unsafe {
-      match self {
-        MaybeDenoRuntime::DenoRuntime(v) => {
-          Either::Left(v8::HandleScope::with_context(
-            v.js_runtime.v8_isolate(),
-            context.0.clone(),
-          ))
-        }
-        MaybeDenoRuntime::Isolate(v) => {
-          Either::Right(v8::CallbackScope::new(&mut **v))
-        }
-        MaybeDenoRuntime::IsolateWithCancellationToken(v) => {
-          Either::Right(v8::CallbackScope::new(&mut **v))
-        }
+    let (context_local, scope) = match self {
+      MaybeDenoRuntime::DenoRuntime(v) => {
+        let mut scope_storage = unsafe { v8::CallbackScope::new(v.js_runtime.v8_isolate()) };
+        let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+        let scope_ref = &mut scope_pin.as_mut().init();
+        let ctx = context.to_local_context(scope_ref);
+        (ctx, Either::Left(scope_storage))
+      }
+      MaybeDenoRuntime::Isolate(v) => {
+        let isolate: &mut v8::Isolate = v;
+        let mut scope_storage = unsafe { v8::CallbackScope::new(isolate) };
+        let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+        let scope_ref = &mut scope_pin.as_mut().init();
+        let ctx = context.to_local_context(scope_ref);
+        (ctx, Either::Right(scope_storage))
+      }
+      MaybeDenoRuntime::IsolateWithCancellationToken(v) => {
+        let isolate: &mut v8::Isolate = &mut v.0;
+        let mut scope_storage = unsafe { v8::CallbackScope::new(isolate) };
+        let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(&mut scope_storage) };
+        let scope_ref = &mut scope_pin.as_mut().init();
+        let ctx = context.to_local_context(scope_ref);
+        (ctx, Either::Right(scope_storage))
       }
     };
 
-    let handle_scope = scope
-      .as_mut()
-      .map_left(|it| &mut **it)
-      .map_right(|it| &mut **it)
-      .into_inner();
-
     Scope {
-      context: context.to_local_context(handle_scope),
+      context: context_local,
       scope,
     }
   }
@@ -1979,19 +1958,11 @@ where
     }
   }
 
-  fn dispatch_event_with_callback<T, U, V, R>(
-    &mut self,
-    select_dispatch_fn: T,
-    fn_args_fn: U,
-    callback_fn: V,
-  ) -> Result<R, AnyError>
-  where
-    T: for<'r> FnOnce(&'r DispatchEventFunctions) -> &v8::Global<v8::Function>,
-    U: for<'r> FnOnce(
-      &mut v8::HandleScope<'r, ()>,
-    ) -> Vec<v8::Local<'r, v8::Value>>,
-    V: for<'r> FnOnce(Option<v8::Local<'r, v8::Value>>) -> Result<R, AnyError>,
-  {
+  /// Dispatches "load" event to the JavaScript runtime.
+  ///
+  /// Does not poll event loop, and thus not await any of the "load" event
+  /// handlers.
+  pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
     let _guard = self.terminate_execution_if_cancelled();
 
     let op_state = self.op_state();
@@ -1999,37 +1970,36 @@ where
     let dispatch_fns =
       op_state_ref.try_borrow::<DispatchEventFunctions>().unwrap();
 
-    let scope = &mut self.scope();
-    let ctx_scope = &mut scope.context_scope();
-    let tc_scope = &mut v8::TryCatch::new(ctx_scope);
+    // Get the Scope which holds the CallbackScope storage
+    let mut scope = self.scope();
 
-    let event_fn = v8::Local::new(tc_scope, select_dispatch_fn(dispatch_fns));
+    // Pin and initialize the CallbackScope
+    let scope_storage = scope.scope.as_mut().into_inner();
+    let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(scope_storage) };
+    let mut cb_scope = scope_pin.as_mut().init();
+
+    // Create ContextScope
+    let mut context_scope = v8::ContextScope::new(&mut cb_scope, scope.context);
+
+    // Create TryCatch scope using macro to handle pinning correctly
+    v8::tc_scope!(let tc_scope, &mut context_scope);
+
+    let event_fn = v8::Local::new(tc_scope, &dispatch_fns.dispatch_load_event_fn_global);
 
     drop(op_state_ref);
 
     let undefined = v8::undefined(tc_scope);
-    let fn_args = &*fn_args_fn(tc_scope);
-    let fn_ret = event_fn.call(tc_scope, undefined.into(), fn_args);
+    let fn_args = vec![];
+    let fn_ret = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
-    if let Some(ex) = tc_scope.exception() {
-      let err = JsError::from_v8_exception(tc_scope, ex);
-
-      return Err(err.into());
+    if tc_scope.has_caught() {
+      if let Some(ex) = tc_scope.exception() {
+        let err = JsError::from_v8_exception(tc_scope, ex);
+        return Err(err.into());
+      }
     }
 
-    callback_fn(fn_ret)
-  }
-
-  /// Dispatches "load" event to the JavaScript runtime.
-  ///
-  /// Does not poll event loop, and thus not await any of the "load" event
-  /// handlers.
-  pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
-    self.dispatch_event_with_callback(
-      |fns| &fns.dispatch_load_event_fn_global,
-      |_| vec![],
-      |_| Ok(()),
-    )
+    Ok(())
   }
 
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a
@@ -2039,18 +2009,48 @@ where
     &mut self,
     reason: WillTerminateReason,
   ) -> Result<bool, AnyError> {
-    self.dispatch_event_with_callback(
-      |fns| &fns.dispatch_beforeunload_event_fn_global,
-      move |scope| {
-        vec![v8::String::new_external_onebyte_static(
-          scope,
-          <&'static str>::from(reason).as_bytes(),
-        )
-        .unwrap()
-        .into()]
-      },
-      |it| Ok(it.unwrap().is_false()),
+    let _guard = self.terminate_execution_if_cancelled();
+
+    let op_state = self.op_state();
+    let op_state_ref = op_state.borrow();
+    let dispatch_fns =
+      op_state_ref.try_borrow::<DispatchEventFunctions>().unwrap();
+
+    // Get the Scope which holds the CallbackScope storage
+    let mut scope = self.scope();
+
+    // Pin and initialize the CallbackScope
+    let scope_storage = scope.scope.as_mut().into_inner();
+    let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(scope_storage) };
+    let mut cb_scope = scope_pin.as_mut().init();
+
+    // Create ContextScope
+    let mut context_scope = v8::ContextScope::new(&mut cb_scope, scope.context);
+
+    // Create TryCatch scope using macro to handle pinning correctly
+    v8::tc_scope!(let tc_scope, &mut context_scope);
+
+    let event_fn = v8::Local::new(tc_scope, &dispatch_fns.dispatch_beforeunload_event_fn_global);
+
+    drop(op_state_ref);
+
+    let undefined = v8::undefined(tc_scope);
+    let fn_args = vec![v8::String::new_external_onebyte_static(
+      tc_scope,
+      <&'static str>::from(reason).as_bytes(),
     )
+    .unwrap()
+    .into()];
+    let fn_ret = event_fn.call(tc_scope, undefined.into(), &fn_args);
+
+    if tc_scope.has_caught() {
+      if let Some(ex) = tc_scope.exception() {
+        let err = JsError::from_v8_exception(tc_scope, ex);
+        return Err(err.into());
+      }
+    }
+
+    Ok(fn_ret.unwrap().is_false())
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -2066,11 +2066,43 @@ where
     // for the invocation.
 
     // self.v8_isolate().cancel_terminate_execution();
-    self.dispatch_event_with_callback(
-      |fns| &fns.dispatch_unload_event_fn_global,
-      |_| vec![],
-      |_| Ok(()),
-    )
+    let _guard = self.terminate_execution_if_cancelled();
+
+    let op_state = self.op_state();
+    let op_state_ref = op_state.borrow();
+    let dispatch_fns =
+      op_state_ref.try_borrow::<DispatchEventFunctions>().unwrap();
+
+    // Get the Scope which holds the CallbackScope storage
+    let mut scope = self.scope();
+
+    // Pin and initialize the CallbackScope
+    let scope_storage = scope.scope.as_mut().into_inner();
+    let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(scope_storage) };
+    let mut cb_scope = scope_pin.as_mut().init();
+
+    // Create ContextScope
+    let mut context_scope = v8::ContextScope::new(&mut cb_scope, scope.context);
+
+    // Create TryCatch scope using macro to handle pinning correctly
+    v8::tc_scope!(let tc_scope, &mut context_scope);
+
+    let event_fn = v8::Local::new(tc_scope, &dispatch_fns.dispatch_unload_event_fn_global);
+
+    drop(op_state_ref);
+
+    let undefined = v8::undefined(tc_scope);
+    let fn_args = vec![];
+    let fn_ret = event_fn.call(tc_scope, undefined.into(), &fn_args);
+
+    if tc_scope.has_caught() {
+      if let Some(ex) = tc_scope.exception() {
+        let err = JsError::from_v8_exception(tc_scope, ex);
+        return Err(err.into());
+      }
+    }
+
+    Ok(())
   }
 
   /// Dispatches "drain" event to the JavaScript runtime.
@@ -2078,11 +2110,43 @@ where
   /// Does not poll event loop, and thus not await any of the "drain" event
   /// handlers.
   pub fn dispatch_drain_event(&mut self) -> Result<(), AnyError> {
-    self.dispatch_event_with_callback(
-      |fns| &fns.dispatch_drain_event_fn_global,
-      |_| vec![],
-      |_| Ok(()),
-    )
+    let _guard = self.terminate_execution_if_cancelled();
+
+    let op_state = self.op_state();
+    let op_state_ref = op_state.borrow();
+    let dispatch_fns =
+      op_state_ref.try_borrow::<DispatchEventFunctions>().unwrap();
+
+    // Get the Scope which holds the CallbackScope storage
+    let mut scope = self.scope();
+
+    // Pin and initialize the CallbackScope
+    let scope_storage = scope.scope.as_mut().into_inner();
+    let mut scope_pin = unsafe { std::pin::Pin::new_unchecked(scope_storage) };
+    let mut cb_scope = scope_pin.as_mut().init();
+
+    // Create ContextScope
+    let mut context_scope = v8::ContextScope::new(&mut cb_scope, scope.context);
+
+    // Create TryCatch scope using macro to handle pinning correctly
+    v8::tc_scope!(let tc_scope, &mut context_scope);
+
+    let event_fn = v8::Local::new(tc_scope, &dispatch_fns.dispatch_drain_event_fn_global);
+
+    drop(op_state_ref);
+
+    let undefined = v8::undefined(tc_scope);
+    let fn_args = vec![];
+    let fn_ret = event_fn.call(tc_scope, undefined.into(), &fn_args);
+
+    if tc_scope.has_caught() {
+      if let Some(ex) = tc_scope.exception() {
+        let err = JsError::from_v8_exception(tc_scope, ex);
+        return Err(err.into());
+      }
+    }
+
+    Ok(())
   }
 }
 
@@ -2091,7 +2155,7 @@ pub fn import_meta_resolve_callback(
   specifier: String,
   referrer: String,
 ) -> Result<ModuleSpecifier, AnyError> {
-  loader.resolve(&specifier, &referrer, ResolutionKind::DynamicImport)
+  loader.resolve(&specifier, &referrer, ResolutionKind::DynamicImport).map_err(Into::into)
 }
 
 fn with_cpu_metrics_guard<'l, F, R>(
@@ -2256,15 +2320,15 @@ fn set_v8_flags() {
   }
 }
 
-extern "C" fn mem_check_gc_prologue_callback_fn(
-  isolate: *mut Isolate,
+unsafe extern "C" fn mem_check_gc_prologue_callback_fn(
+  isolate: v8::UnsafeRawIsolatePtr,
   _ty: GCType,
   _flags: GCCallbackFlags,
   data: *mut c_void,
 ) {
-  unsafe {
-    (*(data as *mut MemCheck)).check(&mut *isolate);
-  }
+  // Convert UnsafeRawIsolatePtr to &mut Isolate
+  let mut isolate_ref = v8::Isolate::from_raw_isolate_ptr_unchecked(isolate);
+  (*(data as *mut MemCheck)).check(&mut isolate_ref);
 }
 
 #[cfg(test)]

@@ -50,7 +50,6 @@ import {
   _readyState,
   _rid,
   _role,
-  _server,
   _serverHandleIdleTimeout,
   SERVER,
   WebSocket,
@@ -61,7 +60,9 @@ import {
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
+
+// Define SymbolDispose locally since deno_web 0.252.0 doesn't export it
+const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
 
 const connErrorSymbol = Symbol("connError");
 

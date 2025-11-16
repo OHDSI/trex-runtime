@@ -32,9 +32,7 @@ pub extern "C" fn v8_handle_termination(
   let mut data = unsafe { Box::from_raw(data as *mut V8HandleTerminationData) };
 
   // log memory usage
-  let mut heap_stats = v8::HeapStatistics::default();
-
-  isolate.get_heap_statistics(&mut heap_stats);
+  let heap_stats = isolate.get_heap_statistics();
 
   let usage = IsolateMemoryStats {
     used_heap_size: heap_stats.used_heap_size(),

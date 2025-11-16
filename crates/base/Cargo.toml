@@ -2,12 +2,14 @@
 name = "base"
 version = "0.1.0"
 authors.workspace = true
-edition.workspace = true
+edition = "2021"
 license.workspace = true
 
 [dependencies]
 deno.workspace = true
 deno_core.workspace = true
+deno_resolver.workspace = true
+sys_traits.workspace = true
 
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
@@ -93,6 +95,7 @@ tungstenite = { version = "0.21.0", default-features = false, features = ["hands
 [build-dependencies]
 deno.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true

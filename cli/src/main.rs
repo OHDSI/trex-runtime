@@ -393,7 +393,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           }
           builder.set_config(Some(ConfigMode::Path(path)));
         }
-        emitter_factory.set_deno_options(builder.build()?);
+        emitter_factory.set_deno_options(builder.build().await?);
 
         let mut metadata = Metadata::default();
         let eszip_fut = generate_binary_eszip(

@@ -1,3 +1,6 @@
+// Ensure temporal_capi is linked for V8 temporal support
+extern crate temporal_capi;
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;

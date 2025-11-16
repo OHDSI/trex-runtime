@@ -23,7 +23,6 @@ use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionKind;
-use deno_core::InspectorSessionOptions;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
 use enum_as_inner::EnumAsInner;
@@ -140,8 +139,7 @@ impl InspectorServer {
     js_runtime: &mut JsRuntime,
     wait_for_session: bool,
   ) {
-    let inspector_rc = js_runtime.inspector();
-    let mut inspector = inspector_rc.borrow_mut();
+    let inspector = js_runtime.inspector();
     let session_sender = inspector.get_session_sender();
     let deregister_rx = inspector.add_deregister_handler();
     let info = InspectorInfo::new(
@@ -250,9 +248,7 @@ fn handle_ws_request(
     let inspector_session_proxy = InspectorSessionProxy {
       tx: outbound_tx,
       rx: inbound_rx,
-      options: InspectorSessionOptions {
-        kind: InspectorSessionKind::Blocking,
-      },
+      kind: InspectorSessionKind::Blocking,
     };
 
     eprintln!("Debugger session started.");

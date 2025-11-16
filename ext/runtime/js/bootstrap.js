@@ -65,7 +65,16 @@ import {
   setUserAgent,
 } from "ext:runtime/navigator.js";
 
-import process from "node:process";
+// Stub process object since ext_node is not included in the snapshot
+// This provides minimal compatibility for code that expects process global
+const process = {
+  env: {},
+  argv: [],
+  version: "",
+  versions: {},
+  platform: "",
+  arch: "",
+};
 
 let globalThis_;
 
