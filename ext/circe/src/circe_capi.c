@@ -11,6 +11,7 @@ DUCKDB_EXTENSION_ENTRYPOINT(duckdb_connection connection, duckdb_extension_info 
     RegisterCirceSqlTranslateFunction(connection);
     RegisterCirceSqlRenderTranslateFunction(connection);
     RegisterCirceGenerateAndTranslateFunction(connection);
-    
+    RegisterCirceCheckCohortFunction(connection);
+
     return true;
 }

@@ -22,6 +22,7 @@ typedef char *(*circe_convert_fn)(graal_isolatethread_t *, char *expr_json, char
 typedef char *(*circe_sql_render_fn)(graal_isolatethread_t *, char *sql_template, char *parameters_json);
 typedef char *(*circe_sql_translate_fn)(graal_isolatethread_t *, char *sql, char *target_dialect);
 typedef char *(*circe_sql_render_translate_fn)(graal_isolatethread_t *, char *sql_template, char *target_dialect, char *parameters_json);
+typedef char *(*circe_check_cohort_fn)(graal_isolatethread_t *, char *expr_json);
 typedef int (*graal_create_isolate_fn)(void *params, graal_isolate_t **isolate, graal_isolatethread_t **thread);
 
 static void *circe_lib_handle = NULL;
@@ -31,6 +32,7 @@ static circe_convert_fn circe_convert = NULL;
 static circe_sql_render_fn circe_sql_render = NULL;
 static circe_sql_translate_fn circe_sql_translate = NULL;
 static circe_sql_render_translate_fn circe_sql_render_translate = NULL;
+static circe_check_cohort_fn circe_check_cohort = NULL;
 static graal_create_isolate_fn graal_create_isolate_ptr = NULL;
 
 static const char base64_decode_table[256] = {
@@ -138,13 +140,16 @@ static int EnsureCirceLoaded() {
     if (!sym_translate) return 0;
     void *sym_render_translate = dlsym(circe_lib_handle, "circe_sql_render_translate");
     if (!sym_render_translate) return 0;
+    void *sym_check = dlsym(circe_lib_handle, "circe_check_cohort");
+    if (!sym_check) return 0;
     void *sym_create = dlsym(circe_lib_handle, "graal_create_isolate");
     if (!sym_create) return 0;
-    
+
     circe_convert = (circe_convert_fn)sym_build;
     circe_sql_render = (circe_sql_render_fn)sym_render;
     circe_sql_translate = (circe_sql_translate_fn)sym_translate;
     circe_sql_render_translate = (circe_sql_render_translate_fn)sym_render_translate;
+    circe_check_cohort = (circe_check_cohort_fn)sym_check;
     graal_create_isolate_ptr = (graal_create_isolate_fn)sym_create;
     
     int rc = graal_create_isolate_ptr(NULL, &circe_isolate, &circe_thread);
@@ -575,6 +580,66 @@ static void CirceGenerateAndTranslateFunction(duckdb_function_info info, duckdb_
     }
 }
 
+// circe_check_cohort function - validates cohort definition and returns JSON warnings array
+static void CirceCheckCohortFunction(duckdb_function_info info, duckdb_data_chunk input, duckdb_vector output) {
+    if (!EnsureCirceLoaded()) {
+        idx_t input_size = duckdb_data_chunk_get_size(input);
+        duckdb_vector_ensure_validity_writable(output);
+        uint64_t* result_validity = duckdb_vector_get_validity(output);
+        for (idx_t row = 0; row < input_size; row++) {
+            duckdb_validity_set_row_invalid(result_validity, row);
+        }
+        return;
+    }
+
+    idx_t input_size = duckdb_data_chunk_get_size(input);
+    duckdb_vector b64_vector = duckdb_data_chunk_get_vector(input, 0);
+    uint64_t* b64_validity = duckdb_vector_get_validity(b64_vector);
+    uint64_t* result_validity = NULL;
+
+    if (b64_validity) {
+        duckdb_vector_ensure_validity_writable(output);
+        result_validity = duckdb_vector_get_validity(output);
+    }
+
+    for (idx_t row = 0; row < input_size; row++) {
+        if (b64_validity && !duckdb_validity_row_is_valid(b64_validity, row)) {
+            if (result_validity) {
+                duckdb_validity_set_row_invalid(result_validity, row);
+            }
+            continue;
+        }
+
+        char* b64_expr = get_string_from_vector(b64_vector, row);
+
+        if (!b64_expr) {
+            set_error_in_vector(output, row, result_validity);
+            continue;
+        }
+
+        // Decode base64
+        size_t decoded_len;
+        char* decoded = base64_decode(b64_expr, strlen(b64_expr), &decoded_len);
+        if (!decoded || decoded_len == 0) {
+            duckdb_scalar_function_set_error(info, "circe_check_cohort: base64 decode failed");
+            if (decoded) duckdb_free(decoded);
+            duckdb_free(b64_expr);
+            return;
+        }
+
+        // Call Circe native function
+        char* warnings_json = circe_check_cohort(circe_thread, decoded);
+        if (warnings_json) {
+            set_string_in_vector(output, row, warnings_json);
+        } else {
+            set_error_in_vector(output, row, result_validity);
+        }
+
+        duckdb_free(decoded);
+        duckdb_free(b64_expr);
+    }
+}
+
 void RegisterCirceHelloFunction(duckdb_connection connection) {
     duckdb_scalar_function function = duckdb_create_scalar_function();
     duckdb_scalar_function_set_name(function, "circe_hello");
@@ -667,14 +732,28 @@ void RegisterCirceSqlRenderTranslateFunction(duckdb_connection connection) {
 void RegisterCirceGenerateAndTranslateFunction(duckdb_connection connection) {
     duckdb_scalar_function function = duckdb_create_scalar_function();
     duckdb_scalar_function_set_name(function, "circe_generate_and_translate");
-    
+
     duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
     duckdb_scalar_function_add_parameter(function, varchar_type); // base64 expression
     duckdb_scalar_function_add_parameter(function, varchar_type); // options JSON
     duckdb_scalar_function_set_return_type(function, varchar_type);
     duckdb_destroy_logical_type(&varchar_type);
-    
+
     duckdb_scalar_function_set_function(function, CirceGenerateAndTranslateFunction);
+    duckdb_register_scalar_function(connection, function);
+    duckdb_destroy_scalar_function(&function);
+}
+
+void RegisterCirceCheckCohortFunction(duckdb_connection connection) {
+    duckdb_scalar_function function = duckdb_create_scalar_function();
+    duckdb_scalar_function_set_name(function, "circe_check_cohort");
+
+    duckdb_logical_type varchar_type = duckdb_create_logical_type(DUCKDB_TYPE_VARCHAR);
+    duckdb_scalar_function_add_parameter(function, varchar_type); // base64 expression
+    duckdb_scalar_function_set_return_type(function, varchar_type);
+    duckdb_destroy_logical_type(&varchar_type);
+
+    duckdb_scalar_function_set_function(function, CirceCheckCohortFunction);
     duckdb_register_scalar_function(connection, function);
     duckdb_destroy_scalar_function(&function);
 }
