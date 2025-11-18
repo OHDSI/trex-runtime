@@ -1,5 +1,6 @@
 use std::future::ready;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use anyhow::Error;
 use base_rt::error::CloneableError;
@@ -205,6 +206,8 @@ impl std::ops::Deref for Worker {
 }
 
 impl Worker {
+  /// Start the worker on a dedicated thread (user workers) or thread pool (main/event workers).
+  /// Returns WorkerThreadHandles for user workers, None for main/event workers.
   pub fn start(
     self,
     eager_module_init: bool,
@@ -212,7 +215,7 @@ impl Worker {
       Result<(MetricSource, CancellationToken), Error>,
     >,
     exit: WorkerExit,
-  ) {
+  ) -> Option<WorkerThreadHandles> {
     let worker_name = self.worker_name.clone();
     let worker_key = self.worker_key;
     let event_metadata = self.event_metadata.clone();
@@ -223,6 +226,21 @@ impl Worker {
     let imp = self.imp.clone();
     let cx = self.cx.clone();
     let worker_kind = cx.worker_kind;
+
+    // For user workers, use dedicated thread spawning
+    // For main/event workers, use the existing thread pool approach
+    if worker_kind.is_user_worker() {
+      return self.start_on_dedicated_thread(
+        eager_module_init,
+        booter_signal,
+        exit,
+        worker_name,
+        worker_key,
+        Some(event_metadata.clone()),
+        events_msg_tx.clone(),
+        pool_msg_tx.clone(),
+      );
+    }
 
     let rt = imp.runtime_handle();
     let worker_fut = async move {
@@ -371,9 +389,182 @@ impl Worker {
       metadata = ?event_metadata
     ));
 
+    // Main/event workers use the existing thread pool approach
     drop(tokio::spawn(unsafe {
       MaskFutureAsSend::new(worker_result_fut)
     }));
+    None
+  }
+
+  /// Start a user worker on a dedicated OS thread.
+  /// This eliminates the need for v8::Locker by ensuring the isolate never migrates threads.
+  fn start_on_dedicated_thread(
+    mut self,
+    eager_module_init: bool,
+    booter_signal: oneshot::Sender<
+      Result<(MetricSource, CancellationToken), Error>,
+    >,
+    exit: WorkerExit,
+    worker_name: String,
+    worker_key: Option<Uuid>,
+    event_metadata: Option<EventMetadata>,
+    events_msg_tx: Option<mpsc::UnboundedSender<WorkerEventWithMetadata>>,
+    pool_msg_tx: Option<mpsc::UnboundedSender<UserWorkerMsgs>>,
+  ) -> Option<WorkerThreadHandles> {
+    use crate::runtime::thread_utils;
+
+    let (isolate_handle_tx, isolate_handle_rx) = oneshot::channel();
+
+    // Clone imp before moving self into the thread
+    let imp_for_supervise = self.imp.clone();
+
+    let thread_result = std::thread::Builder::new()
+      .name(format!("user-worker-{}", worker_name))
+      .spawn(move || {
+        // Create current-thread runtime on THIS dedicated thread
+        let rt = thread_utils::create_current_thread_runtime(&worker_name)?;
+
+        // Execute worker logic on the dedicated thread using LocalSet
+        thread_utils::block_on_local(&rt, async move {
+          // Create the Deno runtime
+          let new_runtime_result = 'scope: {
+            match DenoRuntime::new(self).await {
+              Ok(mut v) => {
+                if eager_module_init {
+                  if let Err(err) = v.init_main_module().await {
+                    break 'scope Err(err);
+                  }
+                }
+                Ok(v)
+              }
+              Err(err) => Err(err),
+            }
+          };
+
+          let mut new_runtime = match new_runtime_result {
+            Ok(v) => v,
+            Err(err) => {
+              let err = CloneableError::from(err.context("worker boot error"));
+              let _ = booter_signal.send(Err(err.clone().into()));
+              return Err(err.into());
+            }
+          };
+
+          // Extract the isolate handle before starting the event loop
+          let isolate_handle = new_runtime.js_runtime.v8_isolate().thread_safe_handle();
+
+          // Send the isolate handle back to the parent thread
+          if isolate_handle_tx.send(isolate_handle).is_err() {
+            return Err(anyhow::anyhow!("failed to send isolate handle to parent thread"));
+          }
+
+          // Continue with normal worker initialization
+          let metric_src = {
+            let metric_src =
+              WorkerMetricSource::from_js_runtime(&mut new_runtime.js_runtime);
+            MetricSource::Worker(metric_src)
+          };
+
+          let _ = booter_signal.send(Ok((metric_src, new_runtime.drop_token.clone())));
+
+          let span = debug_span!(
+            "poll",
+            thread = ?std::thread::current().id(),
+          );
+
+          let supervise_fut = match imp_for_supervise.clone().supervise(&mut new_runtime) {
+            Some(v) => v.boxed(),
+            None => return Ok(()),
+          };
+
+          let _guard = scopeguard::guard((), |_| {
+            if let Some((key, tx)) = worker_key.zip(pool_msg_tx.clone()) {
+              if let Err(err) = tx.send(UserWorkerMsgs::Shutdown(key)) {
+                error!(
+                  "failed to send the shutdown signal to user worker pool: {:?}",
+                  err
+                );
+              }
+            }
+          });
+
+          let worker_poll_fut = async move {
+            let result = imp_for_supervise.on_created(&mut new_runtime).await;
+            let maybe_uncaught_exception_event = match result.as_ref() {
+              Ok(WorkerEvents::UncaughtException(ev)) => Some(ev.clone()),
+              Err(err) => Some(UncaughtExceptionEvent {
+                cpu_time_used: 0,
+                exception: err.to_string(),
+              }),
+              _ => None,
+            };
+
+            if let Some(ev) = maybe_uncaught_exception_event {
+              exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
+            }
+
+            drop(new_runtime);
+            let _ = supervise_fut.await;
+
+            result
+          }
+          .instrument(span);
+
+          // Run the worker on the local thread
+          let result = tokio::task::spawn_local(worker_poll_fut)
+            .await
+            .map_err(anyhow::Error::from)?;
+
+          // Handle the result
+          match result {
+            Ok(event) => {
+              match event {
+                WorkerEvents::Shutdown(ShutdownEvent { cpu_time_used, .. })
+                | WorkerEvents::UncaughtException(UncaughtExceptionEvent {
+                  cpu_time_used,
+                  ..
+                }) => {
+                  debug!("CPU time used: {:?}ms", cpu_time_used);
+                }
+                _ => {}
+              };
+
+              if let Some(metadata) = event_metadata {
+                send_event_if_event_worker_available(
+                  events_msg_tx.as_ref(),
+                  event,
+                  metadata,
+                );
+              }
+              Ok(())
+            }
+            Err(err) => {
+              error!("unexpected worker error {}", err);
+              Err(err)
+            }
+          }
+        })
+      });
+
+    match thread_result {
+      Ok(join_handle) => {
+        // Wait for the isolate handle to be sent back
+        match isolate_handle_rx.blocking_recv() {
+          Ok(isolate_handle) => Some(WorkerThreadHandles {
+            thread_handle: join_handle,
+            isolate_handle,
+          }),
+          Err(_) => {
+            error!("failed to receive isolate handle from worker thread");
+            None
+          }
+        }
+      }
+      Err(err) => {
+        error!("failed to spawn worker thread: {}", err);
+        None
+      }
+    }
   }
 }
 
@@ -383,4 +574,16 @@ pub struct WorkerSurface {
   pub msg_tx: mpsc::UnboundedSender<WorkerRequestMsg>,
   pub exit: WorkerExit,
   pub cancel: CancellationToken,
+  /// Thread handles for user workers running on dedicated threads.
+  /// Wrapped in Arc<Mutex<Option<>>> to allow Clone while storing non-Clone handles.
+  /// The Option will be taken when extracting handles into UserWorkerProfile.
+  pub thread_handles: Arc<Mutex<Option<WorkerThreadHandles>>>,
+}
+
+/// Handles for a worker running on a dedicated thread.
+/// Only populated for user workers; None for main/event workers.
+#[derive(Debug)]
+pub struct WorkerThreadHandles {
+  pub thread_handle: std::thread::JoinHandle<Result<(), Error>>,
+  pub isolate_handle: deno_core::v8::IsolateHandle,
 }

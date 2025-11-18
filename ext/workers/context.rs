@@ -136,7 +136,7 @@ impl Default for UserWorkerRuntimeOpts {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct UserWorkerProfile {
   pub worker_request_msg_tx: mpsc::UnboundedSender<WorkerRequestMsg>,
   pub early_drop_tx: mpsc::UnboundedSender<oneshot::Sender<bool>>,
@@ -149,6 +149,10 @@ pub struct UserWorkerProfile {
   pub cancel: CancellationToken,
   pub status: TimingStatus,
   pub exit: WorkerExit,
+
+  // Phase 3: Add thread and isolate handles for dedicated-thread-per-isolate model
+  pub thread_handle: Option<std::thread::JoinHandle<Result<(), anyhow::Error>>>,
+  pub isolate_handle: Option<deno_core::v8::IsolateHandle>,
 }
 
 #[derive(Debug, Clone)]

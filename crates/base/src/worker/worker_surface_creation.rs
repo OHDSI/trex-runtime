@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use anyhow::Context;
 use deno::deno_telemetry::OtelConfig;
@@ -406,7 +407,7 @@ impl WorkerSurfaceBuilder {
     let cx = worker.cx.clone();
     let network_sender = worker.imp.network_sender().await;
 
-    worker.start(eager_module_init, worker_boot_result_tx, exit.clone());
+    let thread_handles = worker.start(eager_module_init, worker_boot_result_tx, exit.clone());
 
     // create an async task waiting for requests for worker
     let (worker_req_tx, mut worker_req_rx) =
@@ -449,6 +450,7 @@ impl WorkerSurfaceBuilder {
           msg_tx: worker_req_tx,
           exit,
           cancel,
+          thread_handles: Arc::new(Mutex::new(thread_handles)),
         })
       }
 
