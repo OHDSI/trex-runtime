@@ -156,6 +156,7 @@ mod ops;
 mod unsync;
 
 pub mod permissions;
+pub mod thread_utils;
 
 const DEFAULT_ALLOC_CHECK_INT_MSEC: u64 = 1000;
 
