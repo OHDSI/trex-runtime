@@ -920,6 +920,43 @@ where
 
         let mut js_runtime = JsRuntime::new(runtime_options);
 
+        // Initialize lazy-loaded extensions
+        // This is required for extensions that use lazy_init() instead of init()
+        // It calls the state initializers for those extensions (e.g., AsyncId for node)
+        js_runtime.lazy_init_extensions(vec![
+          deno_web::deno_web::args::<PermissionsContainer>(
+            Default::default(), // blob_store
+            None, // location
+          ),
+          deno_fetch::deno_fetch::args::<PermissionsContainer>(
+            deno_fetch::Options {
+              user_agent: "supabase-edge-runtime".to_string(),
+              root_cert_store_provider: None,
+              unsafely_ignore_certificate_errors: None,
+              file_fetch_handler: std::rc::Rc::new(deno_fetch::FsFetchHandler),
+              ..Default::default()
+            },
+          ),
+          deno_websocket::deno_websocket::args::<PermissionsContainer>(),
+          deno_crypto::deno_crypto::args(None),
+          deno_broadcast_channel::deno_broadcast_channel::args::<
+            deno_broadcast_channel::InMemoryBroadcastChannel,
+          >(
+            deno_broadcast_channel::InMemoryBroadcastChannel::default(),
+          ),
+          deno_net::deno_net::args::<PermissionsContainer>(None, None),
+          deno_http::deno_http::args(deno_http::Options::default()),
+          deno_io::deno_io::args(Default::default()),
+          deno_fs::deno_fs::args::<PermissionsContainer>(Arc::new(deno_fs::RealFs)),
+          ext_node::deno_node::args::<
+            PermissionsContainer,
+            deno_resolver::npm::DenoInNpmPackageChecker,
+            npm::NpmResolver<sys_traits::impls::RealSys>,
+            sys_traits::impls::RealSys,
+          >(None, Arc::new(deno_fs::RealFs)),
+          deno_cache::deno_cache::args(Default::default()),
+        ]);
+
         let dispatch_fns = {
           let context = js_runtime.main_context();
           // New V8 API requires pinning scopes
