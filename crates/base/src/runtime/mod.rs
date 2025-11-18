@@ -136,6 +136,17 @@ thread_local! {
 fn isolate_debug_key(isolate: &v8::Isolate) -> usize {
   isolate as *const v8::Isolate as usize
 }
+
+#[inline]
+fn log_locker_event(isolate_key: usize, stage: &'static str, depth: u32) {
+  debug!(
+    target = "edge::runtime::locker",
+    stage,
+    isolate = format_args!("{isolate_key:#x}"),
+    thread = ?std::thread::current().id(),
+    depth,
+  );
+}
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::CPUUsageMetrics;
 use crate::worker::DuplexStreamEntry;
@@ -994,6 +1005,18 @@ where
             .put(MemCheckWaker::from(mem_check.waker.clone()));
         }
 
+        // `JsRuntime::new` enters the isolate. Make sure we exit it on the
+        // thread where it was created before handing it off to other threads
+        // (e.g. the bootstrap blocking pool) that will re-enter via Locker.
+        //
+        // TEMPORARY FIX for V8 140.2.0 (Deno 2.5.6): Commenting out the exit()
+        // call to avoid SIGBUS crash in v8::Locker::Initialize().
+        // The isolate will be re-entered via with_locker() in the spawn_blocking thread.
+        // TODO: Investigate if this causes any threading issues or resource leaks.
+        // unsafe {
+        //   js_runtime.v8_isolate().exit();
+        // }
+
         Ok(Bootstrap {
           migrated,
           waker,
@@ -1019,9 +1042,6 @@ where
         let _span = span.entered();
 
         debug!("bootstrap");
-
-        // dispose_scope_root() has been removed in V8 140.x - scope cleanup is now automatic
-        bootstrap.js_runtime.v8_isolate().exit();
 
         let has_inspector = bootstrap.has_inspector;
         let migrated = bootstrap.migrated;
@@ -1814,23 +1834,31 @@ trait JsRuntimeLockerGuard {
     let isolate = js_runtime.v8_isolate();
 
     let isolate_key = isolate_debug_key(isolate);
-    LOCK_DEBUG_STATES.with(|states| {
+    let depth_after_increment = LOCK_DEBUG_STATES.with(|states| {
       let mut states = states.borrow_mut();
       let state = states.entry(isolate_key).or_default();
       state.ever_locked = true;
       state.depth = state.depth.saturating_add(1);
+      state.depth
     });
+    log_locker_event(isolate_key, "acquire_start", depth_after_increment);
 
     let locker =
       Locker::new(std::mem::transmute::<&mut Isolate, &mut Isolate>(isolate));
+    log_locker_event(isolate_key, "acquire_complete", depth_after_increment);
 
     scopeguard::guard(self, move |_guard| {
       // Update debug state on exit
-      LOCK_DEBUG_STATES.with(|states| {
+      let depth_before_release = LOCK_DEBUG_STATES.with(|states| {
         if let Some(state) = states.borrow_mut().get_mut(&isolate_key) {
+          let before = state.depth;
           state.depth = state.depth.saturating_sub(1);
+          before
+        } else {
+          0
         }
       });
+      log_locker_event(isolate_key, "release", depth_before_release);
       drop(locker);
     })
   }
@@ -1856,16 +1884,35 @@ where
   R: 'static,
 {
   let span = Span::current();
+  let caller_thread_id = std::thread::current().id();
+  debug!(
+    target = "edge::runtime::blocking",
+    action = "schedule",
+    caller_thread = ?caller_thread_id,
+  );
   let disguised_fn = unsync::MaskValueAsSend { value: non_send_fn };
   let (mut scope, ..) = async_scoped::TokioScope::scope(|s| {
+    let span = span.clone();
     s.spawn_blocking(move || {
+      let worker_thread_id = std::thread::current().id();
+      debug!(
+        target = "edge::runtime::blocking",
+        action = "start",
+        caller_thread = ?caller_thread_id,
+        worker_thread = ?worker_thread_id,
+      );
       let _span = span.entered();
 
-      debug!(current_thread = ?std::thread::current().id());
-
-      unsync::MaskValueAsSend {
+      let result = unsync::MaskValueAsSend {
         value: disguised_fn.into_inner()(),
-      }
+      };
+
+      debug!(
+        target = "edge::runtime::blocking",
+        action = "finish",
+        worker_thread = ?worker_thread_id,
+      );
+      result
     });
   });
 
