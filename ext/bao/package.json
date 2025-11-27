@@ -1,16 +1,23 @@
 {
   "name": "@trex/cli",
   "version": "0.5.0",
-  "description": "",
-  "type": "module",
+  "description": "TREX server launcher",
   "bin": {
-    "trex": "./bin/bao"
+    "trex": "./bin/trex"
   },
+  "files": [
+    "bin/trex",
+    "bin/build.sh",
+    "c/",
+    "lib/"
+  ],
   "scripts": {
-    "start": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && trex -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event",
-    "startdev": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && trex -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event --enable-inspector --inspector-host 0.0.0.0 --inspector-port 9229",
-    "watch": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && npx nodemon --watch /usr/src/core -e ts --exec trex -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event --enable-inspector --inspector-host 0.0.0.0 --inspector-port 9229",
-    "starttest": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && trex -- --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/main --event-worker-path /usr/src/event-worker",
+    "build": "./bin/build.sh",
+    "prepack": "npm run build",
+    "postinstall": "cd lib && ln -sf libduckdb.so libduckdb.so.1.4 2>/dev/null || true",
+    "start": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && trex --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event",
+    "startdev": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && trex --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/core/server --event-worker-path /usr/src/core/event --enable-inspector --inspector-host 0.0.0.0 --inspector-port 9229",
+    "starttest": "mkdir -p /usr/src/cert && echo \"$TLS__INTERNAL__CRT\" > /usr/src/cert/cert.pem && echo \"$TLS__INTERNAL__KEY\" > /usr/src/cert/key.pem && trex --tls-cert /usr/src/cert/cert.pem --tls-key /usr/src/cert/key.pem --tls-port 33000 --trexas-port 33001 --pgwire-port 5432 --main-path /usr/src/main --event-worker-path /usr/src/event-worker",
     "health": "curl -f http://localhost:33001/_internal/health || exit 1"
   },
   "author": "",
@@ -20,9 +27,6 @@
     "@trex/circe": "^0.0.1-1761998601-4cd8b8f9084286a87944460ed2ea434a12095cb1",
     "@trex/hana": "^0.5.0-1761998602-4cd8b8f9084286a87944460ed2ea434a12095cb1",
     "@trex/pgwire": "^0.5.0-1761998604-4cd8b8f9084286a87944460ed2ea434a12095cb1",
-    "@trex/tpm": "^0.5.0-1761998603-4cd8b8f9084286a87944460ed2ea434a12095cb1",
-    "duckdb": "1.4.0",
-    "minimist": "^1.2.8",
-    "nbb": "^1.3.204"
+    "@trex/tpm": "^0.5.0-1761998603-4cd8b8f9084286a87944460ed2ea434a12095cb1"
   }
 }
