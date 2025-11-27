@@ -9,3 +9,4 @@ void RegisterCirceSqlRenderFunction(duckdb_connection connection);
 void RegisterCirceSqlTranslateFunction(duckdb_connection connection);
 void RegisterCirceSqlRenderTranslateFunction(duckdb_connection connection);
 void RegisterCirceGenerateAndTranslateFunction(duckdb_connection connection);
+void RegisterCirceCheckCohortFunction(duckdb_connection connection);

@@ -3,6 +3,8 @@
   {"name": "com.fasterxml.jackson.databind.ser.std.ToStringSerializer", "methods": [{"name": "<init>", "parameterTypes": []}]},
   {"name": "org.ohdsi.circe.cohortdefinition.CohortExpression", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
   {"name": "org.ohdsi.circe.vocabulary.ConceptSetExpression", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.vocabulary.ConceptSetExpression$ConceptSetItem", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.vocabulary.Concept", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
   {"name": "org.ohdsi.circe.CirceNativeLibrary", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
   {"name": "org.ohdsi.circe.cohortdefinition.CohortExpressionQueryBuilder", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
   {"name": "org.ohdsi.circe.cohortdefinition.CohortExpressionQueryBuilder$BuildExpressionQueryOptions", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
@@ -96,5 +98,10 @@
   {"name": "org.ohdsi.circe.cohortdefinition.VisitOccurrenceSqlBuilder$1", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
   {"name": "org.ohdsi.circe.cohortdefinition.Window", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
   {"name": "org.ohdsi.circe.cohortdefinition.Window$Endpoint", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
-  {"name": "org.ohdsi.circe.cohortdefinition.WindowedCriteria", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true}
+  {"name": "org.ohdsi.circe.cohortdefinition.WindowedCriteria", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.check.Warning", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.check.WarningSeverity", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.check.warnings.BaseWarning", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.check.warnings.DefaultWarning", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true},
+  {"name": "org.ohdsi.circe.check.warnings.ConceptSetWarning", "allDeclaredConstructors": true, "allPublicConstructors": true, "allDeclaredMethods": true, "allPublicMethods": true, "allDeclaredFields": true, "allPublicFields": true}
 ]

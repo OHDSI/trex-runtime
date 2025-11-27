@@ -42,11 +42,13 @@ using circe_convert_fn = char *(*)(graal_isolatethread_t *, char *expr_json, cha
 using circe_sql_render_fn = char *(*)(graal_isolatethread_t *, char *sql_template, char *parameters_json);
 using circe_sql_translate_fn = char *(*)(graal_isolatethread_t *, char *sql, char *target_dialect);
 using circe_sql_render_translate_fn = char *(*)(graal_isolatethread_t *, char *sql_template, char *target_dialect, char *parameters_json);
+using circe_check_cohort_fn = char *(*)(graal_isolatethread_t *, char *expr_json);
 using graal_create_isolate_fn = int (*)(void *params, graal_isolate_t **isolate, graal_isolatethread_t **thread);
 static circe_convert_fn circe_convert = nullptr;
 static circe_sql_render_fn circe_sql_render = nullptr;
 static circe_sql_translate_fn circe_sql_translate = nullptr;
 static circe_sql_render_translate_fn circe_sql_render_translate = nullptr;
+static circe_check_cohort_fn circe_check_cohort = nullptr;
 static graal_create_isolate_fn graal_create_isolate_ptr = nullptr;
 static void *circe_lib_handle = nullptr;
 static graal_isolate_t *circe_isolate = nullptr;
@@ -110,12 +112,15 @@ static void EnsureCirceLoaded() {
     if (!sym_translate) throw IOException("circe_sql_translate: symbol circe_sql_translate not found in native circe library");
     auto sym_render_translate = dlsym(circe_lib_handle, "circe_sql_render_translate");
     if (!sym_render_translate) throw IOException("circe_sql_render_translate: symbol circe_sql_render_translate not found in native circe library");
+    auto sym_check = dlsym(circe_lib_handle, "circe_check_cohort");
+    if (!sym_check) throw IOException("circe_check_cohort: symbol circe_check_cohort not found in native circe library");
     auto sym_create = dlsym(circe_lib_handle, "graal_create_isolate");
     if (!sym_create) throw IOException("circe functions: symbol graal_create_isolate not found (Graal isolate creation)");
     circe_convert = reinterpret_cast<circe_convert_fn>(sym_build);
     circe_sql_render = reinterpret_cast<circe_sql_render_fn>(sym_render);
     circe_sql_translate = reinterpret_cast<circe_sql_translate_fn>(sym_translate);
     circe_sql_render_translate = reinterpret_cast<circe_sql_render_translate_fn>(sym_render_translate);
+    circe_check_cohort = reinterpret_cast<circe_check_cohort_fn>(sym_check);
     graal_create_isolate_ptr = reinterpret_cast<graal_create_isolate_fn>(sym_create);
     int rc = graal_create_isolate_ptr(nullptr, &circe_isolate, &circe_thread);
     if (rc != 0 || !circe_thread) throw IOException("circe functions: failed to create Graal isolate (rc=" + std::to_string(rc) + ")");
@@ -184,6 +189,24 @@ inline void CirceSqlRenderTranslateScalar(DataChunk &args, ExpressionState &stat
     });
 }
 
+// base64 encoded JSON cohort expression -> JSON array of validation warnings
+inline void CirceCheckCohortScalar(DataChunk &args, ExpressionState &state, Vector &result) {
+    EnsureCirceLoaded();
+    auto &b64_vec = args.data[0];
+    UnaryExecutor::Execute<string_t, string_t>(b64_vec, result, args.size(), [&](string_t b64_expr) {
+        std::string decoded;
+        try {
+            decoded = duckdb::Blob::FromBase64(b64_expr);
+        } catch (std::exception &ex) {
+            throw IOException("circe_check_cohort: base64 decode failed: " + std::string(ex.what()));
+        }
+        if (decoded.empty()) throw IOException("circe_check_cohort: decoded JSON empty");
+        char *warnings_json = circe_check_cohort(circe_thread, const_cast<char *>(decoded.c_str()));
+        if (!warnings_json) throw IOException("circe_check_cohort: native function returned null");
+        return StringVector::AddString(result, warnings_json);
+    });
+}
+
 static void LoadInternal(DatabaseInstance &instance) {
     ExtensionUtil::RegisterFunction(instance, ScalarFunction("circe_hello", {LogicalType::VARCHAR}, LogicalType::VARCHAR, CirceHelloScalarFun));
     ExtensionUtil::RegisterFunction(instance, ScalarFunction("circe_openssl_version", {LogicalType::VARCHAR}, LogicalType::VARCHAR, CirceOpenSSLVersionScalarFun));
@@ -191,6 +214,7 @@ static void LoadInternal(DatabaseInstance &instance) {
     ExtensionUtil::RegisterFunction(instance, ScalarFunction("circe_sql_render", {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::VARCHAR, CirceSqlRenderScalar));
     ExtensionUtil::RegisterFunction(instance, ScalarFunction("circe_sql_translate", {LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::VARCHAR, CirceSqlTranslateScalar));
     ExtensionUtil::RegisterFunction(instance, ScalarFunction("circe_sql_render_translate", {LogicalType::VARCHAR, LogicalType::VARCHAR, LogicalType::VARCHAR}, LogicalType::VARCHAR, CirceSqlRenderTranslateScalar));
+    ExtensionUtil::RegisterFunction(instance, ScalarFunction("circe_check_cohort", {LogicalType::VARCHAR}, LogicalType::VARCHAR, CirceCheckCohortScalar));
 }
 
 void CirceExtension::Load(DuckDB &db) { LoadInternal(*db.instance); }

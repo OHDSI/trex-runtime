@@ -81,12 +81,80 @@ export class TrexConnection  {
         callback
     ) {
         try {
-            const result = await this.connection.atlas_query(
-                atlas,
-                cdmSchema,
-                cohortId
-            );
-            callback(null, result);
+            // Convert atlas to JSON string if it's an object
+            const atlasStr = (typeof atlas === 'string') ? atlas : JSON.stringify(atlas);
+
+            // Convert to base64
+            const toBase64 = (s) => {
+                if (typeof Buffer !== 'undefined' && Buffer.from) {
+                    return Buffer.from(s, 'utf8').toString('base64');
+                }
+                const bytes = new TextEncoder().encode(s);
+                let binary = '';
+                for (const b of bytes) binary += String.fromCharCode(b);
+                return btoa(binary);
+            };
+            const atlasB64 = toBase64(atlasStr);
+
+            // Build options JSON with schema information
+            // Use the schema names from the connection configuration
+            const resultSchema = this.resultSchemaName || this.schemaName;
+
+            const options = `{"cdmSchema":"${cdmSchema}","resultSchema":"${resultSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}`;
+
+            // Use circe_sql_translate wrapping circe_json_to_sql to translate to DuckDB dialect
+            const sql = `SELECT circe_sql_translate(circe_json_to_sql('${atlasB64}', '${options}'), 'duckdb') AS sql`;
+            const result = await this.connection.execute(sql, []);
+
+            // Extract the generated SQL from the result and return in same format as old atlas_query
+            if (result && result.length > 0 && result[0].sql) {
+                callback(null, {sql: result[0].sql});
+            } else {
+                callback(new Error("No SQL generated from cohort definition"), null);
+            }
+        } catch (err) {
+            console.error(err);
+            callback(new Error(err.message), null);
+        }
+    }
+
+    async atlas_validate(
+        cohortDefinition,
+        callback
+    ) {
+        try {
+            // Convert cohort definition to JSON string if it's an object
+            const cohortStr = (typeof cohortDefinition === 'string') ? cohortDefinition : JSON.stringify(cohortDefinition);
+
+            // Convert to base64
+            const toBase64 = (s) => {
+                if (typeof Buffer !== 'undefined' && Buffer.from) {
+                    return Buffer.from(s, 'utf8').toString('base64');
+                }
+                const bytes = new TextEncoder().encode(s);
+                let binary = '';
+                for (const b of bytes) binary += String.fromCharCode(b);
+                return btoa(binary);
+            };
+            const cohortDefinitionBase64 = toBase64(cohortStr);
+
+            // Execute circe_check_cohort function to validate the cohort definition
+            const sql = `SELECT circe_check_cohort('${cohortDefinitionBase64}') AS warnings`;
+            const result = await this.connection.execute(sql, []);
+
+            // Parse the JSON warnings from the result
+            if (result && result.length > 0 && result[0].warnings) {
+                const warnings = JSON.parse(result[0].warnings);
+                // Extract just the messages from the warnings array
+                const messages = warnings.map(w => ({
+                    severity: w.severity,
+                    message: w.message
+                }));
+                callback(null, messages);
+            } else {
+                // No warnings - return empty array
+                callback(null, []);
+            }
         } catch (err) {
             console.error(err);
             callback(new Error(err.message), null);

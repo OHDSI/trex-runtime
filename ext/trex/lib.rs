@@ -291,7 +291,99 @@ fn op_add_replication(
 #[op2]
 #[string]
 fn op_get_dbc() -> String {
-  return (*(*DB_CREDENTIALS)).lock().unwrap().clone();
+  let mut base_creds: serde_json::Value =
+    serde_json::from_str(&(*(*DB_CREDENTIALS)).lock().unwrap().clone())
+      .unwrap_or_else(
+        |_| serde_json::json!({"credentials": [], "publications": {}}),
+      );
+
+  // Add hardcoded RESULT database from TREX__SQL__* env variables
+  if let (Ok(host), Ok(port), Ok(user), Ok(password), Ok(dbname)) = (
+    std::env::var("TREX__SQL__HOST"),
+    std::env::var("TREX__SQL__PORT"),
+    std::env::var("TREX__SQL__USER"),
+    std::env::var("TREX__SQL__PASSWORD"),
+    std::env::var("TREX__SQL__DBNAME"),
+  ) {
+    let result_db = serde_json::json!({
+      "id": "RESULT",
+      "dialect": "postgres",
+      "host": host,
+      "port": port.parse::<u16>().unwrap_or(5432),
+      "name": dbname,
+      "credentials": [
+        {
+          "username": user,
+          "password": password,
+          "userScope": "Admin",
+          "serviceScope": "Internal"
+        }
+      ],
+      "publications": [],
+      "vocab_schemas": []
+    });
+
+    if let Some(credentials) = base_creds
+      .get_mut("credentials")
+      .and_then(|c| c.as_array_mut())
+    {
+      // Check if RESULT already exists
+      if !credentials
+        .iter()
+        .any(|c| c.get("id").and_then(|id| id.as_str()) == Some("RESULT"))
+      {
+        credentials.push(result_db);
+      }
+    }
+  }
+
+  // Add hardcoded FHIR database from PG__* env variables
+  if let (Ok(host), Ok(dbname), Ok(user), Ok(password)) = (
+    std::env::var("PG__HOST"),
+    std::env::var("PG__FHIR_DB_NAME"),
+    std::env::var("PG_USER"),
+    std::env::var("PG_PASSWORD"),
+  ) {
+    let port = std::env::var("PG__PORT")
+      .ok()
+      .and_then(|p| p.parse::<u16>().ok())
+      .unwrap_or(5432);
+
+    let fhir_db = serde_json::json!({
+      "id": "FHIR",
+      "dialect": "postgres",
+      "host": host,
+      "port": port,
+      "name": dbname,
+      "credentials": [
+        {
+          "username": user,
+          "password": password,
+          "userScope": "Admin",
+          "serviceScope": "Internal"
+        }
+      ],
+      "publications": [],
+      "vocab_schemas": []
+    });
+
+    if let Some(credentials) = base_creds
+      .get_mut("credentials")
+      .and_then(|c| c.as_array_mut())
+    {
+      // Check if FHIR already exists
+      if !credentials
+        .iter()
+        .any(|c| c.get("id").and_then(|id| id.as_str()) == Some("FHIR"))
+      {
+        credentials.push(fhir_db);
+      }
+    }
+  }
+
+  serde_json::to_string(&base_creds).unwrap_or_else(|_| {
+    String::from("{\"credentials\":[], \"publications\":{}}")
+  })
 }
 
 #[op2(fast)]
