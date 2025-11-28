@@ -307,7 +307,9 @@ fn op_get_dbc() -> String {
   ) {
     let result_db = serde_json::json!({
       "id": "RESULT",
+      "code": "RESULT",
       "dialect": "postgres",
+      "authentication_mode": "Password",
       "host": host,
       "port": port.parse::<u16>().unwrap_or(5432),
       "name": dbname,
@@ -351,7 +353,9 @@ fn op_get_dbc() -> String {
 
     let fhir_db = serde_json::json!({
       "id": "FHIR",
+      "code": "FHIR",
       "dialect": "postgres",
+      "authentication_mode": "Password",
       "host": host,
       "port": port,
       "name": dbname,
