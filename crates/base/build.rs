@@ -15,15 +15,27 @@ mod supabase_startup_snapshot {
   use deno::deno_permissions::CheckedPath;
   use deno::deno_permissions::OpenAccessKind;
   use deno::deno_permissions::PermissionCheckError;
-  use deno::runtime::shared::maybe_transpile_source;
   use deno::PermissionsContainer;
   use deno_core::snapshot::create_snapshot;
   use deno_core::snapshot::CreateSnapshotOptions;
   use deno_core::url::Url;
   use deno_core::Extension;
+  use deno_core::extension;
+  use deno_core::ExtensionFileSource;
+  use deno_core::FastString;
+  use deno_core::ModuleSpecifier;
+  use deno_core::SourceMapData;
+  use deno_core::error::AnyError;
   use deno_error::JsErrorBox;
 
   use super::*;
+
+  fn transpile_ts(
+    specifier: deno_core::ModuleName,
+    code: deno_core::ModuleCodeString,
+  ) -> Result<(deno_core::ModuleCodeString, Option<deno_core::SourceMapData>), deno_error::JsErrorBox> {
+    deno::transpile::maybe_transpile_source(specifier, code)
+  }
 
   #[derive(Clone)]
   pub struct Permissions;
@@ -209,15 +221,61 @@ mod supabase_startup_snapshot {
 
     println!("Creating a snapshot...");
 
-    // Create a completely minimal snapshot with NO extensions at all
-    let extensions: Vec<Extension> = vec![];
+    // Create a snapshot with extensions
+    let mut extensions: Vec<Extension> = vec![];
+    /*
+      deno_telemetry::deno_telemetry::init(),
+      deno_webidl::deno_webidl::init(),
+      deno_console::deno_console::init(),
+      deno_url::deno_url::init(),
+      deno_web::deno_web::init::<PermissionsContainer>(
+        Default::default(),
+        Default::default(),
+      ),
+      deno_fetch::deno_fetch::init::<PermissionsContainer>(Default::default()),
+      deno_websocket::deno_websocket::init::<PermissionsContainer>(),
+      deno_crypto::deno_crypto::init(None),
+      deno_broadcast_channel::deno_broadcast_channel::init::<
+        deno_broadcast_channel::InMemoryBroadcastChannel,
+      >(
+        deno_broadcast_channel::InMemoryBroadcastChannel::default(),
+      ),
+      deno_net::deno_net::init::<PermissionsContainer>(None, None),
+      deno_tls::deno_tls::init(),
+      // deno_http::deno_http::init(Default::default()),
+      deno_io::deno_io::init(Default::default()),
+      deno_fs::deno_fs::init::<PermissionsContainer>(Arc::new(deno_fs::RealFs)),
+      deno_webgpu::deno_webgpu::init(),
+      ext_ai::ai::init(),
+      ext_env::env::init(),
+      deno_os::deno_os::init(None),
+      deno_process::deno_process::init(None),
+      ext_workers::user_workers::init(),
+      ext_event_worker::user_event_worker::init(),
+      ext_event_worker::js_interceptors::js_interceptors::init(),
+      ext_runtime::runtime_bootstrap::init::<PermissionsContainer>(None),
+      ext_runtime::runtime_net::init(),
+      ext_runtime::runtime_http::init(),
+      ext_runtime::runtime_http_start::init(),
+      ext_node::deno_node::init::<
+        PermissionsContainer,
+        deno_resolver::npm::DenoInNpmPackageChecker,
+        deno_resolver::npm::ManagedNpmResolver<sys_traits::impls::RealSys>,
+        sys_traits::impls::RealSys,
+      >(None, Arc::new(deno_fs::RealFs)),
+      deno_cache::deno_cache::init(Default::default()),
+      // deno::runtime::ops::permissions::deno_permissions::init(),
+      ext_os::os::init(),
+      ext_runtime::runtime::init(),
+    ];
+    */
 
     let snapshot = create_snapshot(
       CreateSnapshotOptions {
         cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
         startup_snapshot: None,
         extensions,
-        extension_transpiler: None, // No transpiler needed for empty snapshot
+        extension_transpiler: Some(Rc::new(transpile_ts)),
         skip_op_registration: false,
         with_runtime_cb: None,
       },
@@ -229,7 +287,7 @@ mod supabase_startup_snapshot {
     let mut snapshot_file = std::fs::File::create(snapshot_path).unwrap();
     snapshot_file.write_all(&output.output).unwrap();
 
-    println!("Snapshot created successfully (empty - all extensions loaded at runtime)");
+    println!("Snapshot created successfully");
 
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());

@@ -7,6 +7,7 @@ const requireImpl = internals.requireImpl;
 
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import "node:module";
+import "node:worker_threads";
 
 let initialized = false;
 

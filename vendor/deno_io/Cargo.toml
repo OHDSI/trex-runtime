@@ -38,5 +38,5 @@ winapi = { version = "=0.3.9", features = ["winbase", "processenv", "errhandling
 rand = "0.8.5"
 parking_lot = "0.12.3"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
-deno_subprocess_windows = { path = "../../thridparty/deno/runtime/subprocess_windows" }
+deno_subprocess_windows = "0.16.0"
 libc = "0.2.169"

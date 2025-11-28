@@ -31,11 +31,60 @@ pub fn load_npm_vfs(
       .to_string_lossy()
       .to_string();
 
+    // Debug logging to trace VFS contents (recursive)
+    fn log_vfs_tree(entry: &VfsEntry, indent: usize) {
+      let prefix = "  ".repeat(indent);
+      match entry {
+        VfsEntry::Dir(dir) => {
+          log::debug!("{}DIR: {} ({} entries)", prefix, dir.name, dir.entries.len());
+          for e in &dir.entries {
+            log_vfs_tree(e, indent + 1);
+          }
+        }
+        VfsEntry::File(f) => {
+          log::debug!("{}FILE: {} (offset={}, len={})", prefix, f.name, f.offset, f.len);
+        }
+        VfsEntry::Symlink(s) => {
+          log::debug!("{}LINK: {} -> {}", prefix, s.name, s.dest_parts.join("/"));
+        }
+      }
+    }
+
+    log::debug!(
+      "load_npm_vfs: root_path={}, dir.name={}, num_entries={}",
+      root_dir_path.display(),
+      dir.name,
+      dir.entries.len()
+    );
+    // Log first few entries to understand VFS structure
+    for (i, entry) in dir.entries.iter().enumerate() {
+      if i < 3 {
+        log_vfs_tree(entry, 1);
+      }
+    }
+    // Specifically look for fastify
+    for entry in &dir.entries {
+      if entry.name() == "localhost" {
+        if let VfsEntry::Dir(localhost_dir) = entry {
+          for pkg in &localhost_dir.entries {
+            if pkg.name() == "fastify" {
+              log::debug!("=== FASTIFY VFS STRUCTURE ===");
+              log_vfs_tree(pkg, 2);
+            }
+          }
+        }
+      }
+    }
+
     VfsRoot {
       dir,
       root_path: root_dir_path,
     }
   } else {
+    log::debug!(
+      "load_npm_vfs: root_path={}, NO virtual_dir (empty VFS)",
+      root_dir_path.display()
+    );
     VfsRoot {
       dir: VirtualDirectory {
         name: "".to_string(),

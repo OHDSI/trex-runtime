@@ -740,6 +740,7 @@ deno_core::extension!(deno_node,
     "node:v8" = "v8.ts",
     "node:vm" = "vm.js",
     "node:wasi" = "wasi.ts",
+    "node:worker_threads" = "worker_threads.ts",
     "node:zlib" = "zlib.js",
   ],
   lazy_loaded_esm = [

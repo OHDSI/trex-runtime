@@ -225,6 +225,133 @@ impl NpmModuleLoader {
   }
 }
 
+/// Generic NpmModuleLoader for any sys_traits-compatible system.
+/// This is used when the filesystem is backed by VFS (e.g., eszip bundles).
+///
+/// Type parameters:
+/// - `TInNpmPackageChecker`: Type that implements `node_resolver::InNpmPackageChecker`
+/// - `TSys`: System type that implements `sys_traits::FsRead + sys_traits::FsMetadata`
+/// - `TCjsCodeAnalyzer`: Type that implements `node_resolver::analyze::CjsCodeAnalyzer`
+/// - `TIsBuiltInNodeModuleChecker`: Type that implements `node_resolver::IsBuiltInNodeModuleChecker`
+/// - `TNpmPackageFolderResolver`: Type that implements `node_resolver::NpmPackageFolderResolver`
+#[derive(Clone)]
+pub struct GenericNpmModuleLoader<
+  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
+  TSys: sys_traits::FsRead + sys_traits::FsMetadata + Send + Sync + Clone + 'static,
+  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
+  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
+> {
+  cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
+  fs: Arc<dyn deno_fs::FileSystem>,
+  node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>,
+}
+
+impl<
+  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
+  TSys: sys_traits::FsRead + sys_traits::FsMetadata + Send + Sync + Clone + 'static,
+  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
+  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
+> GenericNpmModuleLoader<TInNpmPackageChecker, TSys, TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TNpmPackageFolderResolver>
+{
+  pub fn new(
+    cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
+      TCjsCodeAnalyzer,
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >>,
+  ) -> Self {
+    Self {
+      cjs_tracker,
+      node_code_translator,
+      fs,
+    }
+  }
+
+  pub async fn load(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<ModuleCodeStringSource, AnyError> {
+    let file_path = specifier.to_file_path().unwrap();
+    let code = self
+      .fs
+      .read_file_async(CheckedPathBuf::unsafe_new(file_path.clone()))
+      .await
+      .map_err(AnyError::from)
+      .with_context(|| {
+        if file_path.is_dir() {
+          let dir_path = file_path;
+          let mut msg = "Directory import ".to_string();
+          msg.push_str(&dir_path.to_string_lossy());
+          if let Some(referrer) = &maybe_referrer {
+            msg.push_str(" is not supported resolving import from ");
+            msg.push_str(referrer.as_str());
+            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
+              .iter()
+              .find(|e| dir_path.join(e).is_file());
+            if let Some(entrypoint_name) = entrypoint_name {
+              msg.push_str("\nDid you mean to import ");
+              msg.push_str(entrypoint_name);
+              msg.push_str(" within the directory?");
+            }
+          }
+          msg
+        } else {
+          let mut msg = "Unable to load ".to_string();
+          msg.push_str(&file_path.to_string_lossy());
+          if let Some(referrer) = &maybe_referrer {
+            msg.push_str(" imported from ");
+            msg.push_str(referrer.as_str());
+          }
+          msg
+        }
+      })?;
+
+    let media_type = MediaType::from_specifier(specifier);
+    if media_type.is_emittable() {
+      return Err(AnyError::from(NotSupportedKindInNpmError {
+        media_type,
+        specifier: specifier.clone(),
+      }));
+    }
+
+    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
+      let code = from_utf8_lossy_cow(code);
+      ModuleSourceCode::String(
+        self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(code))
+          .await?
+          .into_owned()
+          .into(),
+      )
+    } else {
+      ModuleSourceCode::Bytes(match code {
+        Cow::Owned(bytes) => bytes.into_boxed_slice().into(),
+        Cow::Borrowed(bytes) => bytes.into(),
+      })
+    };
+
+    Ok(ModuleCodeStringSource {
+      code,
+      found_url: specifier.clone(),
+      media_type: MediaType::from_specifier(specifier),
+    })
+  }
+}
+
 pub struct CliResolverOptions {
   pub deno_resolver: Arc<CliDenoResolver>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,

@@ -18,7 +18,7 @@ deno_core = "0.363.0"
 deno_error = "=0.7.0"
 deno_features = "0.18.0"
 deno_permissions = "0.80.0"
-deno_signals = { path = "../../thridparty/deno/ext/signals" }
+deno_signals = "0.12.0"
 deno_tls = "0.208.0"
 deno_tunnel = "0.8.0"
 hickory-proto = "0.25.0-alpha.4"

@@ -53,6 +53,7 @@ hyper-proxy = { version = "0.9", optional = true, default-features = false, feat
 hyper-rustls = { version = "0.24", optional = true }
 memmap2 = "0.9"
 normalize-path = "0.2"
+sys_traits.workspace = true
 rustls = { version = "0.21", optional = true }
 
 [dev-dependencies]

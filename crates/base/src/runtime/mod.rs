@@ -393,15 +393,15 @@ fn cleanup_js_runtime(runtime: &mut JsRuntime) {
   let isolate = runtime.v8_isolate();
   let isolate_key = isolate_debug_key(isolate);
 
-  assert_isolate_not_locked(isolate);
-  let locker = unsafe {
-    Locker::new(std::mem::transmute::<&mut Isolate, &mut Isolate>(isolate))
-  };
-
-  isolate.set_slot(locker);
-
-  {
-    let _scope = v8::HandleScope::new(runtime.v8_isolate());
+  // In V8 140.2.0 (Deno 2.5.6), the Locker API crashes in v8threads.cc:40
+  // when trying to initialize thread-local storage. Since we use a
+  // dedicated-thread-per-isolate model, we don't need locking - each isolate
+  // runs entirely on its own thread from creation to destruction.
+  //
+  // We need to exit the isolate before it can be disposed.
+  // V8 requires that no context is active when disposing.
+  unsafe {
+    isolate.exit();
   }
 
   LOCK_DEBUG_STATES.with(|states| {
@@ -451,6 +451,26 @@ impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
     }
 
     self.drop_token.cancel();
+  }
+}
+
+struct ScopedFuture<F> {
+  future: F,
+  isolate: *mut v8::Isolate,
+  context: v8::Global<v8::Context>,
+}
+
+impl<F: Future> Future for ScopedFuture<F> {
+  type Output = F::Output;
+
+  fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    let isolate = unsafe { &mut *self.isolate };
+    let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+    let mut scope = scope_storage.init();
+    let context = v8::Local::new(&scope, &self.context);
+    let _context_scope = v8::ContextScope::new(&mut scope, context);
+    let inner = unsafe { self.map_unchecked_mut(|s| &mut s.future) };
+    inner.poll(cx)
   }
 }
 
@@ -919,6 +939,7 @@ where
         };
 
         let mut js_runtime = JsRuntime::new(runtime_options);
+        unsafe { js_runtime.v8_isolate().enter() };
 
         // Initialize lazy-loaded extensions
         // This is required for extensions that use lazy_init() instead of init()
@@ -946,7 +967,7 @@ where
           ),
           deno_net::deno_net::args::<PermissionsContainer>(None, None),
           deno_http::deno_http::args(deno_http::Options::default()),
-          deno_io::deno_io::args(Default::default()),
+          deno_io::deno_io::args(Some(stdio.clone())),
           deno_fs::deno_fs::args::<PermissionsContainer>(Arc::new(deno_fs::RealFs)),
           ext_node::deno_node::args::<
             PermissionsContainer,
@@ -955,7 +976,7 @@ where
             sys_traits::impls::RealSys,
           >(None, Arc::new(deno_fs::RealFs)),
           deno_cache::deno_cache::args(Default::default()),
-        ]);
+        ]).map_err(|e| anyhow::anyhow!("Failed to lazy init extensions: {:#}", e))?;
 
         let dispatch_fns = {
           let context = js_runtime.main_context();
@@ -1009,7 +1030,7 @@ where
           op_state.put(promise_metrics.clone());
           op_state.put(runtime_state.clone());
           op_state.put(GlobalMainContext(main_context));
-          op_state.put(RuntimeWaker(waker.clone()))
+          op_state.put(RuntimeWaker(waker.clone()));
         }
 
         {
@@ -1115,12 +1136,17 @@ where
         let context_global = bootstrap.js_runtime.main_context();
 
         // Now create V8 scope for bootstrap operations
-        deno_core::scope!(scope, &mut bootstrap.js_runtime);
+        // deno_core::scope!(scope, &mut bootstrap.js_runtime);
+        let scope_storage = std::pin::pin!(v8::HandleScope::new(bootstrap.js_runtime.v8_isolate()));
+        let mut handle_scope = scope_storage.init();
 
         // Bootstrapping stage
         let (runtime_context, extra_context, bootstrap_fn) = {
-          let context = context_global;
-          let context_local = v8::Local::new(scope, context);
+          let context = context_global.clone();
+          let context_local = v8::Local::new(&mut handle_scope, context);
+          let mut context_scope = v8::ContextScope::new(&mut handle_scope, context_local);
+          let scope = &mut context_scope;
+
           let global_obj = context_local.global(scope);
           let bootstrap_str = v8::String::new_external_onebyte_static(
             scope,
@@ -1154,6 +1180,11 @@ where
         // Call bootstrap function directly on this thread
         // No need for locker.call_with_args() - we're on the same thread as the isolate
         {
+          let context = context_global;
+          let context_local = v8::Local::new(&mut handle_scope, context);
+          let mut context_scope = v8::ContextScope::new(&mut handle_scope, context_local);
+          let scope = &mut context_scope;
+
           let bootstrap_fn_local = v8::Local::new(scope, &bootstrap_fn);
           let runtime_context_local = v8::Local::new(scope, &runtime_context);
           let extra_context_local = v8::Local::new(scope, &extra_context);
@@ -1170,7 +1201,8 @@ where
       }
 
       // Bootstrap complete - no longer using v8::Locker
-      Ok(ScopeGuard::into_inner(bootstrap))
+      let res = ScopeGuard::into_inner(bootstrap);
+      Ok(res)
     };
 
     let Bootstrap {
@@ -1184,7 +1216,9 @@ where
       beforeunload_mem_threshold,
       ..
     } = match bootstrap_ret {
-      Ok(v) => v,
+      Ok(v) => {
+        v
+      },
       Err(err) => {
         return Err(err.context("failed to bootstrap runtime"));
       }
@@ -1208,6 +1242,7 @@ where
         op_state.put::<mpsc::UnboundedReceiver<WorkerEventWithMetadata>>(
           opts.events_msg_rx.take().unwrap(),
         );
+      } else {
       }
 
       if conf.is_main_worker() || conf.is_user_worker() {
@@ -1227,10 +1262,13 @@ where
           );
           op_state.put(event_metadata);
         }
+      } else {
       }
 
       op_state.put(ext_env::EnvVars(env_vars));
+
       op_state.put(DenoRuntimeDropToken(DropToken(drop_token.clone())));
+
       op_state.put(RuntimeOtelExtraAttributes(
         otel_attributes
           .unwrap_or_default()
@@ -1297,45 +1335,39 @@ where
       return Ok(());
     }
 
-    let span = Span::current();
-    let handle = Handle::current();
-    let ret = unsafe {
-      spawn_blocking_non_send(|| {
-        handle.block_on(
-          async {
-            debug!("initialize main module");
+    let entrypoint = self.entrypoint.take();
+    let url = self.main_module_url.clone();
 
-            self.assert_isolate_not_locked();
-            let mut locker = self.with_locker();
-
-            let entrypoint = locker.entrypoint.take();
-            let url = locker.main_module_url.clone();
-
-            match entrypoint {
-              Some(Entrypoint::Key(_)) | None => {
-                locker.js_runtime.load_main_es_module(&url).await
-              }
-              Some(Entrypoint::ModuleCode(module_code)) => {
-                locker
-                  .js_runtime
-                  .load_main_es_module_from_code(&url, module_code.to_string())
-                  .await
-              }
-            }
-          }
-          .instrument(span),
-        )
-      })
-    }
-    .await;
-
-    let id = match ret {
-      Ok(Ok(v)) => v,
-      Ok(Err(err)) => {
-        return Err(err.into());
+    let id = match entrypoint {
+      Some(Entrypoint::Key(_)) | None => {
+        let isolate_ptr = {
+          let isolate_ref: &mut v8::Isolate = self.js_runtime.v8_isolate();
+          isolate_ref as *mut v8::Isolate
+        };
+        let context = self.js_runtime.main_context();
+        let future = {
+          let isolate = unsafe { &mut *isolate_ptr };
+          let _scope = v8::HandleScope::new(isolate);
+          let res = self.js_runtime.load_main_es_module(&url);
+          res
+        };
+        ScopedFuture { future, isolate: isolate_ptr, context }.await?
       }
-      Err(err) => {
-        return Err(err).context("failed to load the module");
+      Some(Entrypoint::ModuleCode(module_code)) => {
+        let isolate_ptr = {
+          let isolate_ref: &mut v8::Isolate = self.js_runtime.v8_isolate();
+          isolate_ref as *mut v8::Isolate
+        };
+        let context = self.js_runtime.main_context();
+        let future = {
+          let isolate = unsafe { &mut *isolate_ptr };
+          let _scope = v8::HandleScope::new(isolate);
+          self
+            .js_runtime
+            .load_main_es_module_from_code(&url, module_code)
+        };
+        let id = ScopedFuture { future, isolate: isolate_ptr, context }.await?;
+        id
       }
     };
 
@@ -1344,7 +1376,7 @@ where
   }
 
   pub async fn run(&mut self, options: RunOptions) -> (Result<(), Error>, i64) {
-    self.assert_isolate_not_locked();
+    // self.assert_isolate_not_locked();
 
     let RunOptions {
       wait_termination_request_token,
@@ -1380,83 +1412,54 @@ where
     }
 
     let inspector = self.inspector();
-    let mod_fut_ret = unsafe {
-      if let Err(err) = self.init_main_module().await {
-        return (Err(err), 0i64);
-      }
 
-      let Some(main_module_id) = self.main_module_id else {
-        return (Err(anyhow!("failed to get main module id")), 0);
-      };
+    if let Err(err) = self.init_main_module().await {
+      return (Err(err), 0i64);
+    }
 
-      let span = Span::current();
-      let handle = Handle::current();
-
-      spawn_blocking_non_send(|| {
-        let init = scopeguard::guard(self.runtime_state.init.clone(), |v| {
-          v.lower();
-        });
-
-        init.raise();
-        handle.block_on(
-          #[allow(clippy::async_yields_async)]
-          async {
-            self.assert_isolate_not_locked();
-            let mut locker = self.with_locker();
-            let op_state = locker.js_runtime.op_state();
-            let state = locker.runtime_state.clone();
-
-            if inspector.is_some() {
-              let _guard = scopeguard::guard_on_unwind((), |_| {
-                state.terminated.raise();
-              });
-
-              {
-                let _guard = scopeguard::guard(
-                  state.found_inspector_session.clone(),
-                  |v| {
-                    v.raise();
-                  },
-                );
-
-                // XXX(Nyannyacha): Suppose the user skips this function by
-                // passing the `--inspect` argument. In that case, the runtime
-                // may terminate before the inspector session is connected if
-                // the function doesn't have a long execution time. Should we
-                // wait for an inspector session to connect with the V8?
-                locker.wait_for_inspector_session();
-              }
-
-              if locker.termination_request_token.is_cancelled() {
-                state.terminated.raise();
-                return Left(());
-              }
-            }
-
-            Right(with_cpu_metrics_guard(
-              op_state,
-              &maybe_cpu_usage_metrics_tx,
-              &mut accumulated_cpu_time_ns,
-              || locker.js_runtime.mod_evaluate(main_module_id),
-            ))
-          }
-          .instrument(span),
-        )
-      })
-      .await
+    let Some(main_module_id) = self.main_module_id else {
+      return (Err(anyhow!("failed to get main module id")), 0);
     };
 
-    let mut mod_ret_rx = match mod_fut_ret {
-      Ok(v) => match v {
-        Left(_give_up) => return (Ok(()), 0i64),
-        Right(fut) => fut,
-      },
-      Err(err) => {
-        return (
-          Err(err).context("failed to load the module"),
-          get_accumulated_cpu_time_ms!(),
+    if inspector.is_some() {
+      let state = self.runtime_state.clone();
+      let _guard = scopeguard::guard_on_unwind((), |_| {
+        state.terminated.raise();
+      });
+
+      {
+        let _guard = scopeguard::guard(
+          state.found_inspector_session.clone(),
+          |v| {
+            v.raise();
+          },
         );
+
+        // XXX(Nyannyacha): Suppose the user skips this function by
+        // passing the `--inspect` argument. In that case, the runtime
+        // may terminate before the inspector session is connected if
+        // the function doesn't have a long execution time. Should we
+        // wait for an inspector session to connect with the V8?
+        self.wait_for_inspector_session();
       }
+
+      if self.termination_request_token.is_cancelled() {
+        state.terminated.raise();
+        return (Ok(()), 0i64);
+      }
+    }
+
+    // Create the mod_evaluate future wrapped in ScopedFuture so it has a HandleScope when polled
+    let isolate_ptr = {
+      let isolate_ref: &mut v8::Isolate = self.js_runtime.v8_isolate();
+      isolate_ref as *mut v8::Isolate
+    };
+    let context = self.js_runtime.main_context();
+    let mod_evaluate_future = self.js_runtime.mod_evaluate(main_module_id);
+    let mut mod_fut = ScopedFuture {
+      future: mod_evaluate_future,
+      isolate: isolate_ptr,
+      context,
     };
 
     {
@@ -1478,7 +1481,7 @@ where
         // simple programs.
         biased;
 
-        maybe_mod_result = &mut mod_ret_rx => {
+        maybe_mod_result = &mut mod_fut => {
           debug!("received module evaluate {:#?}", maybe_mod_result);
           maybe_mod_result.map_err(Into::into)
         }
@@ -1492,7 +1495,7 @@ where
               ).into()
             )
           } else {
-            mod_ret_rx.await.map_err(|e| e.into())
+            mod_fut.await.map_err(|e| e.into())
           }
         }
       };
@@ -1507,15 +1510,12 @@ where
       }
 
       {
-        self.assert_isolate_not_locked();
-        let mut locker = unsafe { self.with_locker() };
-
-        if !locker.termination_request_token.is_cancelled() {
+        if !self.termination_request_token.is_cancelled() {
           if let Err(err) = with_cpu_metrics_guard(
-            locker.js_runtime.op_state(),
+            self.js_runtime.op_state(),
             &maybe_cpu_usage_metrics_tx,
             &mut accumulated_cpu_time_ns,
-            || MaybeDenoRuntime::DenoRuntime(*locker).dispatch_load_event(),
+            || MaybeDenoRuntime::DenoRuntime(self).dispatch_load_event(),
           ) {
             return (Err(err), get_accumulated_cpu_time_ms!());
           }
@@ -1540,15 +1540,13 @@ where
     }
 
     if !self.conf.is_user_worker() {
-      self.assert_isolate_not_locked();
-      let mut locker = unsafe { self.with_locker() };
-      let mut locker = locker.get_v8_termination_guard();
+      let mut guard = self.get_v8_termination_guard();
 
       if let Err(err) = with_cpu_metrics_guard(
-        locker.js_runtime.op_state(),
+        guard.js_runtime.op_state(),
         &maybe_cpu_usage_metrics_tx,
         &mut accumulated_cpu_time_ns,
-        || MaybeDenoRuntime::DenoRuntime(&mut locker).dispatch_unload_event(),
+        || MaybeDenoRuntime::DenoRuntime(&mut guard).dispatch_unload_event(),
       ) {
         return (Err(err), get_accumulated_cpu_time_ms!());
       }
@@ -1590,10 +1588,11 @@ where
 
       global_waker.register(waker);
 
-      let mut this = {
-        self.assert_isolate_not_locked();
-        unsafe { self.with_locker() }
-      };
+      // let mut this = {
+      //   self.assert_isolate_not_locked();
+      //   unsafe { self.with_locker() }
+      // };
+      let this = &mut *self;
 
       if woked {
         extern "C" fn dummy(_: &mut v8::Isolate, _: *mut std::ffi::c_void) {}
@@ -1604,8 +1603,7 @@ where
           .request_interrupt(dummy, std::ptr::null_mut());
       }
 
-      let js_runtime = &mut this.js_runtime;
-      let op_state = js_runtime.op_state();
+      let op_state = this.js_runtime.op_state();
       let cpu_metrics_guard = get_cpu_metrics_guard(
         op_state.clone(),
         maybe_cpu_usage_metrics_tx,
@@ -1613,7 +1611,7 @@ where
       );
 
       let wait_for_inspector = if has_inspector {
-        let inspector = js_runtime.inspector();
+        let inspector = this.js_runtime.inspector();
         let sessions_state = inspector.sessions_state();
         sessions_state.has_active || sessions_state.has_blocking
       } else {
@@ -1638,7 +1636,19 @@ where
           Cow::Borrowed(waker)
         };
 
-        js_runtime.poll_event_loop(
+        let isolate_ptr = {
+            let isolate_ref: &mut v8::Isolate = this.js_runtime.v8_isolate();
+            isolate_ref as *mut v8::Isolate
+        };
+        
+        let isolate = unsafe { &mut *isolate_ptr };
+        let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
+        let mut scope = scope_storage.init();
+        let context = this.js_runtime.main_context();
+        let context_local = v8::Local::new(&scope, context);
+        let _context_scope = v8::ContextScope::new(&mut scope, context_local);
+
+        this.js_runtime.poll_event_loop(
           &mut std::task::Context::from_waker(waker.as_ref()),
           PollEventLoopOptions {
             wait_for_inspector,
@@ -1654,7 +1664,7 @@ where
       if is_user_worker {
         let mem_state = mem_check_state.as_ref().unwrap();
         let total_malloced_bytes =
-          mem_state.check(js_runtime.v8_isolate().as_mut());
+          mem_state.check(this.js_runtime.v8_isolate().as_mut());
 
         mem_state.waker.register(waker);
 
@@ -1672,7 +1682,7 @@ where
                 accumulated_cpu_time_ns,
               );
 
-              if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut this)
+              if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut *this)
                 .dispatch_beforeunload_event(WillTerminateReason::CPU)
               {
                 if state.is_terminated() {
@@ -1707,7 +1717,7 @@ where
                 accumulated_cpu_time_ns,
               );
 
-              if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut this)
+              if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut *this)
                 .dispatch_beforeunload_event(WillTerminateReason::Memory)
               {
                 if state.is_terminated() {
@@ -2050,14 +2060,10 @@ where
 
     let isolate = self.v8_isolate();
 
-    // First create callback scope from isolate
-    v8::callback_scope!(unsafe callback_scope, isolate);
-    // Convert global context to local
-    let local_context = v8::Local::new(callback_scope, &global_context.0);
-    // Create another callback scope from the context
-    v8::callback_scope!(unsafe context_scope, local_context);
+    // Create a proper HandleScope with context using the scope_with_context! macro
+    v8::scope_with_context!(scope, isolate, &global_context.0);
 
-    v8::tc_scope!(let tc_scope, context_scope);
+    v8::tc_scope!(let tc_scope, scope);
 
     let event_fn =
       v8::Local::new(tc_scope, &dispatch_fns.dispatch_load_event_fn_global);
@@ -2104,12 +2110,10 @@ where
 
     let isolate = self.v8_isolate();
 
-    // Create nested callback scopes
-    v8::callback_scope!(unsafe callback_scope, isolate);
-    let local_context = v8::Local::new(callback_scope, &global_context.0);
-    v8::callback_scope!(unsafe context_scope, local_context);
+    // Create a proper HandleScope with context using the scope_with_context! macro
+    v8::scope_with_context!(scope, isolate, &global_context.0);
 
-    v8::tc_scope!(let tc_scope, context_scope);
+    v8::tc_scope!(let tc_scope, scope);
 
     let event_fn = v8::Local::new(
       tc_scope,
@@ -2169,12 +2173,10 @@ where
 
     let isolate = self.v8_isolate();
 
-    // Create nested callback scopes
-    v8::callback_scope!(unsafe callback_scope, isolate);
-    let local_context = v8::Local::new(callback_scope, &global_context.0);
-    v8::callback_scope!(unsafe context_scope, local_context);
+    // Create a proper HandleScope with context using the scope_with_context! macro
+    v8::scope_with_context!(scope, isolate, &global_context.0);
 
-    v8::tc_scope!(let tc_scope, context_scope);
+    v8::tc_scope!(let tc_scope, scope);
 
     let event_fn =
       v8::Local::new(tc_scope, &dispatch_fns.dispatch_unload_event_fn_global);
@@ -2219,12 +2221,10 @@ where
 
     let isolate = self.v8_isolate();
 
-    // Create nested callback scopes
-    v8::callback_scope!(unsafe callback_scope, isolate);
-    let local_context = v8::Local::new(callback_scope, &global_context.0);
-    v8::callback_scope!(unsafe context_scope, local_context);
+    // Create a proper HandleScope with context using the scope_with_context! macro
+    v8::scope_with_context!(scope, isolate, &global_context.0);
 
-    v8::tc_scope!(let tc_scope, context_scope);
+    v8::tc_scope!(let tc_scope, scope);
 
     let event_fn =
       v8::Local::new(tc_scope, &dispatch_fns.dispatch_drain_event_fn_global);
@@ -2752,7 +2752,6 @@ mod test {
             })
           },
           static_patterns: vec![],
-
           maybe_s3_fs_config: None,
           maybe_tmp_fs_config: None,
           maybe_otel_config: None,

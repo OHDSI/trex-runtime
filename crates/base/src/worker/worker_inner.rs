@@ -7,9 +7,11 @@ use base_rt::error::CloneableError;
 use deno_core::unsync::MaskFutureAsSend;
 use ext_event_worker::events::EventMetadata;
 use ext_event_worker::events::ShutdownEvent;
+use ext_event_worker::events::ShutdownReason;
 use ext_event_worker::events::UncaughtExceptionEvent;
 use ext_event_worker::events::WorkerEventWithMetadata;
 use ext_event_worker::events::WorkerEvents;
+use ext_event_worker::events::WorkerMemoryUsed;
 use ext_runtime::MetricSource;
 use ext_runtime::RuntimeMetricSource;
 use ext_runtime::WorkerMetricSource;
@@ -208,7 +210,7 @@ impl std::ops::Deref for Worker {
 impl Worker {
   /// Start the worker on a dedicated thread (user workers) or thread pool (main/event workers).
   /// Returns WorkerThreadHandles for user workers, None for main/event workers.
-  pub fn start(
+  pub async fn start(
     self,
     eager_module_init: bool,
     booter_signal: oneshot::Sender<
@@ -239,113 +241,122 @@ impl Worker {
         Some(event_metadata.clone()),
         events_msg_tx.clone(),
         pool_msg_tx.clone(),
-      );
+      ).await;
     }
 
     let rt = imp.runtime_handle();
     let worker_fut = async move {
-      let new_runtime = 'scope: {
-        match DenoRuntime::new(self).await {
-          Ok(mut v) => {
-            if eager_module_init {
-              if let Err(err) = v.init_main_module().await {
-                break 'scope Err(err);
+      Some(
+        rt.spawn_pinned(move || async move {
+          let new_runtime = 'scope: {
+            match DenoRuntime::new(self).await {
+              Ok(mut v) => {
+                if eager_module_init {
+                  if let Err(err) = v.init_main_module().await {
+                    break 'scope Err(err);
+                  }
+                } else {
+                }
+                Ok(v)
               }
+              Err(err) => {
+                Err(err)
+              },
             }
-            Ok(v)
-          }
-          Err(err) => Err(err),
-        }
-      };
-      let mut new_runtime = match new_runtime {
-        Ok(v) => v,
-        Err(err) => {
-          let err = CloneableError::from(err.context("worker boot error"));
-          let _ = booter_signal.send(Err(err.clone().into()));
+          };
+          let mut new_runtime = match new_runtime {
+            Ok(v) => v,
+            Err(err) => {
+              let err = CloneableError::from(err.context("worker boot error"));
+              let _ = booter_signal.send(Err(err.clone().into()));
 
-          return Some(imp.on_boot_error(err.into()).await);
-        }
-      };
+              return imp.on_boot_error(err.into()).await;
+            }
+          };
 
-      let metric_src = {
-        let metric_src =
-          WorkerMetricSource::from_js_runtime(&mut new_runtime.js_runtime);
+          let metric_src = {
+            let metric_src =
+              WorkerMetricSource::from_js_runtime(&mut new_runtime.js_runtime);
 
-        if let Some(opts) = new_runtime.conf.as_main_worker().cloned() {
-          let state = new_runtime.js_runtime.op_state();
-          let mut state_mut = state.borrow_mut();
-          let metric_src = RuntimeMetricSource::new(
-            metric_src.clone(),
-            opts
-              .event_worker_metric_src
-              .and_then(|it| it.into_worker().ok()),
-            opts.shared_metric_src,
+            if let Some(opts) = new_runtime.conf.as_main_worker().cloned() {
+              let state = new_runtime.js_runtime.op_state();
+              let mut state_mut = state.borrow_mut();
+              let metric_src = RuntimeMetricSource::new(
+                metric_src.clone(),
+                opts
+                  .event_worker_metric_src
+                  .and_then(|it| it.into_worker().ok()),
+                opts.shared_metric_src,
+              );
+
+              state_mut.put(metric_src.clone());
+              MetricSource::Runtime(metric_src)
+            } else {
+              MetricSource::Worker(metric_src)
+            }
+          };
+
+          let _ =
+            booter_signal.send(Ok((metric_src, new_runtime.drop_token.clone())));
+
+          let span = debug_span!(
+            "poll",
+            thread = ?std::thread::current().id(),
           );
 
-          state_mut.put(metric_src.clone());
-          MetricSource::Runtime(metric_src)
-        } else {
-          MetricSource::Worker(metric_src)
-        }
-      };
+            let supervise_fut = match imp.clone().supervise(&mut new_runtime) {
+              Some(v) => v.boxed(),
+              None if worker_kind.is_user_worker() => return Ok(WorkerEvents::Shutdown(ShutdownEvent { 
+                  reason: ShutdownReason::EarlyDrop,
+                  cpu_time_used: 0, 
+                  memory_used: WorkerMemoryUsed {
+                      total: 0,
+                      heap: 0,
+                      external: 0,
+                      mem_check_captured: Default::default(),
+                  } 
+              })),
+              None => ready(Ok(())).boxed(),
+            };
 
-      let _ =
-        booter_signal.send(Ok((metric_src, new_runtime.drop_token.clone())));
+          let _guard = scopeguard::guard((), |_| {
+            if let Some((key, tx)) = worker_key.zip(pool_msg_tx) {
+              if let Err(err) = tx.send(UserWorkerMsgs::Shutdown(key)) {
+                error!(
+                  "failed to send the shutdown signal to user worker pool: {:?}",
+                  err
+                );
+              }
+            }
+          });
 
-      let span = debug_span!(
-        "poll",
-        thread = ?std::thread::current().id(),
-      );
+          async move {
+            let result = imp.on_created(&mut new_runtime).await;
+            let maybe_uncaught_exception_event = match result.as_ref() {
+              Ok(WorkerEvents::UncaughtException(ev)) => Some(ev.clone()),
+              Err(err) => Some(UncaughtExceptionEvent {
+                cpu_time_used: 0,
+                exception: err.to_string(),
+              }),
 
-      let supervise_fut = match imp.clone().supervise(&mut new_runtime) {
-        Some(v) => v.boxed(),
-        None if worker_kind.is_user_worker() => return None,
-        None => ready(Ok(())).boxed(),
-      };
+              _ => None,
+            };
 
-      let _guard = scopeguard::guard((), |_| {
-        if let Some((key, tx)) = worker_key.zip(pool_msg_tx) {
-          if let Err(err) = tx.send(UserWorkerMsgs::Shutdown(key)) {
-            error!(
-              "failed to send the shutdown signal to user worker pool: {:?}",
-              err
-            );
+            if let Some(ev) = maybe_uncaught_exception_event {
+              exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
+            }
+
+            drop(new_runtime);
+            let _ = supervise_fut.await;
+
+            result
           }
-        }
-      });
-
-      let worker_poll_fut = async move {
-        let result = imp.on_created(&mut new_runtime).await;
-        let maybe_uncaught_exception_event = match result.as_ref() {
-          Ok(WorkerEvents::UncaughtException(ev)) => Some(ev.clone()),
-          Err(err) => Some(UncaughtExceptionEvent {
-            cpu_time_used: 0,
-            exception: err.to_string(),
-          }),
-
-          _ => None,
-        };
-
-        if let Some(ev) = maybe_uncaught_exception_event {
-          exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
-        }
-
-        drop(new_runtime);
-        let _ = supervise_fut.await;
-
-        result
-      }
-      .instrument(span);
-
-      Some(
-        rt.spawn_pinned({
-          let fut = unsafe { MaskFutureAsSend::new(worker_poll_fut) };
-          move || tokio::task::spawn_local(fut)
+          .instrument(span)
+          .await
         })
         .await
         .map_err(anyhow::Error::from)
-        .and_then(|it| it.map_err(anyhow::Error::from))
-        .and_then(|it| it.into_inner()),
+        .and_then(|it| it),
       )
     };
     let worker_result_fut = {
@@ -398,7 +409,7 @@ impl Worker {
 
   /// Start a user worker on a dedicated OS thread.
   /// This eliminates the need for v8::Locker by ensuring the isolate never migrates threads.
-  fn start_on_dedicated_thread(
+  async fn start_on_dedicated_thread(
     mut self,
     eager_module_init: bool,
     booter_signal: oneshot::Sender<
@@ -418,8 +429,16 @@ impl Worker {
     // Clone imp before moving self into the thread
     let imp_for_supervise = self.imp.clone();
 
+    // V8 requires substantial stack space for complex operations like npm module loading.
+    // The default stack size (512KB on macOS) is insufficient and causes SIGBUS/SIGSEGV
+    // crashes in v8threads.cc during thread initialization.
+    // 8MB is the same as the default main thread stack size on macOS and matches
+    // what Deno uses for its worker threads.
+    const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024; // 8MB
+
     let thread_result = std::thread::Builder::new()
       .name(format!("user-worker-{}", worker_name))
+      .stack_size(WORKER_STACK_SIZE)
       .spawn(move || {
         // Create current-thread runtime on THIS dedicated thread
         let rt = thread_utils::create_current_thread_runtime(&worker_name)?;
@@ -548,14 +567,35 @@ impl Worker {
 
     match thread_result {
       Ok(join_handle) => {
-        // Wait for the isolate handle to be sent back
-        match isolate_handle_rx.blocking_recv() {
+        // Wait for the isolate handle to be sent back (async)
+        match isolate_handle_rx.await {
           Ok(isolate_handle) => Some(WorkerThreadHandles {
             thread_handle: join_handle,
             isolate_handle,
           }),
           Err(_) => {
+            // The worker failed to boot and didn't send an isolate handle.
+            // We must join the thread to properly clean up resources and avoid
+            // orphaned threads that could cause resource exhaustion or crashes.
             error!("failed to receive isolate handle from worker thread");
+
+            // Spawn a blocking task to join the thread so we don't block the async runtime.
+            // The thread should exit quickly since it already failed during boot.
+            tokio::task::spawn_blocking(move || {
+              match join_handle.join() {
+                Ok(Ok(())) => {
+                  debug!("worker thread exited cleanly after boot failure");
+                }
+                Ok(Err(err)) => {
+                  // This is expected - the worker boot error was already sent via booter_signal
+                  debug!("worker thread exited with error after boot failure: {}", err);
+                }
+                Err(_panic) => {
+                  error!("worker thread panicked during boot failure cleanup");
+                }
+              }
+            });
+
             None
           }
         }

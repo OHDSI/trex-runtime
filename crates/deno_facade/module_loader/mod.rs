@@ -9,6 +9,7 @@ use deno_core::ModuleLoader;
 use eszip_trait::EszipStaticFiles;
 use ext_node::NodeExtInitServices;
 use fs::virtual_fs::FileBackedVfs;
+use fs::VfsSys;
 use url::Url;
 
 use crate::Metadata;
@@ -21,8 +22,8 @@ pub struct RuntimeProviders {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: NodeExtInitServices<
     DenoInNpmPackageChecker,
-    deno::deno_resolver::npm::NpmResolver<deno::cache::CliSys>,
-    deno::cache::CliSys,
+    deno::deno_resolver::npm::NpmResolver<VfsSys>,
+    VfsSys,
   >,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub permissions: PermissionsContainer,

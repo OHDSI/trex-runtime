@@ -1,16 +1,16 @@
 // @ts-ignore
 import { STATUS_CODE } from "https://deno.land/std/http/status.ts";
 
-import { handleRegistryRequest } from "./registry/mod.ts";
+// import { handleRegistryRequest } from "./registry/mod.ts";
 import { join } from "jsr:@std/path@^1.0";
-import { context, propagation } from "npm:@opentelemetry/api";
-import { W3CBaggagePropagator } from "npm:@opentelemetry/core@1";
+// import { context, propagation } from "npm:@opentelemetry/api";
+// import { W3CBaggagePropagator } from "npm:@opentelemetry/core@1";
 
 // @ts-ignore See https://github.com/denoland/deno/issues/28082
-if (globalThis[Symbol.for("opentelemetry.js.api.1")]) {
-  globalThis[Symbol.for("opentelemetry.js.api.1")].propagation =
-    new W3CBaggagePropagator();
-}
+// if (globalThis[Symbol.for("opentelemetry.js.api.1")]) {
+//   globalThis[Symbol.for("opentelemetry.js.api.1")].propagation =
+//     new W3CBaggagePropagator();
+// }
 
 console.log("main function started");
 console.log(Deno.version);
@@ -50,16 +50,17 @@ addEventListener("unhandledrejection", (ev) => {
 // }, 30 * 1000);
 
 Deno.serve(async (req: Request) => {
-  const ctx = propagation.extract(context.active(), req.headers, {
-    get(carrier, key) {
-      return carrier.get(key) ?? void 0;
-    },
-    keys(carrier) {
-      return [...carrier.keys()];
-    },
-  });
-  const baggage = propagation.getBaggage(ctx);
-  const requestId = baggage?.getEntry("sb-request-id")?.value ?? null;
+  // const ctx = propagation.extract(context.active(), req.headers, {
+  //   get(carrier, key) {
+  //     return carrier.get(key) ?? void 0;
+  //   },
+  //   keys(carrier) {
+  //     return [...carrier.keys()];
+  //   },
+  // });
+  // const baggage = propagation.getBaggage(ctx);
+  // const requestId = baggage?.getEntry("sb-request-id")?.value ?? null;
+  const requestId = null;
 
   const headers = new Headers({
     "Content-Type": "application/json",
@@ -118,9 +119,9 @@ Deno.serve(async (req: Request) => {
   // }
 
   const REGISTRY_PREFIX = "/_internal/registry";
-  if (pathname.startsWith(REGISTRY_PREFIX)) {
-    return await handleRegistryRequest(REGISTRY_PREFIX, req);
-  }
+  // if (pathname.startsWith(REGISTRY_PREFIX)) {
+  //   return await handleRegistryRequest(REGISTRY_PREFIX, req);
+  // }
 
   if (req.method === "PUT" && pathname === "/_internal/upload") {
     try {

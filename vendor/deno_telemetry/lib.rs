@@ -1445,11 +1445,15 @@ impl OtelTracer {
   #[static_method]
   #[cppgc]
   fn builtin() -> OtelTracer {
-    let OtelGlobals {
+    if let Some(OtelGlobals {
       builtin_instrumentation_scope,
       ..
-    } = OTEL_GLOBALS.get().unwrap();
-    OtelTracer(builtin_instrumentation_scope.clone())
+    }) = OTEL_GLOBALS.get() {
+      OtelTracer(builtin_instrumentation_scope.clone())
+    } else {
+      // Return a no-op tracer when telemetry is not initialized
+      OtelTracer(opentelemetry::InstrumentationScope::builder("noop").build())
+    }
   }
 
   #[cppgc]
@@ -1462,9 +1466,23 @@ impl OtelTracer {
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
   ) -> Result<OtelSpan, JsErrorBox> {
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
     let span_context;
     let parent_span_id;
+
+    // If telemetry is not initialized, return a no-op span that won't be recorded
+    let Some(OtelGlobals { id_generator, .. }) = OTEL_GLOBALS.get() else {
+      // Create a no-op span with NOT_SAMPLED flag so it won't be exported
+      let noop_context = SpanContext::new(
+        TraceId::INVALID,
+        SpanId::INVALID,
+        TraceFlags::default(), // NOT sampled
+        false,
+        TraceState::NONE,
+      );
+      // Return a "Done" span that won't try to export
+      return Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Done(noop_context)))));
+    };
+
     match parent {
       Some(parent) => {
         let parent = parent.0.borrow();
@@ -1551,7 +1569,17 @@ impl OtelTracer {
     if parent_span_id == SpanId::INVALID {
       return Err(JsErrorBox::generic("invalid span id"));
     };
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
+    let Some(OtelGlobals { id_generator, .. }) = OTEL_GLOBALS.get() else {
+      // Return a no-op span when telemetry is not initialized
+      let noop_context = SpanContext::new(
+        TraceId::INVALID,
+        SpanId::INVALID,
+        TraceFlags::default(), // NOT sampled
+        false,
+        TraceState::NONE,
+      );
+      return Ok(OtelSpan(RefCell::new(Box::new(OtelSpanState::Done(noop_context)))));
+    };
     let span_context = SpanContext::new(
       parent_trace_id,
       id_generator.new_span_id(),
@@ -2623,7 +2651,10 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
     return;
   }
 
-  let meter = OTEL_GLOBALS.get().unwrap().meter_provider.meter("v8js");
+  let Some(globals) = OTEL_GLOBALS.get() else {
+    return;
+  };
+  let meter = globals.meter_provider.meter("v8js");
 
   // https://opentelemetry.io/docs/specs/semconv/runtime/v8js-metrics/#metric-v8jsgcduration
   let duration = meter

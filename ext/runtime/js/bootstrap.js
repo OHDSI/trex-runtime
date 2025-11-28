@@ -1,5 +1,10 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 
+import "ext:deno_os/30_os.js";
+import "ext:deno_process/40_process.js";
+import "ext:runtime/98_global_scope_shared.js";
+import "ext:deno_http/00_serve.ts";
+
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as console from "ext:deno_console/01_console.js";
