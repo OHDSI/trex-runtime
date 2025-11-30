@@ -237,7 +237,7 @@ impl NpmModuleLoader {
 #[derive(Clone)]
 pub struct GenericNpmModuleLoader<
   TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
-  TSys: sys_traits::FsRead + sys_traits::FsMetadata + Send + Sync + Clone + 'static,
+  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
   TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
   TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
@@ -255,7 +255,7 @@ pub struct GenericNpmModuleLoader<
 
 impl<
   TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
-  TSys: sys_traits::FsRead + sys_traits::FsMetadata + Send + Sync + Clone + 'static,
+  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
   TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
   TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,

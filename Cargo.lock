@@ -1140,7 +1140,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "regex",
@@ -1158,7 +1158,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2390,7 +2390,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.363.0"
-source = "git+https://github.com/p-hoffmann/deno_core?branch=supabase-v0.363.0#ab27c9bcb3ebba62b55f400a725b791a033aef55"
+source = "git+https://github.com/p-hoffmann/deno_core?branch=supabase-v0.363.0#f616988408f3b64e8351ee880609cec5bba4ba96"
 dependencies = [
  "anyhow",
  "az",
@@ -2899,7 +2899,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.239.0"
-source = "git+https://github.com/p-hoffmann/deno_core?branch=supabase-v0.363.0#ab27c9bcb3ebba62b55f400a725b791a033aef55"
+source = "git+https://github.com/p-hoffmann/deno_core?branch=supabase-v0.363.0#f616988408f3b64e8351ee880609cec5bba4ba96"
 dependencies = [
  "indexmap 2.12.0",
  "proc-macro-rules",
@@ -5269,7 +5269,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -5605,15 +5605,6 @@ name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -6773,7 +6764,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -7272,7 +7263,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.28",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -7312,7 +7303,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.1",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -8339,7 +8330,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.272.0"
-source = "git+https://github.com/p-hoffmann/deno_core?branch=supabase-v0.363.0#ab27c9bcb3ebba62b55f400a725b791a033aef55"
+source = "git+https://github.com/p-hoffmann/deno_core?branch=supabase-v0.363.0#f616988408f3b64e8351ee880609cec5bba4ba96"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -10184,6 +10175,7 @@ dependencies = [
 [[package]]
 name = "v8"
 version = "140.2.0"
+source = "git+https://github.com/p-hoffmann/rusty_v8?branch=supabase-v140.2.0#a8b9723027b97bfead395a8db9c198d3574c51ec"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.10.0",
@@ -10617,7 +10609,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
