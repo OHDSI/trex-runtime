@@ -291,6 +291,12 @@ fn op_add_replication(
 #[op2]
 #[string]
 fn op_get_dbc() -> String {
+  return (*(*DB_CREDENTIALS)).lock().unwrap().clone();
+}
+
+#[op2]
+#[string]
+fn op_get_dbc2() -> String {
   let mut base_creds: serde_json::Value =
     serde_json::from_str(&(*(*DB_CREDENTIALS)).lock().unwrap().clone())
       .unwrap_or_else(
