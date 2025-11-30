@@ -1,7 +1,6 @@
 pub mod clients;
 pub mod connection;
 pub mod sql;
-use std::process;
 
 use base64::{engine::general_purpose, Engine as _};
 use deno_core::op2;
@@ -315,10 +314,7 @@ fn op_install_plugin(#[string] name: String, #[string] dir: String) {
   }
 }
 
-#[op2(fast)]
-fn op_exit(code: i32) {
-  process::exit(code);
-}
+// op_exit removed - now provided by deno_os extension
 
 #[derive(Serialize, Deserialize)]
 enum TrexType {
@@ -762,7 +758,7 @@ deno_core::extension!(
     ops = [
         op_install_plugin,
         op_execute_query,
-        op_exit,
+        // op_exit removed - now provided by deno_os extension
         op_get_dbc,
         op_set_dbc,
         op_execute_query_stream,
