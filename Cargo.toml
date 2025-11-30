@@ -20,14 +20,16 @@ members = [
   "ext/trex",
   "ext/runtime",
   "ext/workers",
-  "ext/trexas",
 ]
 exclude = [
-  "ext/hana",
-  "ext/circe",
-  "ext/chdb",
-  "ext/llama",
-  "ext/pgwire",
+  "trexsql/hana",
+  "trexsql/circe",
+  "trexsql/chdb",
+  "trexsql/llama",
+  "trexsql/pgwire",
+  "trexsql/pgt",
+  "trexsql/tpm",
+  "trexsql/trexas",
 ]
 
 [workspace.package]

@@ -14,10 +14,6 @@ async function test_installPlugin() {
     plugin.install("express");
 }
 
-async function init_test_replication() {
-    Trex.addDB("test_publication","stdout_slot","test","localhost",65432,"postgres","postgres","mypass");
-}
-
 
 async function  test_dbquery() {
         const conn = new Trex.TrexDB("demo_database");
@@ -126,9 +122,6 @@ const init_tests = {
                         "password": "mypass"
                     }
                 ],
-                /*"publications": [
-                    {"publication": "test_pub", "slot": "data2evidence"}
-                ],*/
                 "extra": [
                     {
                         "value": {
@@ -144,47 +137,7 @@ const init_tests = {
                 "vocab_schemas": [
                     "demo_cdm"
                 ]
-            },
-           /* {
-                "id": "fhir_database",
-                "host": "localhost",
-                "port": 5432,
-                "code": "demo_database",
-                "name": "alp",
-                "dialect": "postgres",
-                "credentials": [
-                    {
-                        "username": "postgres",
-                        "userScope": "Admin",
-                        "serviceScope": "Internal",
-                        "password": "FZna0JX6xKSrTQ5Ji9lDeNVVDogpym"
-                    },
-                    {
-                        "username": "postgres",
-                        "userScope": "Read",
-                        "serviceScope": "Internal",
-                        "password": "mypass"
-                    }
-                ],
-                "publications": [
-                    {"publication": "fhir_publication", "slot": "stdout2_slot"}
-                ],
-                "extra": [
-                    {
-                        "value": {
-                            "max": 50,
-                            "queryTimeout": 60000,
-                            "statementTimeout": 60000,
-                            "idleTimeoutMillis": 300000,
-                            "idleInTransactionSessionTimeout": 300000
-                        },
-                        "serviceScope": "Internal"
-                    }
-                ],
-                "vocabSchemas": [
-                    "demo_cdm"
-                ]
-            }*/
+            }
         ];
         dbm.setCredentials(c);
     }

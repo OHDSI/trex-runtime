@@ -1,9 +1,9 @@
-[submodule "ext/extension-ci-tools"]
-	path = ext/extension-ci-tools
+[submodule "trexsql/extension-ci-tools"]
+	path = trexsql/extension-ci-tools
 	url = https://github.com/duckdb/extension-ci-tools.git
-[submodule "ext/circe/circe-be"]
-	path = ext/circe/circe-be
+[submodule "trexsql/circe/circe-be"]
+	path = trexsql/circe/circe-be
 	url = https://github.com/p-hoffmann/circe-be.git
-[submodule "ext/llama/llama.cpp"]
-	path = ext/llama/llama.cpp
+[submodule "trexsql/llama/llama.cpp"]
+	path = trexsql/llama/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git

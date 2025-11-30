@@ -2,7 +2,7 @@
 set -e
 
 # Script to combine Dockerfiles and generate the final Dockerfile
-# Reads base Dockerfile from Trex/ext/bao/Dockerfile
+# Reads base Dockerfile from Trex/trexsql/bao/Dockerfile
 # Reads extension from Dockerfile.trex with BEFORE and AFTER sections
 # Generates combined Dockerfile in services/trex/Dockerfile
 
@@ -10,8 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Navigate to services/trex directory (4 levels up from scripts/)
 cd "$SCRIPT_DIR/../../../.."
 
-BASE_DOCKERFILE="Trex/ext/bao/Dockerfile"
-EXTENSION_DOCKERFILE="Trex/ext/bao/Dockerfile.trex"
+BASE_DOCKERFILE="Trex/trexsql/bao/Dockerfile"
+EXTENSION_DOCKERFILE="Trex/trexsql/bao/Dockerfile.trex"
 OUTPUT_DOCKERFILE="Dockerfile"
 
 echo "Generating combined Dockerfile..."
@@ -34,8 +34,8 @@ fi
 
 # Add base Dockerfile content, adjusting paths
 echo "# ===== Base =====" >> "$OUTPUT_DOCKERFILE"
-# Remove syntax line, replace $BASEPATH with Trex/ext/bao, and remove CMD line from base
-grep -v "^# syntax=" "$BASE_DOCKERFILE" | grep -v "^CMD " | sed 's|\$BASEPATH|Trex/ext/bao|g' | sed 's|ENV BASEPATH=.*|ENV BASEPATH=Trex/ext/bao|' >> "$OUTPUT_DOCKERFILE"
+# Remove syntax line, replace $BASEPATH with Trex/trexsql/bao, and remove CMD line from base
+grep -v "^# syntax=" "$BASE_DOCKERFILE" | grep -v "^CMD " | sed 's|\$BASEPATH|Trex/trexsql/bao|g' | sed 's|ENV BASEPATH=.*|ENV BASEPATH=Trex/trexsql/bao|' >> "$OUTPUT_DOCKERFILE"
 echo "" >> "$OUTPUT_DOCKERFILE"
 
 # If extension exists, add AFTER section

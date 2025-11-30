@@ -3,7 +3,7 @@
     "./examples",
     "./crates/base/test_cases",
     "./test",
-    "./ext/bao"
+    "./trexsql/bao"
   ],
   "nodeModulesDir": "auto",
   "fmt": {
