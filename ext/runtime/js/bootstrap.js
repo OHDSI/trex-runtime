@@ -1,5 +1,10 @@
 import { core, internals, primordials } from "ext:core/mod.js";
 
+import "ext:deno_os/30_os.js";
+import "ext:deno_process/40_process.js";
+import "ext:runtime/98_global_scope_shared.js";
+import "ext:deno_http/00_serve.ts";
+
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as console from "ext:deno_console/01_console.js";
@@ -66,7 +71,16 @@ import {
   setUserAgent,
 } from "ext:runtime/navigator.js";
 
-import process from "node:process";
+// Stub process object since ext_node is not included in the snapshot
+// This provides minimal compatibility for code that expects process global
+const process = {
+  env: {},
+  argv: [],
+  version: "",
+  versions: {},
+  platform: "",
+  arch: "",
+};
 
 let globalThis_;
 
@@ -662,7 +676,7 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
     return new wasmMemoryCtor(maybeOpts);
   }
 
-  delete globalThis.SharedArrayBuffer;
+  globalThis.SharedArrayBuffer = globalThis.ArrayBuffer;
   globalThis.WebAssembly.Memory = patchedWasmMemoryCtor;
 
   /// DISABLE SHARED MEMORY INSTALL MEM CHECK TIMING

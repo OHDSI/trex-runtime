@@ -12,6 +12,10 @@ path = "lib.rs"
 deno.workspace = true
 deno_config.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
+deno_maybe_sync.workspace = true
+node_resolver.workspace = true
+sys_traits.workspace = true
 
 eszip_trait.workspace = true
 fs.workspace = true
@@ -22,6 +26,7 @@ ext_runtime.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
+data-url.workspace = true
 eszip = { workspace = true, features = ["xxhash3"] }
 futures.workspace = true
 futures-util.workspace = true
@@ -39,7 +44,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 url.workspace = true
-urlencoding.workspace = true
 
 dashmap = "5.5.3"
 hashlink = "0.8"

@@ -1,8 +1,8 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_graph::FastCheckCacheItem;
-use deno_graph::FastCheckCacheKey;
+use deno_graph::fast_check::FastCheckCacheItem;
+use deno_graph::fast_check::FastCheckCacheKey;
 use deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -52,7 +52,7 @@ impl FastCheckCache {
   }
 }
 
-impl deno_graph::FastCheckCache for FastCheckCache {
+impl deno_graph::fast_check::FastCheckCache for FastCheckCache {
   fn get(&self, key: FastCheckCacheKey) -> Option<FastCheckCacheItem> {
     Self::ensure_ok(self.inner.get(key))
   }

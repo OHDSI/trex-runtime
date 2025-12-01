@@ -3,8 +3,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use anyhow::Context;
+use anyhow::anyhow;
 use deno::deno_npm;
 use deno::deno_npm::npm_rc::RegistryConfigWithUrl;
 use deno::deno_npm::npm_rc::ResolvedNpmRc;
@@ -127,7 +127,8 @@ impl Metadata {
       };
 
       lookup.insert(
-        normalize_path(mapped_base_dir_path.as_ref().join(path)),
+        normalize_path(mapped_base_dir_path.as_ref().join(path).into())
+          .to_path_buf(),
         specifier.to_string(),
       );
     }

@@ -9,9 +9,9 @@ use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_package_json::PackageJsonDepWorkspaceReq;
+use deno_semver::VersionReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use deno_semver::VersionReq;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -102,8 +102,9 @@ impl NpmInstallDepsProvider {
         );
         for (alias, dep) in deps
           .dependencies
+          .clone()
           .into_iter()
-          .chain(deps.dev_dependencies.into_iter())
+          .chain(deps.dev_dependencies.clone().into_iter())
         {
           let dep = match dep {
             Ok(dep) => dep,
@@ -111,7 +112,7 @@ impl NpmInstallDepsProvider {
               pkg_json_dep_errors.push(
                 PackageJsonDepValueParseWithLocationError {
                   location: pkg_json.specifier(),
-                  alias,
+                  alias: alias.to_string(),
                   source: err,
                 },
               );
@@ -128,12 +129,12 @@ impl NpmInstallDepsProvider {
 
               if let Some(pkg) = workspace_pkg {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.to_string()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               } else {
                 pkg_pkgs.push(InstallNpmRemotePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.to_string()),
                   base_dir: pkg_json.dir_path().to_path_buf(),
                   req: pkg_req,
                 });
@@ -153,10 +154,15 @@ impl NpmInstallDepsProvider {
                 pkg.matches_name_and_version_req(&alias, &version_req)
               }) {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.to_string()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               }
+            }
+            // Handle file and JSR dependencies by skipping them
+            PackageJsonDepValue::File(_) | PackageJsonDepValue::JsrReq(_) => {
+              // Skip file: and jsr: protocol dependencies
+              continue;
             }
           }
         }

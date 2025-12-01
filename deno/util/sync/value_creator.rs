@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use deno_core::futures::FutureExt;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::future::Shared;
-use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use tokio::task::JoinError;
 

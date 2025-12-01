@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 
 use anyhow::{Error, Result};
 use base::server::{
-  Builder, ServerFlags, ServerHealth, Tls, WorkerEntrypoints,
+  Builder, RequestIdleTimeout, ServerFlags, ServerHealth, Tls, WorkerEntrypoints,
 };
 use base::worker::pool::WorkerPoolPolicy;
 use base::InspectorOption;
@@ -41,7 +41,7 @@ pub struct ServerConfig {
   pub graceful_exit_keepalive_deadline_ms: Option<u64>,
   pub event_worker_exit_deadline_sec: u64,
   pub request_wait_timeout_ms: Option<u64>,
-  pub request_idle_timeout_ms: Option<u64>,
+  pub request_idle_timeout: RequestIdleTimeout,
   pub request_read_timeout_ms: Option<u64>,
   pub request_buffer_size: Option<u64>,
   pub beforeunload_wall_clock_pct: Option<u8>,
@@ -87,7 +87,7 @@ impl std::fmt::Debug for ServerConfig {
         &self.event_worker_exit_deadline_sec,
       )
       .field("request_wait_timeout_ms", &self.request_wait_timeout_ms)
-      .field("request_idle_timeout_ms", &self.request_idle_timeout_ms)
+      .field("request_idle_timeout", &self.request_idle_timeout)
       .field("request_read_timeout_ms", &self.request_read_timeout_ms)
       .field("request_buffer_size", &self.request_buffer_size)
       .field(
@@ -125,7 +125,7 @@ impl Default for ServerConfig {
       graceful_exit_keepalive_deadline_ms: None,
       event_worker_exit_deadline_sec: 30,
       request_wait_timeout_ms: None,
-      request_idle_timeout_ms: None,
+      request_idle_timeout: RequestIdleTimeout::default(),
       request_read_timeout_ms: None,
       request_buffer_size: None,
       beforeunload_wall_clock_pct: None,
@@ -155,7 +155,7 @@ impl ServerConfig {
         .graceful_exit_keepalive_deadline_ms,
       event_worker_exit_deadline_sec: self.event_worker_exit_deadline_sec,
       request_wait_timeout_ms: self.request_wait_timeout_ms,
-      request_idle_timeout_ms: self.request_idle_timeout_ms,
+      request_idle_timeout: self.request_idle_timeout,
       request_read_timeout_ms: self.request_read_timeout_ms,
       request_buffer_size: self.request_buffer_size,
       beforeunload_wall_clock_pct: self.beforeunload_wall_clock_pct,

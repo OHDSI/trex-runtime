@@ -11,16 +11,15 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::Context;
 use anyhow::Result;
 use base_rt::BlockingScopeCPUUsageMetricExt;
-use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
+use deno_core::error::AnyError;
+use deno_core::op2;
+use deno_error::JsErrorBox;
 
 use model::Model;
 use model::ModelInfo;
@@ -37,7 +36,7 @@ use tracing::trace;
 pub async fn op_ai_ort_init_session(
   state: Rc<RefCell<OpState>>,
   #[buffer] model_bytes: JsBuffer,
-) -> Result<ModelInfo> {
+) -> Result<ModelInfo, JsErrorBox> {
   let model_bytes = model_bytes.into_parts().to_boxed_slice();
   let model_bytes_or_url = str::from_utf8(&model_bytes)
     .map_err(AnyError::from)
@@ -46,11 +45,15 @@ pub async fn op_ai_ort_init_session(
   let model = match model_bytes_or_url {
     Ok(model_url) => {
       trace!(kind = "url", url = %model_url);
-      Model::from_url(model_url).await?
+      Model::from_url(model_url)
+        .await
+        .map_err(|e| JsErrorBox::generic(e.to_string()))?
     }
     Err(_) => {
       trace!(kind = "bytes", len = model_bytes.len());
-      Model::from_bytes(&model_bytes).await?
+      Model::from_bytes(&model_bytes)
+        .await
+        .map_err(|e| JsErrorBox::generic(e.to_string()))?
     }
   };
 
@@ -72,15 +75,16 @@ pub async fn op_ai_ort_run_session(
   state: Rc<RefCell<OpState>>,
   #[string] model_id: String,
   #[serde] input_values: HashMap<String, JsTensor>,
-) -> Result<HashMap<String, ToJsTensor>> {
-  let model = Model::from_id(&model_id)
-    .await
-    .ok_or(anyhow!("could not found session for id: {model_id:?}"))?;
+) -> Result<HashMap<String, ToJsTensor>, JsErrorBox> {
+  let model = Model::from_id(&model_id).await.ok_or_else(|| {
+    JsErrorBox::generic(format!("could not found session for id: {model_id:?}"))
+  })?;
 
   let model_session = model.get_session();
   let cross_thread_spawner =
     state.borrow().borrow::<V8CrossThreadTaskSpawner>().clone();
-  let (tx, rx) = oneshot::channel();
+  let (tx, rx) =
+    oneshot::channel::<Result<HashMap<String, ToJsTensor>, String>>();
 
   cross_thread_spawner.spawn(move |state| {
     let input_values = input_values
@@ -95,7 +99,7 @@ pub async fn op_ai_ort_run_session(
     let input_values = match input_values {
       Ok(v) => v,
       Err(err) => {
-        let _ = tx.send(Err(err));
+        let _ = tx.send(Err(err.to_string()));
         return;
       }
     };
@@ -106,7 +110,7 @@ pub async fn op_ai_ort_run_session(
         let outputs = match model_session.run(input_values) {
           Ok(v) => v,
           Err(err) => {
-            let _ = tx.send(Err(anyhow::Error::from(err)));
+            let _ = tx.send(Err(err.to_string()));
             return;
           }
         };
@@ -122,7 +126,7 @@ pub async fn op_ai_ort_run_session(
         let outputs = match outputs {
           Ok(v) => v,
           Err(err) => {
-            let _ = tx.send(Err(err));
+            let _ = tx.send(Err(err.to_string()));
             return;
           }
         };
@@ -131,5 +135,12 @@ pub async fn op_ai_ort_run_session(
       });
   });
 
-  rx.await.context("failed to get inference result")?
+  match rx.await {
+    Ok(Ok(result)) => Ok(result),
+    Ok(Err(e)) => Err(JsErrorBox::generic(e)),
+    Err(e) => Err(JsErrorBox::generic(format!(
+      "failed to get inference result: {}",
+      e
+    ))),
+  }
 }

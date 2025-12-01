@@ -10,7 +10,7 @@ import {
   METRICS_ENABLED,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
-import { TrexHttpClient, req, createRequestListener, prompt, op_add_replication, PluginManager, TrexDB, DatabaseManager, UserDatabaseManager } from "ext:trex/trex_lib.js";
+import { TrexHttpClient, req, createRequestListener, PluginManager, TrexDB, DatabaseManager, UserDatabaseManager } from "ext:trex/trex_lib.js";
 
 const ops = core.ops;
 const { ObjectDefineProperty } = primordials;
@@ -40,9 +40,6 @@ function installTrexNamespace(kind, terminationRequestTokenRid) {
 				DatabaseManager: DatabaseManager,
 				userDatabaseManager: () => { return new UserDatabaseManager(SUPABASE_USER_WORKERS)},
 				TrexDB: TrexDB,
-				addReplication: op_add_replication,
-				addDB: op_add_replication,
-				ask: prompt,
 				req: req,
 				createRequestListener: createRequestListener,
         httpClient: (service) => { return new TrexHttpClient(service) },
@@ -60,7 +57,6 @@ function installTrexNamespace(kind, terminationRequestTokenRid) {
 		case "user":
 			propsTrex = {
 				waitUntil,
-				ask: prompt,
 				req: req,
         httpClient: (service) => { return new TrexHttpClient(service) },
         tokioChannel: (service) => { return new TrexHttpClient(service) },

@@ -1,22 +1,22 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use base_mem_check::WorkerHeapStatistics;
 use base_rt::DropToken;
 use base_rt::RuntimeState;
 use base_rt::RuntimeWaker;
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_core::v8;
+use deno_error::JsErrorBox;
 use enum_as_inner::EnumAsInner;
-use futures::task::AtomicWaker;
 use futures::FutureExt;
+use futures::task::AtomicWaker;
 use log::error;
 use serde::Serialize;
 use tokio::sync::oneshot;
@@ -34,6 +34,42 @@ pub use ops::bootstrap::runtime_bootstrap;
 pub use ops::http::runtime_http;
 pub use ops::http_start::runtime_http_start;
 pub use ops::net::runtime_net;
+
+// Custom error type for ext/runtime operations
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum RuntimeError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Io(#[from] std::io::Error),
+  #[class("Http")]
+  #[error("{0}")]
+  Http(String),
+  #[class("Runtime")]
+  #[error("{0}")]
+  Runtime(String),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(
+    #[from]
+    #[inherit]
+    deno_error::JsErrorBox,
+  ),
+}
+
+impl From<hyper::Error> for RuntimeError {
+  fn from(err: hyper::Error) -> Self {
+    RuntimeError::Http(err.to_string())
+  }
+}
+
+impl From<anyhow::Error> for RuntimeError {
+  fn from(err: anyhow::Error) -> Self {
+    RuntimeError::Other(deno_error::JsErrorBox::generic(err.to_string()))
+  }
+}
 
 pub struct MemCheckWaker(Arc<AtomicWaker>);
 
@@ -165,10 +201,8 @@ impl RuntimeMetricSource {
       data: *mut std::ffi::c_void,
     ) {
       let arg = unsafe { Box::<InterruptData>::from_raw(data as *mut _) };
-      let mut v8_stats = v8::HeapStatistics::default();
+      let v8_stats = isolate.get_heap_statistics();
       let mut worker_stats = WorkerHeapStatistics::default();
-
-      isolate.get_heap_statistics(&mut v8_stats);
 
       worker_stats.total_heap_size = v8_stats.total_heap_size();
       worker_stats.total_heap_size_executable =
@@ -266,7 +300,7 @@ struct RuntimeMetrics {
 }
 /*
 #[op2(fast)]
-fn op_is_terminal(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
+fn op_is_terminal(state: &mut OpState, rid: u32) -> Result<bool, JsErrorBox> {
     let handle = state.resource_table.get_handle(rid)?;
     Ok(handle.is_terminal())
 }*/
@@ -281,7 +315,7 @@ fn op_stdin_set_raw(
   _state: &mut OpState,
   _is_raw: bool,
   _cbreak: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   Ok(())
 }
 
@@ -289,7 +323,7 @@ fn op_stdin_set_raw(
 fn op_console_size(
   _state: &mut OpState,
   #[buffer] _result: &mut [u32],
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   Ok(())
 }
 
@@ -297,7 +331,7 @@ fn op_console_size(
 #[serde]
 async fn op_runtime_metrics(
   state: Rc<RefCell<OpState>>,
-) -> Result<RuntimeMetrics, AnyError> {
+) -> Result<RuntimeMetrics, JsErrorBox> {
   let mut runtime_metrics = RuntimeMetrics::default();
   let mut runtime_metric_src = {
     let state = state.borrow();
@@ -312,7 +346,7 @@ async fn op_runtime_metrics(
 }
 
 #[op2(fast)]
-fn op_schedule_mem_check(state: &mut OpState) -> Result<(), AnyError> {
+fn op_schedule_mem_check(state: &mut OpState) -> Result<(), JsErrorBox> {
   if let Some(waker) = state.try_borrow::<MemCheckWaker>() {
     waker.0.wake();
   }
@@ -331,10 +365,8 @@ struct MemoryUsage {
 
 #[op2]
 #[serde]
-fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
-  let mut s = v8::HeapStatistics::default();
-
-  scope.get_heap_statistics(&mut s);
+fn op_runtime_memory_usage(scope: &mut v8::PinScope<'_, '_>) -> MemoryUsage {
+  let s = scope.get_heap_statistics();
 
   MemoryUsage {
     // NOTE: Hardcoded for security.
@@ -350,17 +382,18 @@ fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
 pub fn op_read_line_prompt(
   #[string] _prompt_text: &str,
   #[string] _default_value: &str,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, JsErrorBox> {
   Ok(None)
 }
 
-#[op2(fast)]
-fn op_set_exit_code(
-  _state: &mut OpState,
-  #[smi] _code: i32,
-) -> Result<(), AnyError> {
-  Ok(())
-}
+// Removed: now provided by vendor/deno_os
+// #[op2(fast)]
+// fn op_set_exit_code(
+//   _state: &mut OpState,
+//   #[smi] _code: i32,
+// ) -> Result<(), JsErrorBox> {
+//   Ok(())
+// }
 
 #[op2(fast)]
 fn op_set_raw(
@@ -368,7 +401,7 @@ fn op_set_raw(
   _rid: u32,
   _is_raw: bool,
   _cbreak: bool,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   Ok(())
 }
 
@@ -429,8 +462,11 @@ fn op_tap_promise_metrics(state: &mut OpState, #[string] kind: &str) {
 fn op_cancel_drop_token(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), AnyError> {
-  let token = state.resource_table.get::<DropToken>(rid)?;
+) -> Result<(), JsErrorBox> {
+  let token = state
+    .resource_table
+    .get::<DropToken>(rid)
+    .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
   token.0.cancel();
   Ok(())
@@ -444,13 +480,14 @@ pub fn op_bootstrap_unstable_args(_state: &mut OpState) -> Vec<String> {
 
 deno_core::extension!(
   runtime,
+  deps = [os],
   ops = [
     // op_is_terminal,
     op_is_runtime_init,
     op_stdin_set_raw,
     op_console_size,
     op_read_line_prompt,
-    op_set_exit_code,
+    // op_set_exit_code, // Removed: now provided by vendor/deno_os
     op_runtime_metrics,
     op_schedule_mem_check,
     op_runtime_memory_usage,
@@ -465,7 +502,7 @@ deno_core::extension!(
     dir "js",
     "00_serve.js",
     "01_http.js",
-    "40_process.js",
+    "98_global_scope_shared.js",
     "async_hook.js",
     "bootstrap.js",
     "denoOverrides.js",

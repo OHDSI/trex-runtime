@@ -12,6 +12,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 
 deno_fetch.workspace = true
 deno_fs.workspace = true
@@ -21,15 +22,23 @@ deno_net.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_tls.workspace = true
+
+deno_crypto_provider.workspace = true
+deno_process.workspace = true
 
 node_resolver.workspace = true
+sys_traits.workspace = true
 
 aes.workspace = true
 async-trait.workspace = true
+aws-lc-rs.workspace = true
 base64.workspace = true
 brotli.workspace = true
 bytes.workspace = true
 cbc.workspace = true
+ctr.workspace = true
+dotenvy.workspace = true
 data-encoding.workspace = true
 ecb.workspace = true
 elliptic-curve.workspace = true
@@ -53,7 +62,10 @@ rand.workspace = true
 regex.workspace = true
 ring.workspace = true
 rsa.workspace = true
+rusqlite.workspace = true
+rustls-tokio-stream.workspace = true
 sec1.workspace = true
+tower-service.workspace = true
 serde.workspace = true
 sha1.workspace = true
 sha2.workspace = true

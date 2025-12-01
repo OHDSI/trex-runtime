@@ -17,17 +17,20 @@ use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_core::url::Url;
 use deno_fs;
-use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_permissions::CheckedPath;
 use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
+use deno_semver::StackString;
 use deno_semver::package::PackageNv;
+use node_resolver::UrlOrPathRef;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
@@ -40,11 +43,11 @@ use crate::cache::CACHE_PERM;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::PackageCaching;
+use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
-use crate::util::fs::LaxSingleProcessFsFlag;
 
 use ext_node::NodePermissions;
 
@@ -166,19 +169,20 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
+    let referrer_url = referrer.url()?;
     let maybe_local_path = self
-      .resolve_folder_for_specifier(referrer)
+      .resolve_folder_for_specifier(referrer_url)
       .map_err(|err| PackageFolderResolveIoError {
         package_name: name.to_string(),
-        referrer: referrer.clone(),
+        referrer: referrer.display(),
         source: err,
       })?;
     let Some(local_path) = maybe_local_path else {
       return Err(
         ReferrerNotFoundError {
-          referrer: referrer.clone(),
+          referrer: referrer.display(),
           referrer_extra: None,
         }
         .into(),
@@ -194,8 +198,11 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
         Cow::Owned(current_folder.join("node_modules"))
       };
 
-      let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.fs.is_dir_sync(&sub_dir) {
+      let sub_dir = join_package_name(node_modules_folder.as_ref(), name);
+      if self
+        .fs
+        .is_dir_sync(&CheckedPath::unsafe_new(Cow::Borrowed(&sub_dir)))
+      {
         return Ok(sub_dir);
       }
 
@@ -207,7 +214,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     Err(
       PackageNotFoundError {
         package_name: name.to_string(),
-        referrer: referrer.clone(),
+        referrer: referrer.display(),
         referrer_extra: None,
       }
       .into(),
@@ -329,18 +336,18 @@ async fn sync_resolution_with_fs(
   let package_partitions =
     snapshot.all_system_packages_partitioned(system_info);
   let mut cache_futures = FuturesUnordered::new();
-  let mut newest_packages_by_name: HashMap<&String, &NpmResolutionPackage> =
+  let mut newest_packages_by_name: HashMap<&str, &NpmResolutionPackage> =
     HashMap::with_capacity(package_partitions.packages.len());
 
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
-      newest_packages_by_name.get_mut(&package.id.nv.name)
+      newest_packages_by_name.get_mut(package.id.nv.name.as_str())
     {
       if current_pkg.id.nv.cmp(&package.id.nv) == Ordering::Less {
         *current_pkg = package;
       }
     } else {
-      newest_packages_by_name.insert(&package.id.nv.name, package);
+      newest_packages_by_name.insert(package.id.nv.name.as_str(), package);
     };
 
     let package_folder_name =
@@ -359,7 +366,7 @@ async fn sync_resolution_with_fs(
       let folder_path = folder_path.clone();
       cache_futures.push(async move {
         tarball_cache
-          .ensure_package(&package.id.nv, &package.dist)
+          .ensure_package(&package.id.nv, package.dist.as_ref().unwrap())
           .await?;
 
         let sub_node_modules = folder_path.join("node_modules");
@@ -676,7 +683,10 @@ fn get_package_folder_id_from_folder_name(
   };
   let version = deno_semver::Version::parse_from_npm(raw_version).ok()?;
   Some(NpmPackageCacheFolderId {
-    nv: PackageNv { name, version },
+    nv: PackageNv {
+      name: StackString::from(name.as_str()),
+      version,
+    },
     copy_index,
   })
 }
@@ -701,11 +711,11 @@ fn symlink_package_dir(
 
   #[cfg(windows)]
   {
-    junction_or_symlink_dir(&old_path_relative, old_path, new_path)
+    junction_or_symlink_dir(old_path_relative.as_path(), old_path, new_path)
   }
   #[cfg(not(windows))]
   {
-    symlink_dir(&old_path_relative, new_path).map_err(Into::into)
+    symlink_dir(old_path_relative.as_path(), new_path).map_err(Into::into)
   }
 }
 

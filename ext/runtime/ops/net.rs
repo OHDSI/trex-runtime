@@ -6,21 +6,20 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use base_rt::DenoRuntimeDropToken;
-use deno_core::error::bad_resource;
-use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_error::JsErrorBox;
 use deno_net::ops::IpAddr;
 use tokio::io;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::span;
 use tracing::Level;
+use tracing::span;
 
 deno_core::extension!(
   runtime_net,
@@ -70,15 +69,18 @@ impl TokioDuplexResource {
   pub async fn read(
     self: Rc<Self>,
     _data: &mut [u8],
-  ) -> Result<usize, AnyError> {
+  ) -> Result<usize, JsErrorBox> {
     unreachable!()
   }
 
-  pub async fn write(self: Rc<Self>, _data: &[u8]) -> Result<usize, AnyError> {
+  pub async fn write(
+    self: Rc<Self>,
+    _data: &[u8],
+  ) -> Result<usize, JsErrorBox> {
     unreachable!()
   }
 
-  pub async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
     unreachable!()
   }
 }
@@ -115,7 +117,7 @@ impl Resource for ListenMarker {}
 #[serde]
 pub fn op_net_listen(
   state: &mut OpState,
-) -> Result<(ResourceId, IpAddr), AnyError> {
+) -> Result<(ResourceId, IpAddr), crate::RuntimeError> {
   // this is a noop
   // TODO: customize to match the service ip and port
   Ok((
@@ -132,7 +134,7 @@ pub fn op_net_listen(
 pub async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
+) -> Result<(ResourceId, IpAddr, IpAddr), crate::RuntimeError> {
   let accept_token = state
     .borrow()
     .resource_table
@@ -158,7 +160,9 @@ pub async fn op_net_accept(
   };
 
   let Some(rx) = rx else {
-    return Err(bad_resource("duplex stream receiver is already used"));
+    return Err(crate::RuntimeError::Runtime(
+      "duplex stream receiver is already used".to_string(),
+    ));
   };
 
   let mut rx = scopeguard::guard(rx, {
@@ -177,7 +181,9 @@ pub async fn op_net_accept(
   } {
     Some(ret) => ret,
     None => {
-      return Err(bad_resource("duplex stream channel is closed"));
+      return Err(crate::RuntimeError::Runtime(
+        "duplex stream channel is closed".to_string(),
+      ));
     }
   };
 
@@ -229,6 +235,10 @@ pub async fn op_net_accept(
 
 // TODO: This should be a global ext
 #[op2(fast)]
-pub fn op_net_unsupported(_state: &mut OpState) -> Result<(), AnyError> {
-  Err(deno_core::error::not_supported())
+pub fn op_net_unsupported(
+  _state: &mut OpState,
+) -> Result<(), crate::RuntimeError> {
+  Err(crate::RuntimeError::Runtime(
+    "Operation not supported".to_string(),
+  ))
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { primordials } from "ext:core/mod.js";
@@ -54,7 +54,6 @@ export const builtinModules = [
   "v8",
   "vm",
   "wasi",
-  "worker_threads",
   "zlib",
 ];
 export const _builtinLibs = builtinModules;

@@ -21,16 +21,18 @@ use base::integration_test;
 use base::integration_test_listen_fut;
 use base::integration_test_with_server_flag;
 use base::server::Builder;
+use base::server::RequestIdleTimeout;
 use base::server::ServerEvent;
 use base::server::ServerFlags;
 use base::server::ServerHealth;
 use base::server::Tls;
+use base::utils::test_utils;
 use base::utils::test_utils::create_test_user_worker;
 use base::utils::test_utils::ensure_npm_package_installed;
 use base::utils::test_utils::test_user_runtime_opts;
 use base::utils::test_utils::test_user_worker_pool_policy;
+use base::utils::test_utils::TestBed;
 use base::utils::test_utils::TestBedBuilder;
-use base::utils::test_utils::{self};
 use base::worker;
 use base::worker::TerminationToken;
 use base::WorkerKind;
@@ -215,6 +217,7 @@ async fn test_not_trigger_pku_sigsegv_due_to_jit_compilation_non_cli() {
     .init_opts(WorkerContextInitOpts {
       service_path: "./test_cases/slow_resp".into(),
       no_module_cache: false,
+      no_npm: None,
       env_vars: HashMap::new(),
       timing: None,
       maybe_eszip: None,
@@ -376,6 +379,7 @@ async fn test_main_worker_boot_error() {
     .init_opts(WorkerContextInitOpts {
       service_path: "./test_cases/meow".into(),
       no_module_cache: false,
+      no_npm: None,
       env_vars: HashMap::new(),
       timing: None,
       maybe_eszip: None,
@@ -501,6 +505,7 @@ async fn test_main_worker_user_worker_mod_evaluate_exception() {
     .init_opts(WorkerContextInitOpts {
       service_path: "./test_cases/main".into(),
       no_module_cache: false,
+      no_npm: None,
       env_vars: HashMap::new(),
       timing: None,
       maybe_eszip: None,
@@ -894,6 +899,7 @@ async fn test_worker_boot_invalid_imports() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/invalid_imports".into(),
     no_module_cache: false,
+    no_npm: None,
     env_vars: HashMap::new(),
     timing: None,
     maybe_eszip: None,
@@ -923,6 +929,7 @@ async fn test_worker_boot_with_0_byte_eszip() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/meow".into(),
     no_module_cache: false,
+    no_npm: None,
     env_vars: HashMap::new(),
     timing: None,
     maybe_eszip: Some(EszipPayloadKind::VecKind(vec![])),
@@ -951,6 +958,7 @@ async fn test_worker_boot_with_invalid_entrypoint() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/meow".into(),
     no_module_cache: false,
+    no_npm: None,
     env_vars: HashMap::new(),
     timing: None,
     maybe_eszip: None,
@@ -1886,7 +1894,7 @@ async fn test_request_idle_timeout_no_streamed_response(
 
   integration_test_with_server_flag!(
     ServerFlags {
-      request_idle_timeout_ms: Some(1000),
+      request_idle_timeout: RequestIdleTimeout::from_millis(None, Some(1000)),
       ..Default::default()
     },
     "./test_cases/main",
@@ -1946,7 +1954,7 @@ async fn test_request_idle_timeout_streamed_response(maybe_tls: Option<Tls>) {
 
   integration_test_with_server_flag!(
     ServerFlags {
-      request_idle_timeout_ms: Some(2000),
+      request_idle_timeout: RequestIdleTimeout::from_millis(None, Some(2000)),
       ..Default::default()
     },
     "./test_cases/main",
@@ -2021,7 +2029,7 @@ async fn test_request_idle_timeout_streamed_response_first_chunk_timeout(
 
   integration_test_with_server_flag!(
     ServerFlags {
-      request_idle_timeout_ms: Some(1000),
+      request_idle_timeout: RequestIdleTimeout::from_millis(None, Some(1000)),
       ..Default::default()
     },
     "./test_cases/main",
@@ -2111,7 +2119,7 @@ async fn test_request_idle_timeout_websocket_deno(
 
   integration_test_with_server_flag!(
     ServerFlags {
-      request_idle_timeout_ms: Some(1000),
+      request_idle_timeout: RequestIdleTimeout::from_millis(None, Some(1000)),
       ..Default::default()
     },
     "./test_cases/main",
@@ -4182,6 +4190,149 @@ async fn test_user_workers_cleanup_idle_workers() {
   }
 
   unreachable!("test failed");
+}
+
+#[tokio::test]
+#[serial]
+async fn test_no_npm() {
+  async fn send_it(
+    no_npm: bool,
+    tx: mpsc::UnboundedSender<WorkerEventWithMetadata>,
+  ) -> (TestBed, u16) {
+    let tb = TestBedBuilder::new("./test_cases/main")
+      .with_per_worker_policy(None)
+      .with_worker_event_sender(Some(tx))
+      .build()
+      .await;
+
+    let resp = tb
+      .request(|mut b| {
+        b = b.uri("/npm-import-with-package-json");
+        if no_npm {
+          b = b.header("x-no-npm", HeaderValue::from_static("1"))
+        }
+        b.body(Body::empty()).context("can't make request")
+      })
+      .await
+      .unwrap();
+
+    (tb, resp.status().as_u16())
+  }
+
+  {
+    // Since `noNpm` is configured, it will not discover package.json, and
+    // `npm:is-even` will resolve normally using Deno's original module
+    // resolution method.
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let (tb, status_code) = send_it(true, tx).await;
+
+    assert_eq!(status_code, StatusCode::OK);
+
+    rx.close();
+    tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
+  }
+  {
+    // Note that `noNpm` is not set this time. In this case, it will try to
+    // discover package.json and will eventually find it.
+    //
+    // This causes it to switch to Byonm mode and try to resolve modules from
+    // the adjacent node_modules/.
+    //
+    // However, since node_modules/ does not exist anywhere, the attempt to
+    // resolve `npm:is-even` will fail.
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let (tb, status_code) = send_it(false, tx).await;
+
+    assert_eq!(status_code, StatusCode::INTERNAL_SERVER_ERROR);
+
+    rx.close();
+    tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
+
+    while let Some(ev) = rx.recv().await {
+      let WorkerEvents::BootFailure(ev) = ev.event else {
+        continue;
+      };
+
+      assert!(ev.msg.starts_with(
+        "worker boot error: failed to bootstrap runtime: failed to create the \
+graph: Could not find a matching package for 'npm:is-even' in the node_modules \
+directory."
+      ));
+
+      return;
+    }
+
+    unreachable!("test failed");
+  }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_user_worker_with_import_map() {
+  let assert_fn = |resp: Result<Response, reqwest::Error>| async {
+    let res = resp.unwrap();
+    let status = res.status().as_u16();
+
+    let body_bytes = res.bytes().await.unwrap();
+    let body_str = String::from_utf8_lossy(&body_bytes);
+
+    assert_eq!(
+      status, 200,
+      "Expected 200, got {} with body: {}",
+      status, body_str
+    );
+
+    assert!(
+      body_str.contains("import map works!"),
+      "Expected import map works!, got: {}",
+      body_str
+    );
+  };
+  {
+    integration_test!(
+      "./test_cases/user-worker-with-import-map",
+      NON_SECURE_PORT,
+      "import_map",
+      None,
+      None,
+      None,
+      (assert_fn),
+      TerminationToken::new()
+    );
+  }
+  {
+    integration_test!(
+      "./test_cases/user-worker-with-import-map",
+      NON_SECURE_PORT,
+      "inline_import_map",
+      None,
+      None,
+      None,
+      (assert_fn),
+      TerminationToken::new()
+    );
+  }
+}
+
+#[tokio::test]
+#[serial]
+async fn test_pin_package_version_correctly() {
+  integration_test!(
+    "./test_cases/pin-package",
+    NON_SECURE_PORT,
+    "",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let res = resp.unwrap();
+      assert!(res.status().as_u16() == 200);
+
+      let body_bytes = res.bytes().await.unwrap();
+      assert_eq!(body_bytes, r#"3.0.0"#);
+    }),
+    TerminationToken::new()
+  );
 }
 
 #[derive(Deserialize)]

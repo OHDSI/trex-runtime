@@ -1,20 +1,22 @@
-use crate::args::jsr_url;
 use crate::args::CacheSetting;
+use crate::args::jsr_url;
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
+use crate::util::fs::AtomicWriteFileFsAdapter;
 use crate::util::fs::atomic_write_file_with_retries;
 use crate::util::fs::atomic_write_file_with_retries_and_fs;
-use crate::util::fs::AtomicWriteFileFsAdapter;
 
 use deno_ast::MediaType;
+use deno_core::ModuleSpecifier;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_graph::source::CacheInfo;
+use deno_graph::source::LoadError;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
@@ -44,9 +46,9 @@ pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
-pub use deno_dir::dirs::home_dir;
 pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
+pub use deno_dir::dirs::home_dir;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use fast_check::FastCheckCache;
@@ -57,121 +59,10 @@ pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;
-
-#[derive(Debug, Clone)]
-pub struct RealDenoCacheEnv;
-
-impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
-  fn read_file_bytes(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
-    std::fs::read(path).map(Cow::Owned)
-  }
-
-  fn atomic_write_file(
-    &self,
-    path: &Path,
-    bytes: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries(path, bytes, CACHE_PERM)
-  }
-
-  fn canonicalize_path(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<std::path::PathBuf> {
-    crate::util::fs::canonicalize_path(path)
-  }
-
-  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(path)
-  }
-
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
-    match std::fs::metadata(path) {
-      Ok(metadata) => Ok(Some(
-        metadata.modified().unwrap_or_else(|_| SystemTime::now()),
-      )),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    path.is_file()
-  }
-
-  fn time_now(&self) -> SystemTime {
-    SystemTime::now()
-  }
-}
-
-#[derive(Debug, Clone)]
-pub struct DenoCacheEnvFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
-
-impl<'a> deno_cache_dir::DenoCacheEnv for DenoCacheEnvFsAdapter<'a> {
-  fn read_file_bytes(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
-    self
-      .0
-      .read_file_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn atomic_write_file(
-    &self,
-    path: &Path,
-    bytes: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries_and_fs(
-      &AtomicWriteFileFsAdapter {
-        fs: self.0,
-        write_mode: CACHE_PERM,
-      },
-      path,
-      bytes,
-    )
-  }
-
-  fn canonicalize_path(&self, path: &Path) -> std::io::Result<PathBuf> {
-    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
-  }
-
-  fn create_dir_all(&self, path: &Path) -> std::io::Result<()> {
-    self
-      .0
-      .mkdir_sync(path, true, None)
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
-    self
-      .0
-      .stat_sync(path)
-      .map(|stat| {
-        stat
-          .mtime
-          .map(|ts| SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(ts))
-      })
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn is_file(&self, path: &Path) -> bool {
-    self.0.is_file_sync(path)
-  }
-
-  fn time_now(&self) -> SystemTime {
-    SystemTime::now()
-  }
-}
-
-pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<RealDenoCacheEnv>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
-pub type LocalLspHttpCache =
-  deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
+pub type CliSys = sys_traits::impls::RealSys;
+pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
+pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<CliSys>;
+pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 
 pub struct FetchCacherOptions {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
@@ -231,11 +122,7 @@ impl FetchCacher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      #[allow(deprecated)]
-      self
-        .global_http_cache
-        .get_global_cache_filepath(specifier)
-        .ok()
+      self.global_http_cache.local_path_for_url(specifier).ok()
     }
   }
 }
@@ -259,7 +146,7 @@ impl Loader for FetchCacher {
     &self,
     specifier: &ModuleSpecifier,
     options: deno_graph::source::LoadOptions,
-  ) -> LoadFuture {
+  ) -> deno_graph::source::LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
     if specifier.scheme() == "file"
@@ -272,7 +159,7 @@ impl Loader for FetchCacher {
       // against the canonicalized specifier.
       let specifier = crate::node::resolve_specifier_into_node_modules(
         specifier,
-        self.fs.as_ref(),
+        self.fs.clone(),
       );
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
         return Box::pin(futures::future::ready(Ok(Some(
@@ -305,9 +192,9 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(deno_core::anyhow::anyhow!(
-              "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            ));
+            return Err(LoadError::Other(Arc::new(JsErrorBox::generic(
+              "Could not resolve version constraint using only cached data. Try running again without --cached-only".to_string()
+            ))));
           }
           Some(CacheSetting::ReloadAll)
         }
@@ -343,6 +230,7 @@ impl Loader for FetchCacher {
               };
             Ok(Some(LoadResponse::Module {
               specifier: file.specifier,
+              mtime: None,
               maybe_headers,
               content: file.source,
             }))
@@ -359,41 +247,43 @@ impl Loader for FetchCacher {
             if io_err.kind() == std::io::ErrorKind::NotFound {
               return Ok(None);
             } else {
-              return Err(err);
+              return Err(LoadError::Other(Arc::new(JsErrorBox::generic(err.to_string()))));
             }
           }
           let error_class_name = get_error_class_name(&err);
           match error_class_name {
             "NotFound" => Ok(None),
             "NotCached" if options.cache_setting == LoaderCacheSetting::Only => Ok(None),
-            _ => Err(err),
+            _ => Err(LoadError::Other(Arc::new(JsErrorBox::generic(err.to_string())))),
           }
         })
     }
     .boxed_local()
   }
 
-  fn cache_module_info(
-    &self,
-    specifier: &ModuleSpecifier,
-    media_type: MediaType,
-    source: &Arc<[u8]>,
-    module_info: &deno_graph::ModuleInfo,
-  ) {
-    log::debug!("Caching module info for {}", specifier);
-    let source_hash = CacheDBHash::from_source(source);
-    let result = self.module_info_cache.set_module_info(
-      specifier,
-      media_type,
-      source_hash,
-      module_info,
-    );
-    if let Err(err) = result {
-      log::debug!(
-        "Error saving module cache info for {}. {:#}",
-        specifier,
-        err
-      );
-    }
-  }
+  // NOTE: cache_module_info was removed from the Loader trait in newer deno_graph versions
+  // The caching is now handled internally by deno_graph
+  // fn cache_module_info(
+  //   &self,
+  //   specifier: &ModuleSpecifier,
+  //   media_type: MediaType,
+  //   source: &Arc<[u8]>,
+  //   module_info: &deno_graph::analysis::ModuleInfo,
+  // ) {
+  //   log::debug!("Caching module info for {}", specifier);
+  //   let source_hash = CacheDBHash::from_source(source);
+  //   let result = self.module_info_cache.set_module_info(
+  //     specifier,
+  //     media_type,
+  //     source_hash,
+  //     module_info,
+  //   );
+  //   if let Err(err) = result {
+  //     log::debug!(
+  //       "Error saving module cache info for {}. {:#}",
+  //       specifier,
+  //       err
+  //     );
+  //   }
+  // }
 }

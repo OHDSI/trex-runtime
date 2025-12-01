@@ -4,10 +4,10 @@ use std::mem::size_of;
 use std::rc::Rc;
 
 use anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::v8;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
+use deno_core::error::AnyError;
+use deno_core::v8;
 use ort::memory::AllocationDevice;
 use ort::memory::AllocatorType;
 use ort::memory::MemoryInfo;
@@ -164,8 +164,8 @@ impl JsTensor {
 
     if current_length != expected_length {
       return Err(anyhow!(
-                "invalid tensor length! got '{current_length}' expect '{expected_length}'"
-            ));
+        "invalid tensor length! got '{current_length}' expect '{expected_length}'"
+      ));
     };
 
     // Same impl. as the Tensor::from_array()
@@ -217,10 +217,10 @@ impl JsTensor {
       TensorElementType::Uint64 => self.extract_ort_tensor_ref::<u64>()?.into(),
       TensorElementType::Bool => self.extract_ort_tensor_ref::<bool>()?.into(),
       TensorElementType::Float16 => {
-        return Err(anyhow!("'half::f16' is not supported by JS tensor."))
+        return Err(anyhow!("'half::f16' is not supported by JS tensor."));
       }
       TensorElementType::Bfloat16 => {
-        return Err(anyhow!("'half::bf16' is not supported by JS tensor."))
+        return Err(anyhow!("'half::bf16' is not supported by JS tensor."));
       }
     };
 
@@ -282,7 +282,8 @@ mod tests {
       // region: v8-init
       // ref: https://github.com/denoland/deno_core/blob/490079f6b5c9233f476b0a529eace1f5b2c4ed07/serde_v8/tests/magic.rs#L23
       let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
-      let handle_scope = &mut v8::HandleScope::new(isolate);
+      let handle_scope = std::pin::pin!(v8::HandleScope::new(isolate));
+      let handle_scope = &mut handle_scope.init();
       let context = v8::Context::new(handle_scope, Default::default());
       let scope = &mut v8::ContextScope::new(handle_scope, context);
       // endregion: v8-init

@@ -6,12 +6,12 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::Context;
-use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
+use deno_tls::RootCertStoreProvider;
 use deno_tls::deno_native_certs::load_native_certs;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::rustls_pemfile;
 use deno_tls::webpki_roots;
-use deno_tls::RootCertStoreProvider;
 use thiserror::Error;
 
 pub struct ValueRootCertStoreProvider {
@@ -25,7 +25,7 @@ impl ValueRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for ValueRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox> {
     Ok(&self.root_cert_store)
   }
 }

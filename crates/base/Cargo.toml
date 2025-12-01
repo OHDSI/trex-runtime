@@ -2,18 +2,22 @@
 name = "base"
 version = "0.1.0"
 authors.workspace = true
-edition.workspace = true
+edition = "2021"
 license.workspace = true
 
 [dependencies]
 deno.workspace = true
 deno_core.workspace = true
+deno_resolver.workspace = true
+sys_traits.workspace = true
 
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_canvas.workspace = true
 deno_config.workspace = true
 deno_console.workspace = true
+deno_os.workspace = true
+deno_process.workspace = true
 deno_webgpu.workspace = true
 
 base_mem_check.workspace = true
@@ -88,16 +92,20 @@ tokio-util = { workspace = true, features = ["rt", "compat"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "tracing-log"] }
 
 async-tungstenite = { version = "0.25.0", default-features = false }
+diff = "0.1"
 tungstenite = { version = "0.21.0", default-features = false, features = ["handshake"] }
 
 [build-dependencies]
 deno.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_canvas.workspace = true
 deno_console.workspace = true
+deno_os.workspace = true
+deno_process.workspace = true
 deno_webgpu.workspace = true
 
 ext_ai.workspace = true
@@ -111,7 +119,22 @@ trex_core.workspace = true
 
 deno_facade.workspace = true
 
+deno_webidl.workspace = true
+deno_url.workspace = true
+deno_web.workspace = true
+deno_fetch.workspace = true
+deno_websocket.workspace = true
+deno_crypto.workspace = true
+deno_net.workspace = true
+deno_tls.workspace = true
+deno_http.workspace = true
+deno_io.workspace = true
+deno_fs.workspace = true
+deno_telemetry.workspace = true
+deno_resolver.workspace = true
+
 url.workspace = true
+sys_traits.workspace = true
 
 [features]
 tracing = ["dep:tracing-subscriber"]

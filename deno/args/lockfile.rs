@@ -14,9 +14,9 @@ use deno_package_json::PackageJsonDepValue;
 use deno_semver::jsr::JsrDepPackageReq;
 use ext_node::PackageJson;
 
+use crate::DenoOptionsBuilder;
 use crate::cache;
 use crate::util::fs::atomic_write_file_with_retries;
-use crate::DenoOptionsBuilder;
 
 use deno_lockfile::Lockfile;
 
@@ -95,9 +95,10 @@ impl CliLockfile {
     Ok(())
   }
 
-  pub fn discover(
+  pub async fn discover(
     builder: &DenoOptionsBuilder,
     workspace: &Workspace,
+    npm_api: &dyn deno_lockfile::NpmPackageInfoProvider,
   ) -> Result<Option<CliLockfile>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -117,6 +118,8 @@ impl CliLockfile {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
           PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::File(_) => None,
+          PackageJsonDepValue::JsrReq(_) => None,
         })
         .collect()
     }
@@ -151,14 +154,18 @@ impl CliLockfile {
         .unwrap_or(false)
     });
 
-    let lockfile = Self::read_from_path(CliLockfileReadFromPathOptions {
-      file_path,
-      frozen,
-      skip_write: builder.lockfile_skip_write(),
-    })?;
+    let lockfile = Self::read_from_path(
+      CliLockfileReadFromPathOptions {
+        file_path,
+        frozen,
+        skip_write: builder.lockfile_skip_write(),
+      },
+      npm_api,
+    )
+    .await?;
 
     // initialize the lockfile with the workspace's configuration
-    let root_url = workspace.root_dir();
+    let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
         package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
@@ -196,6 +203,7 @@ impl CliLockfile {
           ))
         })
         .collect(),
+      links: Default::default(), // Empty links for now - not used in edge-runtime
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: builder.no_npm.unwrap_or_default(),
@@ -210,15 +218,22 @@ impl CliLockfile {
     Ok(Some(lockfile))
   }
 
-  pub fn read_from_path(
+  pub async fn read_from_path(
     opts: CliLockfileReadFromPathOptions,
+    npm_api: &dyn deno_lockfile::NpmPackageInfoProvider,
   ) -> Result<CliLockfile, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
-      Ok(text) => Lockfile::new(deno_lockfile::NewLockfileOptions {
-        file_path: opts.file_path,
-        content: &text,
-        overwrite: false,
-      })?,
+      Ok(text) => {
+        Lockfile::new(
+          deno_lockfile::NewLockfileOptions {
+            file_path: opts.file_path,
+            content: &text,
+            overwrite: false,
+          },
+          npm_api,
+        )
+        .await?
+      }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
         Lockfile::new_empty(opts.file_path, false)
       }

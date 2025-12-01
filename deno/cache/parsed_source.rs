@@ -7,11 +7,11 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_core::parking_lot::Mutex;
-use deno_graph::CapturingEsParser;
-use deno_graph::DefaultEsParser;
-use deno_graph::EsParser;
-use deno_graph::ParseOptions;
-use deno_graph::ParsedSourceStore;
+use deno_graph::ast::CapturingEsParser;
+use deno_graph::ast::DefaultEsParser;
+use deno_graph::ast::EsParser;
+use deno_graph::ast::ParseOptions;
+use deno_graph::ast::ParsedSourceStore;
 
 #[derive(Default)]
 pub struct ParsedSourceCache {
@@ -27,7 +27,7 @@ impl ParsedSourceCache {
     // this will conditionally parse because it's using a CapturingEsParser
     parser.parse_program(ParseOptions {
       specifier: &module.specifier,
-      source: module.source.clone(),
+      source: module.source.text.clone(),
       media_type: module.media_type,
       scope_analysis: false,
     })
@@ -64,7 +64,7 @@ impl ParsedSourceCache {
 
   /// Creates a parser that will reuse a ParsedSource from the store
   /// if it exists, or else parse.
-  pub fn as_capturing_parser(&self) -> CapturingEsParser {
+  pub fn as_capturing_parser(&self) -> CapturingEsParser<'_> {
     CapturingEsParser::new(None, self)
   }
 }
@@ -74,7 +74,7 @@ impl ParsedSourceCache {
 /// and in LSP settings the concurrency will be enforced
 /// at a higher level to ensure this will have the latest
 /// parsed source.
-impl deno_graph::ParsedSourceStore for ParsedSourceCache {
+impl deno_graph::ast::ParsedSourceStore for ParsedSourceCache {
   fn set_parsed_source(
     &self,
     specifier: ModuleSpecifier,

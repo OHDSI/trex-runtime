@@ -9,17 +9,20 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use std::borrow::Cow;
+
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
-use deno_core::anyhow::anyhow;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::Context;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
-use deno_core::ModuleSpecifier;
 use deno_fs::FileSystem;
+use deno_permissions::CheckedPath;
 
 use crate::util::path::get_atomic_file_path;
 
@@ -81,34 +84,45 @@ impl<'a> AtomicWriteFileFs for AtomicWriteFileFsAdapter<'a> {
     self
       .fs
       .write_file_sync(
-        path,
+        &CheckedPath::unsafe_new(Cow::Borrowed(path)),
         deno_fs::OpenOptions::write(true, false, false, Some(self.write_mode)),
-        None,
         bytes,
       )
       .map_err(|e| e.into_io_error())
   }
 
   fn rename_file(&self, from: &Path, to: &Path) -> std::io::Result<()> {
-    self.fs.rename_sync(from, to).map_err(|e| e.into_io_error())
+    self
+      .fs
+      .rename_sync(
+        &CheckedPath::unsafe_new(Cow::Borrowed(from)),
+        &CheckedPath::unsafe_new(Cow::Borrowed(to)),
+      )
+      .map_err(|e| e.into_io_error())
   }
 
   fn remove_file(&self, path: &Path) -> std::io::Result<()> {
     self
       .fs
-      .remove_sync(path, false)
+      .remove_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)), false)
       .map_err(|e| e.into_io_error())
   }
 
   fn create_dir_all(&self, dir_path: &Path) -> std::io::Result<()> {
     self
       .fs
-      .mkdir_sync(dir_path, /* recursive */ true, None)
+      .mkdir_sync(
+        &CheckedPath::unsafe_new(Cow::Borrowed(dir_path)),
+        /* recursive */ true,
+        None,
+      )
       .map_err(|e| e.into_io_error())
   }
 
   fn path_exists(&self, path: &Path) -> bool {
-    self.fs.exists_sync(path)
+    self
+      .fs
+      .exists_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)))
   }
 }
 
@@ -281,16 +295,21 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
-  deno_path_util::canonicalize_path_maybe_not_exists(path, &canonicalize_path)
+  deno_path_util::fs::canonicalize_path_maybe_not_exists(
+    &sys_traits::impls::RealSys,
+    path,
+  )
 }
 
 pub fn canonicalize_path_maybe_not_exists_with_fs(
   path: &Path,
   fs: &dyn FileSystem,
 ) -> Result<PathBuf, Error> {
-  deno_path_util::canonicalize_path_maybe_not_exists(path, &|path| {
-    fs.realpath_sync(path).map_err(|err| err.into_io_error())
-  })
+  // For now, use the same implementation as above since we don't have easy access to fs-based sys
+  deno_path_util::fs::canonicalize_path_maybe_not_exists(
+    &sys_traits::impls::RealSys,
+    path,
+  )
 }
 
 /// Collects module specifiers that satisfy the given predicate as a file path, by recursively walking `include`.
@@ -338,7 +357,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)?;
+    .collect_file_patterns(&sys_traits::impls::RealSys, &files);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())

@@ -1,11 +1,11 @@
+use crate::WorkerEventWithMetadata;
 use crate::events::EventMetadata;
 use crate::events::LogEvent;
 use crate::events::LogLevel;
 use crate::events::WorkerEvents;
-use crate::WorkerEventWithMetadata;
-use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_error::JsErrorBox;
 use tokio::sync::mpsc;
 
 #[op2(fast)]
@@ -13,7 +13,7 @@ fn op_user_worker_log(
   state: &mut OpState,
   #[string] msg: &str,
   #[smi] level: i32,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   let maybe_tx =
     state.try_borrow::<mpsc::UnboundedSender<WorkerEventWithMetadata>>();
   let level = LogLevel::try_from(level as u8).unwrap_or_default();
@@ -33,7 +33,8 @@ fn op_user_worker_log(
     };
 
     tracing::trace!(?metadata);
-    tx.send(metadata)?;
+    tx.send(metadata)
+      .map_err(|e| JsErrorBox::generic(e.to_string()))?;
   } else {
     #[cfg(feature = "tracing")]
     {

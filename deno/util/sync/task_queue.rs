@@ -3,8 +3,8 @@
 use std::collections::LinkedList;
 use std::sync::Arc;
 
-use deno_core::futures::task::AtomicWaker;
 use deno_core::futures::Future;
+use deno_core::futures::task::AtomicWaker;
 use deno_core::parking_lot::Mutex;
 
 use super::AtomicFlag;

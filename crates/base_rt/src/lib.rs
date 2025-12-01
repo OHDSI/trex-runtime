@@ -1,24 +1,24 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use cpu_timer::get_thread_time;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::futures::task::AtomicWaker;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::V8CrossThreadTaskSpawner;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::futures::task::AtomicWaker;
 use once_cell::sync::Lazy;
 use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tokio_util::sync::WaitForCancellationFutureOwned;
+use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
-use tracing::Instrument;
 
 mod runtime_state;
 
@@ -96,13 +96,13 @@ impl std::ops::Deref for DenoRuntimeDropToken {
   type Target = CancellationToken;
 
   fn deref(&self) -> &Self::Target {
-    &self.0 .0
+    &self.0.0
   }
 }
 
 impl DenoRuntimeDropToken {
   pub fn cancelled_owned(self) -> WaitForCancellationFutureOwned {
-    self.0 .0.cancelled_owned()
+    self.0.0.cancelled_owned()
   }
 }
 

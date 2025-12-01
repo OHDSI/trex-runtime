@@ -10,4 +10,3 @@ It is a fork of the Supabase Edge Runtime: https://github.com/supabase/edge-runt
 #### Get in contact
 
 Please [click here](https://discord.gg/5XtHky2BZe) to join us in Discord.
-

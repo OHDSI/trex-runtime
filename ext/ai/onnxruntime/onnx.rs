@@ -1,11 +1,10 @@
 #![allow(unexpected_cfgs)]
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use ctor::ctor;
-use deno_core::error::StdAnyError;
 use scopeguard::guard;
 use tracing::error;
 use tracing::instrument;
@@ -45,8 +44,9 @@ fn init_onnx_env() {
           None => "unknown error",
         },
       };
-      let _ = guard1.insert(Arc::new(ort::Error::wrap(StdAnyError::from(
-        anyhow::Error::msg(err.to_owned()),
+      let _ = guard1.insert(Arc::new(ort::Error::wrap(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        err.to_owned(),
       ))));
     }
 

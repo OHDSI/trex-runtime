@@ -10,6 +10,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 
 base_rt.workspace = true
 ext_ai_v8_utilities.workspace = true

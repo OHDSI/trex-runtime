@@ -1,8 +1,8 @@
 use std::ffi::c_void;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use deno_core::v8;
 use deno_core::v8::UniqueRef;
@@ -35,7 +35,6 @@ impl CustomAllocator {
         allocate,
         allocate_uninitialized,
         free,
-        reallocate,
         drop,
       };
 
@@ -83,7 +82,9 @@ unsafe extern "C" fn allocate_uninitialized(
 
   let mut store = Vec::with_capacity(n);
 
-  store.set_len(n);
+  unsafe {
+    store.set_len(n);
+  }
   allocator.wake();
 
   Box::into_raw(store.into_boxed_slice()) as *mut [u8] as *mut c_void
@@ -97,7 +98,9 @@ unsafe extern "C" fn free(
   allocator.count.fetch_sub(n, Ordering::SeqCst);
   allocator.wake();
 
-  let _ = Box::from_raw(std::slice::from_raw_parts_mut(data as *mut u8, n));
+  unsafe {
+    let _ = Box::from_raw(std::slice::from_raw_parts_mut(data as *mut u8, n));
+  }
 }
 
 #[allow(clippy::unnecessary_cast)]
@@ -117,18 +120,22 @@ unsafe extern "C" fn reallocate(
     return std::ptr::null::<*mut [u8]>() as *mut c_void;
   }
 
-  let old_store =
-    Box::from_raw(std::slice::from_raw_parts_mut(prev as *mut u8, oldlen));
-  let mut new_store = Vec::with_capacity(newlen);
-  let copy_len = oldlen.min(newlen);
+  unsafe {
+    let old_store =
+      Box::from_raw(std::slice::from_raw_parts_mut(prev as *mut u8, oldlen));
+    let mut new_store = Vec::with_capacity(newlen);
+    let copy_len = oldlen.min(newlen);
 
-  new_store.extend_from_slice(&old_store[..copy_len]);
-  new_store.resize(newlen, 0u8);
-  allocator.wake();
+    new_store.extend_from_slice(&old_store[..copy_len]);
+    new_store.resize(newlen, 0u8);
+    allocator.wake();
 
-  Box::into_raw(new_store.into_boxed_slice()) as *mut [u8] as *mut c_void
+    Box::into_raw(new_store.into_boxed_slice()) as *mut [u8] as *mut c_void
+  }
 }
 
 unsafe extern "C" fn drop(allocator: *const CustomAllocator) {
-  Arc::from_raw(allocator);
+  unsafe {
+    Arc::from_raw(allocator);
+  }
 }

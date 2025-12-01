@@ -3,16 +3,16 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use deno_core::error::AnyError;
-use futures::io::AllowStdIo;
 use futures::StreamExt;
+use futures::io::AllowStdIo;
 use reqwest::Url;
 use tokio::io::AsyncWriteExt;
 use tokio_util::compat::FuturesAsyncWriteCompatExt;
+use tracing::Instrument;
 use tracing::info;
 use tracing::info_span;
 use tracing::instrument;
 use tracing::trace;
-use tracing::Instrument;
 use xxhash_rust::xxh3::Xxh3;
 
 #[instrument(fields(%kind, url = %url))]

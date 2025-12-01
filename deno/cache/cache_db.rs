@@ -410,10 +410,14 @@ fn open_connection(
   // Failed, try deleting it
   let is_tty = std::io::stderr().is_terminal();
   log::log!(
-      if is_tty { log::Level::Warn } else { log::Level::Trace },
-      "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
-      path.to_string_lossy()
-    );
+    if is_tty {
+      log::Level::Warn
+    } else {
+      log::Level::Trace
+    },
+    "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
+    path.to_string_lossy()
+  );
   if std::fs::remove_file(path).is_ok() {
     // Try a third time if we successfully deleted it
     let res = open_connection_and_init(Some(path));

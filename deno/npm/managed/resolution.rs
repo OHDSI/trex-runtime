@@ -4,9 +4,14 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use capacity_builder::StringBuilder;
 use deno_core::error::AnyError;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmPackagesPartitioned;
@@ -17,14 +22,11 @@ use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageCacheFolderId;
-use deno_npm::NpmPackageId;
-use deno_npm::NpmResolutionPackage;
-use deno_npm::NpmSystemInfo;
+use deno_semver::SmallStackString;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
 use crate::npm::CliNpmRegistryInfoProvider;
@@ -38,6 +40,8 @@ pub struct AddPkgReqsResult {
   pub results: Vec<Result<PackageNv, NpmResolutionError>>,
   /// The final result of resolving and caching all the package requirements.
   pub dependencies_result: Result<(), AnyError>,
+  /// Diagnostics about unmet peer dependencies.
+  pub unmet_peer_diagnostics: Vec<String>,
 }
 
 /// Handles updating and storing npm resolution in memory where the underlying
@@ -106,6 +110,22 @@ impl NpmResolution {
         }
         Err(err) => Err(err.into()),
       },
+      unmet_peer_diagnostics: result
+        .unmet_peer_diagnostics
+        .into_iter()
+        .map(|d| {
+          format!(
+            "Unmet peer dependency: {} (resolved: {}) required by {}",
+            d.dependency,
+            d.resolved,
+            d.ancestors
+              .iter()
+              .map(|a| a.to_string())
+              .collect::<Vec<_>>()
+              .join(" -> ")
+          )
+        })
+        .collect(),
     }
   }
 
@@ -279,19 +299,29 @@ async fn add_package_reqs_to_snapshot(
         .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
         .collect(),
       dep_graph_result: Ok(snapshot),
+      unmet_peer_diagnostics: vec![],
     };
   }
   log::debug!(
     /* this string is used in tests */
     "Running npm resolution."
   );
-  let npm_registry_api = registry_info_provider.as_npm_registry_api();
+  // Create a default NpmVersionResolver for dependency resolution
+  let version_resolver = deno_npm::resolution::NpmVersionResolver {
+    types_node_version_req: None,
+    link_packages: Arc::new(HashMap::new()),
+    newest_dependency_date_options: Default::default(),
+  };
   let result = snapshot
-    .add_pkg_reqs(&npm_registry_api, get_add_pkg_reqs_options(package_reqs))
+    .add_pkg_reqs(
+      registry_info_provider.as_ref(),
+      get_add_pkg_reqs_options(package_reqs, &version_resolver),
+      None,
+    )
     .await;
   let result = match &result.dep_graph_result {
     Err(NpmResolutionError::Resolution(err))
-      if npm_registry_api.mark_force_reload() =>
+      if registry_info_provider.mark_force_reload() =>
     {
       log::debug!("{err:#}");
       log::debug!("npm resolution failed. Trying again...");
@@ -299,7 +329,11 @@ async fn add_package_reqs_to_snapshot(
       // try again with forced reloading
       let snapshot = get_new_snapshot();
       snapshot
-        .add_pkg_reqs(&npm_registry_api, get_add_pkg_reqs_options(package_reqs))
+        .add_pkg_reqs(
+          registry_info_provider.as_ref(),
+          get_add_pkg_reqs_options(package_reqs, &version_resolver),
+          None,
+        )
         .await
     }
     _ => result,
@@ -316,14 +350,14 @@ async fn add_package_reqs_to_snapshot(
   result
 }
 
-fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
+fn get_add_pkg_reqs_options<'a>(
+  package_reqs: &'a [PackageReq],
+  version_resolver: &'a deno_npm::resolution::NpmVersionResolver,
+) -> AddPkgReqsOptions<'a> {
   AddPkgReqsOptions {
     package_reqs,
-    // WARNING: When bumping this version, check if anything needs to be
-    // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-    types_node_version_req: Some(
-      VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
-    ),
+    version_resolver,
+    should_dedup: true,
   }
 }
 
@@ -336,7 +370,13 @@ fn populate_lockfile_from_snapshot(
     let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
     lockfile.insert_package_specifier(
       JsrDepPackageReq::npm(package_req.clone()),
-      format!("{}{}", id.nv.version, id.peer_deps_serialized()),
+      {
+        StringBuilder::<SmallStackString>::build(|builder| {
+          builder.append(&id.nv.version);
+          builder.append(&id.peer_dependencies);
+        })
+        .unwrap()
+      },
     );
   }
   for package in snapshot.all_packages_for_every_system() {
@@ -358,7 +398,24 @@ fn npm_package_to_lockfile_info(
 
   NpmPackageLockfileInfo {
     serialized_id: pkg.id.as_serialized(),
-    integrity: pkg.dist.integrity().for_lockfile(),
+    integrity: Some(
+      pkg
+        .dist
+        .as_ref()
+        .unwrap()
+        .integrity()
+        .for_lockfile()
+        .expect("integrity")
+        .to_string(),
+    ),
     dependencies,
+    optional_dependencies: vec![],
+    optional_peers: vec![],
+    os: vec![],
+    cpu: vec![],
+    tarball: None,
+    deprecated: false,
+    scripts: false,
+    bin: false,
   }
 }

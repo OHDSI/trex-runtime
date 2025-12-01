@@ -11,106 +11,115 @@ use byonm::CliByonmNpmResolver;
 use byonm::CliByonmNpmResolverCreateOptions;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_fs::FileSystem;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::CliNpmReqResolver;
 use ext_node::NodePermissions;
-use http::HeaderName;
-use http::HeaderValue;
 pub use managed::*;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::http_util::HttpClientProvider;
-use crate::util::fs::atomic_write_file_with_retries_and_fs;
-use crate::util::fs::hard_link_dir_recursive;
-use crate::util::fs::AtomicWriteFileFsAdapter;
+use sys_traits::impls::RealSys;
 
-pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
-pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
+use crate::http_util::DownloadErrorKind;
+use crate::http_util::HttpClientProvider;
+use crate::util::progress_bar::ProgressBar;
+use deno_npm_cache::NpmCacheHttpClientBytesResponse;
+use deno_npm_cache::NpmCacheHttpClientResponse;
+
+pub type CliNpmSys = RealSys;
+pub type CliNpmTarballCache =
+  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliNpmSys>;
+pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmSys>;
 pub type CliNpmRegistryInfoProvider =
-  deno_npm_cache::RegistryInfoProvider<CliNpmCacheEnv>;
+  deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliNpmSys>;
 
 #[derive(Debug)]
-pub struct CliNpmCacheEnv {
-  fs: Arc<dyn FileSystem>,
+pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
+  progress_bar: ProgressBar,
 }
 
-impl CliNpmCacheEnv {
+impl CliNpmCacheHttpClient {
   pub fn new(
-    fs: Arc<dyn FileSystem>,
     http_client_provider: Arc<HttpClientProvider>,
+    progress_bar: ProgressBar,
   ) -> Self {
     Self {
-      fs,
       http_client_provider,
+      progress_bar,
     }
   }
 }
 
 #[async_trait::async_trait(?Send)]
-impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
-  fn exists(&self, path: &Path) -> bool {
-    self.fs.exists_sync(path)
-  }
-
-  fn hard_link_dir_recursive(
-    &self,
-    from: &Path,
-    to: &Path,
-  ) -> Result<(), AnyError> {
-    // todo(dsherret): use self.fs here instead
-    hard_link_dir_recursive(from, to)
-  }
-
-  fn atomic_write_file_with_retries(
-    &self,
-    file_path: &Path,
-    data: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries_and_fs(
-      &AtomicWriteFileFsAdapter {
-        fs: self.fs.as_ref(),
-        write_mode: crate::cache::CACHE_PERM,
-      },
-      file_path,
-      data,
-    )
-  }
-
+impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
-    maybe_auth_header: Option<(HeaderName, HeaderValue)>,
-  ) -> Result<Option<Vec<u8>>, deno_npm_cache::DownloadError> {
+    maybe_auth: Option<String>,
+    maybe_etag: Option<String>,
+  ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
+    let guard = self.progress_bar.update(url.as_str());
     let client = self.http_client_provider.get_or_create().map_err(|err| {
       deno_npm_cache::DownloadError {
         status_code: None,
         error: err,
       }
     })?;
+    let mut headers = http::HeaderMap::new();
+    if let Some(auth) = maybe_auth {
+      headers.append(
+        http::header::AUTHORIZATION,
+        http::header::HeaderValue::try_from(auth).unwrap(),
+      );
+    }
+    if let Some(etag) = maybe_etag {
+      headers.append(
+        http::header::IF_NONE_MATCH,
+        http::header::HeaderValue::try_from(etag).unwrap(),
+      );
+    }
     client
-      .download_with_progress_and_retries(url, maybe_auth_header)
+      .download_with_progress_and_retries(url, &headers, &guard)
       .await
+      .map(|response| match response {
+        crate::http_util::HttpClientResponse::Success { headers, body } => {
+          NpmCacheHttpClientResponse::Bytes(NpmCacheHttpClientBytesResponse {
+            etag: headers
+              .get(http::header::ETAG)
+              .and_then(|e| e.to_str().map(|t| t.to_string()).ok()),
+            bytes: body,
+          })
+        }
+        crate::http_util::HttpClientResponse::NotFound => {
+          NpmCacheHttpClientResponse::NotFound
+        }
+        crate::http_util::HttpClientResponse::NotModified => {
+          NpmCacheHttpClientResponse::NotModified
+        }
+      })
       .map_err(|err| {
-        use crate::http_util::DownloadError::*;
-        let status_code = match &err {
+        use crate::http_util::DownloadErrorKind::*;
+        let status_code = match err.as_kind() {
           Fetch { .. }
           | UrlParse { .. }
           | HttpParse { .. }
           | Json { .. }
           | ToStr { .. }
-          | NoRedirectHeader { .. }
-          | TooManyRedirects => None,
+          | RedirectHeaderParse { .. }
+          | TooManyRedirects
+          | UnhandledNotModified
+          | NotFound
+          | Other(_) => None,
           BadResponse(bad_response_error) => {
-            Some(bad_response_error.status_code)
+            Some(bad_response_error.status_code.as_u16())
           }
         };
         deno_npm_cache::DownloadError {
           status_code,
-          error: err.into(),
+          error: deno_error::JsErrorBox::from_err(err),
         }
       })
   }
@@ -166,11 +175,15 @@ pub enum InnerCliNpmResolverRef<'a> {
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
+pub trait CliNpmResolver:
+  NpmPackageFolderResolver + crate::resolver::CliNpmReqResolver
+{
   fn into_npm_pkg_folder_resolver(
     self: Arc<Self>,
   ) -> Arc<dyn NpmPackageFolderResolver>;
-  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver>;
+  fn into_npm_req_resolver(
+    self: Arc<Self>,
+  ) -> Arc<dyn crate::resolver::CliNpmReqResolver>;
   fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
     None
   }

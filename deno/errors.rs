@@ -11,11 +11,12 @@
 
 use deno_ast::ParseDiagnostic;
 use deno_core::error::AnyError;
-use deno_graph::source::ResolveError;
 use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
+use deno_graph::source::ResolveError;
 use import_map::ImportMapError;
 
 use crate::runtime;
@@ -37,20 +38,18 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
     | ModuleGraphError::TypesResolutionError(err) => {
       get_resolution_error_class(err)
     }
-    ModuleGraphError::ModuleError(err) => match err {
-      ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
-      ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
-      ModuleError::WasmParseErr(..) => "SyntaxError",
-      ModuleError::UnsupportedMediaType { .. }
-      | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
-      ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
-        "NotFound"
-      }
-      ModuleError::LoadingErr(_, _, err) => match err {
-        ModuleLoadError::Loader(err) => get_error_class_name(err.as_ref()),
+    ModuleGraphError::ModuleError(err) => match err.as_kind() {
+      ModuleErrorKind::InvalidTypeAssertion { .. } => "SyntaxError",
+      ModuleErrorKind::Parse { .. } => "SyntaxError",
+      ModuleErrorKind::WasmParse { .. } => "SyntaxError",
+      ModuleErrorKind::UnsupportedMediaType { .. }
+      | ModuleErrorKind::UnsupportedImportAttributeType { .. } => "TypeError",
+      ModuleErrorKind::Missing { .. }
+      | ModuleErrorKind::MissingDynamic { .. } => "NotFound",
+      ModuleErrorKind::Load { err, .. } => match err {
+        ModuleLoadError::Loader(_) => "Error",
         ModuleLoadError::HttpsChecksumIntegrity(_)
         | ModuleLoadError::TooManyRedirects => "Error",
-        ModuleLoadError::NodeUnknownBuiltinModule(_) => "NotFound",
         ModuleLoadError::Decode(_) => "TypeError",
         ModuleLoadError::Npm(err) => match err {
           NpmLoadError::NotSupportedEnvironment
@@ -84,7 +83,8 @@ fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
       use ResolveError::*;
       match error.as_ref() {
         Specifier(_) => "TypeError",
-        Other(e) => get_error_class_name(e),
+        ImportMap(_) => "Error",
+        Other(_) => "Error",
       }
     }
     _ => "TypeError",

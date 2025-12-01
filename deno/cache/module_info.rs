@@ -6,8 +6,9 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_graph::ModuleInfo;
-use deno_graph::ParserModuleAnalyzer;
+use deno_error::JsErrorBox;
+use deno_graph::analysis::ModuleInfo;
+use deno_graph::ast::ParserModuleAnalyzer;
 use deno_webstorage::rusqlite::params;
 
 use super::cache_db::CacheDB;
@@ -41,7 +42,7 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   on_failure: CacheFailure::InMemory,
 };
 
-/// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
+/// A cache of `deno_graph::analysis::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
 /// deno_graph.
 pub struct ModuleInfoCache {
@@ -142,13 +143,15 @@ pub struct ModuleInfoCacheModuleAnalyzer<'a> {
 }
 
 #[async_trait::async_trait(?Send)]
-impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
+impl<'a> deno_graph::analysis::ModuleAnalyzer
+  for ModuleInfoCacheModuleAnalyzer<'a>
+{
   async fn analyze(
     &self,
     specifier: &ModuleSpecifier,
     source: Arc<str>,
     media_type: MediaType,
-  ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
+  ) -> Result<ModuleInfo, JsErrorBox> {
     // attempt to load from the cache
     let source_hash = CacheDBHash::from_source(&source);
     match self.module_info_cache.get_module_info(
@@ -178,7 +181,8 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
       }
     })
     .await
-    .unwrap()?;
+    .unwrap()
+    .map_err(JsErrorBox::from_err)?;
 
     // then attempt to cache it
     if let Err(err) = self.module_info_cache.set_module_info(
@@ -217,5 +221,7 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Css => 14,
     SourceMap => 15,
     Unknown => 16,
+    Html => 17,
+    Sql => 18,
   }
 }

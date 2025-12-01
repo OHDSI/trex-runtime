@@ -10,6 +10,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 
 deno_fetch.workspace = true
 deno_fs.workspace = true
@@ -17,6 +18,8 @@ deno_http.workspace = true
 deno_net.workspace = true
 deno_tls.workspace = true
 deno_websocket.workspace = true
+
+ext_os.workspace = true
 
 base_mem_check.workspace = true
 base_rt.workspace = true

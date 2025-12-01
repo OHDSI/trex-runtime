@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -6,32 +6,29 @@
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
-  getEncoding,
+  getSignal,
+  getValidatedEncoding,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "node:buffer";
 import { readAll, readAllSync } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
-import {
-  BinaryEncodings,
-  Encodings,
-  TextEncodings,
-} from "ext:deno_node/_utils.ts";
+import { Encodings } from "ext:deno_node/_utils.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 
-function maybeDecode(data: Uint8Array, encoding: TextEncodings): string;
+function maybeDecode(data: Uint8Array, encoding: Encodings): string;
 function maybeDecode(
   data: Uint8Array,
-  encoding: BinaryEncodings | null,
+  encoding: null,
 ): Buffer;
 function maybeDecode(
   data: Uint8Array,
   encoding: Encodings | null,
 ): string | Buffer {
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  if (encoding && encoding !== "binary") return buffer.toString(encoding);
+  if (encoding) return buffer.toString(encoding);
   return buffer;
 }
 
@@ -70,7 +67,8 @@ export function readFile(
     cb = callback;
   }
 
-  const encoding = getEncoding(optOrCallback);
+  const encoding = getValidatedEncoding(optOrCallback);
+  const signal = getSignal(optOrCallback);
 
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
@@ -80,17 +78,13 @@ export function readFile(
     const fsFile = new FsFile(path, Symbol.for("Deno.internal.FsFile"));
     p = readAll(fsFile);
   } else {
-    p = Deno.readFile(path);
+    p = Deno.readFile(path, { signal: signal });
   }
 
   if (cb) {
     p.then((data: Uint8Array) => {
-      if (encoding && encoding !== "binary") {
-        const text = maybeDecode(data, encoding);
-        return (cb as TextCallback)(null, text);
-      }
-      const buffer = maybeDecode(data, encoding);
-      (cb as BinaryCallback)(null, buffer);
+      const textOrBuffer = maybeDecode(data, encoding);
+      (cb as BinaryCallback)(null, textOrBuffer);
     }, (err) => cb && cb(denoErrorToNodeError(err, { path, syscall: "open" })));
   }
 }
@@ -132,11 +126,7 @@ export function readFileSync(
       throw denoErrorToNodeError(err, { path, syscall: "open" });
     }
   }
-  const encoding = getEncoding(opt);
-  if (encoding && encoding !== "binary") {
-    const text = maybeDecode(data, encoding);
-    return text;
-  }
-  const buffer = maybeDecode(data, encoding);
-  return buffer;
+  const encoding = getValidatedEncoding(opt);
+  const textOrBuffer = maybeDecode(data, encoding);
+  return textOrBuffer;
 }

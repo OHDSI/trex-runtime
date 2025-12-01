@@ -12,11 +12,11 @@ use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileModuleOptions;
 use deno_ast::TranspileOptions;
 use deno_ast::TranspileResult;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
-use deno_core::ModuleSpecifier;
+use deno_core::futures::stream::FuturesUnordered;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
@@ -78,7 +78,7 @@ impl Emitter {
                   module.is_script,
                 )?,
               ),
-              &module.source,
+              &module.source.text,
             )
             .boxed_local(),
         );

@@ -1,9 +1,7 @@
 use deno::PermissionsContainer;
-use deno_core::error::not_supported;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_error::JsErrorBox;
 use ext_node::NODE_ENV_VAR_ALLOWLIST;
 
 use std::collections::HashMap;
@@ -31,14 +29,17 @@ fn op_set_env(
   _state: &mut OpState,
   #[string] _key: String,
   #[string] _value: String,
-) -> Result<(), AnyError> {
-  Err(not_supported())
+) -> Result<(), JsErrorBox> {
+  Err(JsErrorBox::not_supported())
 }
 
 #[op2]
 #[serde]
-fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
+fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, JsErrorBox> {
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_env_all()
+    .map_err(|e| JsErrorBox::from_err(e))?;
   let env_vars = state.borrow::<EnvVars>();
   Ok(env_vars.0.clone())
 }
@@ -48,19 +49,22 @@ fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
 fn op_get_env(
   state: &mut OpState,
   #[string] key: String,
-) -> Result<Option<String>, AnyError> {
+) -> Result<Option<String>, JsErrorBox> {
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
   if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_env(&key)
+      .map_err(|e| JsErrorBox::from_err(e))?;
   }
 
   if key.is_empty() {
-    return Err(type_error("Key is an empty string."));
+    return Err(JsErrorBox::type_error("Key is an empty string."));
   }
 
   if key.contains(&['=', '\0'] as &[char]) {
-    return Err(type_error(format!(
+    return Err(JsErrorBox::type_error(format!(
       "Key contains invalid characters: {:?}",
       key
     )));

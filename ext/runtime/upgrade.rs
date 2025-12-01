@@ -8,18 +8,17 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_error::JsErrorBox;
 use httparse::Status;
+use hyper::Response;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
-use hyper::Response;
 use memmem::Searcher;
 use memmem::TwoWaySearcher;
 use once_cell::sync::OnceCell;
@@ -57,23 +56,29 @@ impl UpgradeStream {
     }
   }
 
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, JsErrorBox> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let read = RcRef::map(self, |this| &this.read);
       let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
+      Pin::new(&mut *read)
+        .read(buf)
+        .await
+        .map_err(JsErrorBox::from_err)
     }
     .try_or_cancel(cancel_handle)
     .await
   }
 
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, JsErrorBox> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let write = RcRef::map(self, |this| &this.write);
       let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
+      Pin::new(&mut *write)
+        .write(buf)
+        .await
+        .map_err(JsErrorBox::from_err)
     }
     .try_or_cancel(cancel_handle)
     .await
@@ -84,12 +89,15 @@ impl UpgradeStream {
     self: Rc<Self>,
     buf1: &[u8],
     buf2: &[u8],
-  ) -> Result<usize, AnyError> {
+  ) -> Result<usize, JsErrorBox> {
     let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
 
     let total = buf1.len() + buf2.len();
     let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-    let mut nwritten = wr.write_vectored(&bufs).await?;
+    let mut nwritten = wr
+      .write_vectored(&bufs)
+      .await
+      .map_err(JsErrorBox::from_err)?;
     if nwritten == total {
       return Ok(nwritten);
     }
@@ -97,40 +105,54 @@ impl UpgradeStream {
     // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
     while nwritten <= buf1.len() {
       bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
-      nwritten += wr.write_vectored(&bufs).await?;
+      nwritten += wr
+        .write_vectored(&bufs)
+        .await
+        .map_err(JsErrorBox::from_err)?;
     }
 
     // First buffer out of the way.
     if nwritten < total && nwritten > buf1.len() {
-      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
+      wr.write_all(&buf2[nwritten - buf1.len()..])
+        .await
+        .map_err(JsErrorBox::from_err)?;
     }
 
     Ok(total)
   }
 }
 
-fn http_error(message: &'static str) -> AnyError {
-  custom_error("Http", message)
+fn http_error(message: &'static str) -> crate::RuntimeError {
+  crate::RuntimeError::Http(message.to_string())
 }
 
 /// Given a buffer that ends in `\n\n` or `\r\n\r\n`, returns a parsed [`Request<Body>`].
 fn parse_response<T: Default>(
   header_bytes: &[u8],
-) -> Result<(usize, Response<T>), AnyError> {
+) -> Result<(usize, Response<T>), JsErrorBox> {
   let mut headers = [httparse::EMPTY_HEADER; 16];
-  let status = httparse::parse_headers(header_bytes, &mut headers)?;
+  let status = httparse::parse_headers(header_bytes, &mut headers)
+    .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
   match status {
     Status::Complete((index, parsed)) => {
-      let mut resp = Response::builder().status(101).body(T::default())?;
+      let mut resp = Response::builder()
+        .status(101)
+        .body(T::default())
+        .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
       for header in parsed.iter() {
         resp.headers_mut().append(
-          HeaderName::from_bytes(header.name.as_bytes())?,
-          HeaderValue::from_str(std::str::from_utf8(header.value)?)?,
+          HeaderName::from_bytes(header.name.as_bytes())
+            .map_err(|e| JsErrorBox::type_error(e.to_string()))?,
+          HeaderValue::from_str(
+            std::str::from_utf8(header.value)
+              .map_err(|e| JsErrorBox::type_error(e.to_string()))?,
+          )
+          .map_err(|e| JsErrorBox::type_error(e.to_string()))?,
         );
       }
       Ok((index, resp))
     }
-    _ => Err(http_error("invalid headers")),
+    _ => Err(JsErrorBox::type_error("invalid headers")),
   }
 }
 
@@ -167,11 +189,11 @@ pub(crate) struct WebSocketUpgrade<T: Default> {
 impl<T: Default> WebSocketUpgrade<T> {
   /// Ensures that the status line starts with "HTTP/1.1 101 " which matches all of the node.js
   /// WebSocket libraries that are known. We don't care about the trailing status text.
-  fn validate_status(&self, status: &[u8]) -> Result<(), AnyError> {
+  fn validate_status(&self, status: &[u8]) -> Result<(), JsErrorBox> {
     if status.starts_with(b"HTTP/1.1 101 ") {
       Ok(())
     } else {
-      Err(http_error("invalid HTTP status line"))
+      Err(JsErrorBox::type_error("invalid HTTP status line"))
     }
   }
 
@@ -180,7 +202,7 @@ impl<T: Default> WebSocketUpgrade<T> {
   pub fn write(
     &mut self,
     bytes: &[u8],
-  ) -> Result<Option<(Response<T>, Bytes)>, AnyError> {
+  ) -> Result<Option<(Response<T>, Bytes)>, JsErrorBox> {
     use WebSocketUpgradeState::*;
 
     match self.state {
@@ -240,9 +262,9 @@ impl<T: Default> WebSocketUpgrade<T> {
           Ok(None)
         }
       }
-      Complete => {
-        Err(http_error("attempted to write to completed upgrade buffer"))
-      }
+      Complete => Err(JsErrorBox::type_error(
+        "attempted to write to completed upgrade buffer",
+      )),
     }
   }
 }

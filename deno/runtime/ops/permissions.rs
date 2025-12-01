@@ -2,8 +2,8 @@
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -45,18 +45,29 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionError {
+  #[class(type)]
   #[error("No such permission name: {0}")]
   InvalidPermissionName(String),
+  #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] ::deno_permissions::PathResolveError),
+  #[class(uri)]
   #[error("{0}")]
-  NetDescriptorParse(#[from] ::deno_permissions::NetDescriptorParseError),
+  NetDescriptorParse(::deno_permissions::NetDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   SysDescriptorParse(#[from] ::deno_permissions::SysDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   RunDescriptorParse(#[from] ::deno_permissions::RunDescriptorParseError),
+}
+
+impl From<::deno_permissions::NetDescriptorParseError> for PermissionError {
+  fn from(err: ::deno_permissions::NetDescriptorParseError) -> Self {
+    PermissionError::NetDescriptorParse(err)
+  }
 }
 
 #[op2]

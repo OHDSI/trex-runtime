@@ -9,15 +9,6 @@ use context::SendRequestResult;
 use deno::deno_http::HttpRequestReader;
 use deno::deno_http::HttpStreamReadResource;
 use deno::deno_permissions::PermissionsOptions;
-use deno_core::error::custom_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::FutureExt;
-use deno_core::futures::Stream;
-use deno_core::futures::StreamExt;
-use deno_core::op2;
-use deno_core::serde_json;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -31,6 +22,14 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::WriteOutcome;
+use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::stream::Peekable;
+use deno_core::op2;
+use deno_core::serde_json;
+use deno_error::JsErrorBox;
 use deno_facade::EszipPayloadKind;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
@@ -40,14 +39,14 @@ use ext_runtime::conn_sync::ConnWatcher;
 use fs::s3_fs::S3FsConfig;
 use fs::tmp_fs::TmpFsConfig;
 use http_utils::utils::get_upgrade_type;
-use hyper_v014::body::HttpBody;
-use hyper_v014::header::HeaderName;
-use hyper_v014::header::HeaderValue;
-use hyper_v014::header::CONTENT_LENGTH;
-use hyper_v014::upgrade::OnUpgrade;
 use hyper_v014::Body;
 use hyper_v014::Method;
 use hyper_v014::Request;
+use hyper_v014::body::HttpBody;
+use hyper_v014::header::CONTENT_LENGTH;
+use hyper_v014::header::HeaderName;
+use hyper_v014::header::HeaderValue;
+use hyper_v014::upgrade::OnUpgrade;
 use log::error;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -107,6 +106,7 @@ pub struct UserWorkerCreateOptions {
   service_path: String,
   env_vars: Vec<(String, String)>,
   no_module_cache: bool,
+  no_npm: Option<bool>,
 
   force_create: bool,
   allow_remote_modules: bool,
@@ -159,7 +159,6 @@ impl JsPermissionsOptions {
   fn into_permissions_options(self) -> PermissionsOptions {
     PermissionsOptions {
       prompt: false,
-      allow_all: self.allow_all.unwrap_or_default(),
       allow_env: self.allow_env,
       deny_env: self.deny_env,
       allow_net: self.allow_net,
@@ -175,6 +174,7 @@ impl JsPermissionsOptions {
       allow_write: self.allow_write,
       deny_write: self.deny_write,
       allow_import: self.allow_import,
+      deny_import: None, // New field in Deno 2.5.6
     }
   }
 }
@@ -184,7 +184,7 @@ impl JsPermissionsOptions {
 pub async fn op_user_worker_create(
   state: Rc<RefCell<OpState>>,
   #[serde] opts: UserWorkerCreateOptions,
-) -> Result<(String, bool), AnyError> {
+) -> Result<(String, bool), JsErrorBox> {
   let result_rx = {
     let op_state = state.borrow();
     let tx = op_state.borrow::<mpsc::UnboundedSender<UserWorkerMsgs>>();
@@ -195,6 +195,7 @@ pub async fn op_user_worker_create(
       service_path,
       env_vars,
       no_module_cache,
+      no_npm,
 
       force_create,
       allow_remote_modules,
@@ -230,6 +231,7 @@ pub async fn op_user_worker_create(
     let user_worker_options = WorkerContextInitOpts {
       service_path: PathBuf::from(service_path),
       no_module_cache,
+      no_npm,
 
       env_vars: env_vars.into_iter().collect(),
       conf: WorkerRuntimeOpts::UserWorker({
@@ -274,22 +276,19 @@ pub async fn op_user_worker_create(
       maybe_otel_config,
     };
 
-    tx.send(UserWorkerMsgs::Create(user_worker_options, result_tx))?;
+    tx.send(UserWorkerMsgs::Create(user_worker_options, result_tx))
+      .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
     result_rx
   };
 
   match result_rx.await {
-    Err(err) => Err(custom_error(
-      "InvalidWorkerCreation",
-      format!(
-        "{:#}",
-        AnyError::from(err).context("failed to create worker")
-      ),
+    Err(err) => Err(JsErrorBox::generic(
+      AnyError::from(err)
+        .context("failed to create worker")
+        .to_string(),
     )),
 
-    Ok(Err(err)) => {
-      Err(custom_error("InvalidWorkerCreation", format!("{err:#}")))
-    }
+    Ok(Err(err)) => Err(JsErrorBox::generic(format!("{err:#}"))),
     Ok(Ok(v)) => Ok((v.key.to_string(), v.reused)),
   }
 }
@@ -345,27 +344,41 @@ impl Resource for UserWorkerRequestBodyResource {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let body = body.ok_or(type_error(
+      let body = body.ok_or(JsErrorBox::type_error(
         "request body receiver not connected (request closed)",
       ))?;
 
       body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|e| {
-        type_error(format!("request body receiver not connected ({})", e))
+        JsErrorBox::type_error(format!(
+          "request body receiver not connected ({})",
+          e
+        ))
       })?;
 
       Ok(WriteOutcome::Full { nwritten })
     })
   }
 
-  fn write_error(self: Rc<Self>, error: Error) -> AsyncResult<()> {
+  fn write_error(
+    self: Rc<Self>,
+    error: &dyn deno_error::JsErrorClass,
+  ) -> AsyncResult<()> {
+    // Convert error to string before async block to avoid lifetime issues
+    let error_string = format!("{}", error);
     async move {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      let body = body.ok_or(type_error(
+      let body = body.ok_or(JsErrorBox::type_error(
         "request body receiver not connected (request closed)",
       ))?;
-      body.send(Err(error)).or_cancel(cancel).await??;
+      // Convert to anyhow::Error
+      let anyhow_error: Error = anyhow::anyhow!(error_string);
+      body
+        .send(Err(anyhow_error))
+        .or_cancel(cancel)
+        .await?
+        .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
       Ok(())
     }
     .boxed_local()
@@ -422,7 +435,7 @@ impl Resource for UserWorkerResponseBodyResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -459,8 +472,9 @@ impl Resource for UserWorkerResponseBodyResource {
 pub fn op_user_worker_fetch_build(
   state: &mut OpState,
   #[serde] req: UserWorkerRequest,
-) -> Result<UserWorkerBuiltRequest, AnyError> {
-  let method = Method::from_bytes(&req.method)?;
+) -> Result<UserWorkerBuiltRequest, JsErrorBox> {
+  let method = Method::from_bytes(&req.method)
+    .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
 
   let mut builder = Request::builder().uri(req.url).method(&method);
   let mut body = Body::empty();
@@ -496,7 +510,9 @@ pub fn op_user_worker_fetch_build(
     }
   }
 
-  let req = builder.body(body)?;
+  let req = builder
+    .body(body)
+    .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
   let request_rid = state.resource_table.add(UserWorkerRequestResource(req));
 
   Ok(UserWorkerBuiltRequest {
@@ -514,7 +530,7 @@ pub async fn op_user_worker_fetch_send(
   #[smi] request_body_rid: Option<ResourceId>,
   #[smi] stream_rid: ResourceId,
   #[smi] watcher_rid: Option<ResourceId>,
-) -> Result<UserWorkerResponse, AnyError> {
+) -> Result<UserWorkerResponse, JsErrorBox> {
   let (tx, req) = {
     let (tx, mut req) = {
       let mut op_state = state.borrow_mut();
@@ -525,7 +541,8 @@ pub async fn op_user_worker_fetch_send(
       let req = Rc::try_unwrap(
         op_state
           .resource_table
-          .take::<UserWorkerRequestResource>(rid)?,
+          .take::<UserWorkerRequestResource>(rid)
+          .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?,
       )
       .ok()
       .expect("multiple op_user_worker_fetch_send ongoing");
@@ -537,7 +554,8 @@ pub async fn op_user_worker_fetch_send(
       let req_stream = state
         .borrow_mut()
         .resource_table
-        .get::<HttpStreamReadResource>(stream_rid)?;
+        .get::<HttpStreamReadResource>(stream_rid)
+        .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
 
       let mut req_reader_mut =
         RcRef::map(&req_stream, |r| &r.rd).borrow_mut().await;
@@ -554,7 +572,8 @@ pub async fn op_user_worker_fetch_send(
 
   let (result_tx, result_rx) =
     oneshot::channel::<Result<SendRequestResult, Error>>();
-  let key_parsed = Uuid::try_parse(key.as_str())?;
+  let key_parsed = Uuid::try_parse(key.as_str())
+    .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
 
   let conn_token = watcher_rid
     .and_then(|it| {
@@ -581,7 +600,8 @@ pub async fn op_user_worker_fetch_send(
     req.0,
     result_tx,
     conn_token.clone(),
-  ))?;
+  ))
+  .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
 
   let request_body_guard = scopeguard::guard(request_body_rid, |rid| {
     if let Some(rid) = rid {
@@ -598,7 +618,9 @@ pub async fn op_user_worker_fetch_send(
     }
   });
 
-  let res = result_rx.await?;
+  let res = result_rx
+    .await
+    .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
   let (res, req_end_tx) = match res {
     Ok((res, req_end_tx)) => (res, req_end_tx),
     Err(err) => {
@@ -606,14 +628,14 @@ pub async fn op_user_worker_fetch_send(
 
       match err.downcast_ref() {
         Some(err @ WorkerError::RequestCancelledBySupervisor) => {
-          return Err(custom_error("WorkerRequestCancelled", err.to_string()));
+          return Err(JsErrorBox::generic(err.to_string()));
         }
         Some(err @ WorkerError::WorkerAlreadyRetired) => {
-          return Err(custom_error("WorkerAlreadyRetired", err.to_string()));
+          return Err(JsErrorBox::generic(err.to_string()));
         }
 
         None => {
-          return Err(custom_error("InvalidWorkerResponse", err.to_string()));
+          return Err(JsErrorBox::generic(err.to_string()));
         }
       }
     }

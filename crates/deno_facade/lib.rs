@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -5,16 +6,16 @@ use std::path::PathBuf;
 
 use ::eszip::EszipV2;
 use deno_core::url::Url;
-use eszip::extract_eszip;
 use eszip::ExtractEszipPayload;
+use eszip::extract_eszip;
 use tokio::fs::create_dir_all;
 
 mod emitter;
 mod eszip;
 
+pub mod cert_provider;
 pub mod errors;
 pub mod graph;
-pub mod import_map;
 pub mod jsr;
 pub mod metadata;
 pub mod module_loader;
@@ -22,11 +23,11 @@ pub mod permissions;
 
 pub use ::eszip::v2::Checksum;
 pub use emitter::EmitterFactory;
+pub use eszip::EszipPayloadKind;
+pub use eszip::LazyLoadableEszip;
 pub use eszip::generate_binary_eszip;
 pub use eszip::migrate;
 pub use eszip::payload_to_eszip;
-pub use eszip::EszipPayloadKind;
-pub use eszip::LazyLoadableEszip;
 pub use metadata::Metadata;
 
 fn ensure_unix_relative_path(path: &Path) -> &Path {
@@ -35,16 +36,24 @@ fn ensure_unix_relative_path(path: &Path) -> &Path {
   path
 }
 
+fn strip_file_scheme(input: &str) -> Cow<'_, str> {
+  if input.starts_with("file://") {
+    Cow::Owned(input.strip_prefix("file://").unwrap().to_owned())
+  } else {
+    Cow::Borrowed(input)
+  }
+}
+
 async fn create_module_path(
   global_specifier: &str,
   entry_path: &Path,
   output_folder: &Path,
 ) -> PathBuf {
-  let cleaned_specifier =
-    global_specifier.replace(entry_path.to_str().unwrap(), "");
-  let module_path = PathBuf::from(cleaned_specifier);
+  let cleaned_specifier = strip_file_scheme(global_specifier);
+  let cleaned_path =
+    pathdiff::diff_paths(&*cleaned_specifier, entry_path).unwrap();
 
-  if let Some(parent) = module_path.parent() {
+  if let Some(parent) = cleaned_path.parent() {
     if parent.parent().is_some() {
       let output_folder_and_mod_folder = output_folder.join(
         parent
@@ -58,9 +67,9 @@ async fn create_module_path(
   }
 
   output_folder.join(
-    module_path
+    cleaned_path
       .strip_prefix("/")
-      .unwrap_or_else(|_| ensure_unix_relative_path(&module_path)),
+      .unwrap_or_else(|_| ensure_unix_relative_path(&cleaned_path)),
   )
 }
 
@@ -70,7 +79,7 @@ async fn extract_modules(
   lowest_path: &str,
   output_folder: &Path,
 ) {
-  let main_path = PathBuf::from(lowest_path);
+  let main_path = PathBuf::from(&*strip_file_scheme(lowest_path));
   let entry_path = main_path.parent().unwrap();
   for global_specifier in specifiers {
     let module_path =
@@ -108,12 +117,12 @@ mod test {
 
   use deno::DenoOptionsBuilder;
 
+  use crate::Metadata;
   use crate::emitter::EmitterFactory;
-  use crate::eszip::extract_eszip;
-  use crate::eszip::generate_binary_eszip;
   use crate::eszip::EszipPayloadKind;
   use crate::eszip::ExtractEszipPayload;
-  use crate::Metadata;
+  use crate::eszip::extract_eszip;
+  use crate::eszip::generate_binary_eszip;
 
   #[tokio::test]
   #[allow(clippy::arc_with_non_send_sync)]
@@ -147,7 +156,9 @@ mod test {
       .await
     );
 
-    assert!(PathBuf::from("../base/test_cases/extracted-npm/hello.js").exists());
+    assert!(
+      PathBuf::from("../base/test_cases/extracted-npm/hello.js").exists()
+    );
     remove_dir_all(PathBuf::from("../base/test_cases/extracted-npm/")).unwrap();
   }
 }

@@ -1,9 +1,8 @@
 use crate::events::RawEvent;
 use crate::events::WorkerEventWithMetadata;
-use anyhow::bail;
-use anyhow::Error;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
+use deno_error::JsErrorBox;
 use std::cell::RefCell;
 use std::rc::Rc;
 use tokio::sync::mpsc;
@@ -15,13 +14,13 @@ pub mod js_interceptors;
 #[serde]
 async fn op_event_accept(
   state: Rc<RefCell<OpState>>,
-) -> Result<RawEvent, Error> {
+) -> Result<RawEvent, JsErrorBox> {
   let rx = {
     let mut op_state = state.borrow_mut();
     op_state.try_take::<mpsc::UnboundedReceiver<WorkerEventWithMetadata>>()
   };
   if rx.is_none() {
-    bail!("events worker receiver not available")
+    return Err(JsErrorBox::generic("events worker receiver not available"));
   }
   let mut rx = rx.unwrap();
 

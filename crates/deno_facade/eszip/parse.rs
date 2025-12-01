@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use eszip::v2::read_npm_section;
+use eszip::EszipV2;
+use eszip::ModuleKind;
+use eszip::ParseError;
 use eszip::v2::Checksum;
 use eszip::v2::EszipNpmPackageIndex;
 use eszip::v2::EszipV2Module;
@@ -13,12 +15,10 @@ use eszip::v2::EszipV2SourceSlot;
 use eszip::v2::EszipVersion;
 use eszip::v2::Options;
 use eszip::v2::Section;
-use eszip::EszipV2;
-use eszip::ModuleKind;
-use eszip::ParseError;
-use futures::io::BufReader;
+use eszip::v2::read_npm_section;
 use futures::AsyncRead;
 use futures::AsyncReadExt;
+use futures::io::BufReader;
 use hashlink::LinkedHashMap;
 
 pub async fn parse_v2_header<R: AsyncRead + Unpin>(

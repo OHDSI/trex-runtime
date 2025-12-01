@@ -6,10 +6,10 @@ use deno_webstorage::rusqlite::params;
 
 use crate::node::CliCjsAnalysis;
 
+use super::CacheDBHash;
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheFailure;
-use super::CacheDBHash;
 
 pub static NODE_ANALYSIS_CACHE_DB: CacheDBConfiguration =
   CacheDBConfiguration {

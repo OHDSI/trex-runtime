@@ -3,8 +3,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::bail;
 use anyhow::Context;
+use anyhow::bail;
 use deno_ast::SourceMapOption;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::FolderConfigs;
@@ -14,22 +14,32 @@ use deno_core::serde_json;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
+use deno_semver::StackString;
 use once_cell::sync::Lazy;
 use reqwest::Url;
 use thiserror::Error;
 
+use crate::DenoOptionsBuilder;
 use crate::cache;
 use crate::cache::DenoDirProvider;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::DenoOptionsBuilder;
 
-mod deno_json;
+pub mod deno_json;
 mod flags;
 mod lockfile;
 mod package_json;
 
-pub use deno_config::deno_json::TsConfig;
-pub use deno_config::deno_json::TsConfigType;
+// TsConfig and TsConfigType have been removed from deno_config in Deno 2.5.6
+// Creating stub types until proper migration can be completed
+pub type TsConfig = serde_json::Value;
+
+#[derive(Debug, Clone, Copy)]
+pub enum TsConfigType {
+  Emit,
+  Check,
+}
+
+pub use deno_json::TsConfigForEmit;
 pub use deno_json::check_warn_tsconfig;
 pub use flags::TypeCheckMode;
 pub use lockfile::CliLockfile;
@@ -145,7 +155,7 @@ pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
   let name = match &config.json.name {
-    Some(name) => name.clone(),
+    Some(name) => name.to_string(),
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
@@ -154,7 +164,7 @@ pub fn config_to_deno_graph_workspace_member(
   };
   Ok(deno_graph::WorkspaceMember {
     base: config.specifier.join("./").unwrap(),
-    name,
+    name: StackString::from(name.as_str()),
     version,
     exports: config.to_exports_config()?.into_map(),
   })
@@ -343,7 +353,7 @@ pub fn resolve_node_modules_folder(
 }
 
 pub fn ts_config_to_transpile_and_emit_options(
-  config: deno_config::deno_json::TsConfig,
+  config: deno_config::deno_json::CompilerOptions,
 ) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
   let options: deno_config::deno_json::EmitConfigOptions =
     serde_json::from_value(config.0)
@@ -354,14 +364,37 @@ pub fn ts_config_to_transpile_and_emit_options(
       "error" => deno_ast::ImportsNotUsedAsValues::Error,
       _ => deno_ast::ImportsNotUsedAsValues::Remove,
     };
-  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
-    match options.jsx.as_str() {
-      "react" => (true, false, false, false),
-      "react-jsx" => (true, true, false, false),
-      "react-jsxdev" => (true, true, true, false),
-      "precompile" => (false, false, false, true),
-      _ => (false, false, false, false),
-    };
+  let jsx = match options.jsx.as_str() {
+    "react" => {
+      Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+        factory: options.jsx_factory,
+        fragment_factory: options.jsx_fragment_factory,
+      }))
+    }
+    "react-jsx" => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: false,
+        import_source: options.jsx_import_source,
+      },
+    )),
+    "react-jsxdev" => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: true,
+        import_source: options.jsx_import_source,
+      },
+    )),
+    "precompile" => Some(deno_ast::JsxRuntime::Precompile(
+      deno_ast::JsxPrecompileOptions {
+        automatic: deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: options.jsx_import_source,
+        },
+        skip_elements: options.jsx_precompile_skip_elements,
+        dynamic_props: None,
+      },
+    )),
+    _ => None,
+  };
   let source_map = if options.inline_source_map {
     SourceMapOption::Inline
   } else if options.source_map {
@@ -371,19 +404,15 @@ pub fn ts_config_to_transpile_and_emit_options(
   };
   Ok((
     deno_ast::TranspileOptions {
-      use_ts_decorators: options.experimental_decorators,
-      use_decorators_proposal: !options.experimental_decorators,
-      emit_metadata: options.emit_decorator_metadata,
+      decorators: if options.experimental_decorators {
+        deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+          emit_metadata: options.emit_decorator_metadata,
+        }
+      } else {
+        deno_ast::DecoratorsTranspileOption::Ecma
+      },
       imports_not_used_as_values,
-      jsx_automatic,
-      jsx_development,
-      jsx_factory: options.jsx_factory,
-      jsx_fragment_factory: options.jsx_fragment_factory,
-      jsx_import_source: options.jsx_import_source,
-      precompile_jsx,
-      precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
-      precompile_jsx_dynamic_props: None,
-      transform_jsx,
+      jsx,
       var_decl_imports: false,
       // todo(dsherret): support verbatim_module_syntax here properly
       verbatim_module_syntax: false,

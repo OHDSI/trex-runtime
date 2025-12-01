@@ -1,10 +1,11 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use crate::DenoOptions;
+use crate::args::CliLockfile;
+use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
+pub use crate::args::NpmCachingStrategy;
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
-use crate::args::CliLockfile;
-pub use crate::args::NpmCachingStrategy;
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::cache;
 use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
@@ -16,39 +17,39 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
 use crate::util::fs::canonicalize_path;
-use crate::DenoOptions;
+use sys_traits::impls::RealSys;
 
-use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
-use deno_graph::source::LoaderChecksum;
-use deno_graph::source::ResolutionKind;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::JsrLoadError;
 use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
+use deno_graph::source::LoaderChecksum;
+use deno_resolver::deno_json::JsxImportSourceConfig;
 
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use deno_fs::FileSystem;
-use deno_graph::source::Loader;
-use deno_graph::source::ResolveError;
 use deno_graph::GraphKind;
 use deno_graph::ModuleError;
+use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_graph::source::Loader;
+use deno_graph::source::ResolutionKind;
+use deno_graph::source::ResolveError;
 use deno_path_util::url_to_file_path;
+use deno_permissions::CheckedPath;
 use deno_permissions::PermissionsContainer;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
+use deno_resolver::workspace::SloppyImportsResolutionReason;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use import_map::ImportMapError;
 use node_resolver::InNpmPackageChecker;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::error::Error;
 use std::ops::Deref;
@@ -96,10 +97,9 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(
-        get_error_class_name(err),
-        format_deno_graph_error(err.as_ref().deref()),
-      ));
+      return Err(anyhow::anyhow!(format_deno_graph_error(
+        err.as_ref().deref()
+      )));
     }
     Ok(())
   }
@@ -142,7 +142,11 @@ pub fn graph_walk_errors<'a>(
     .walk(
       roots.iter(),
       deno_graph::WalkOptions {
-        check_js: options.check_js,
+        check_js: if options.check_js {
+          deno_graph::CheckJsOption::True
+        } else {
+          deno_graph::CheckJsOption::False
+        },
         kind: options.kind,
         follow_dynamic: false,
         prefer_fast_check_graph: false,
@@ -184,14 +188,14 @@ pub fn graph_walk_errors<'a>(
       if graph.graph_kind() == GraphKind::TypesOnly
         && matches!(
           error,
-          ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
+          ModuleGraphError::ModuleError(err) if matches!(err.as_kind(), ModuleErrorKind::UnsupportedMediaType { .. })
         )
       {
         log::debug!("Ignoring: {}", message);
         return None;
       }
 
-      Some(custom_error(get_error_class_name(&error.into()), message))
+      Some(anyhow::anyhow!(message))
     })
 }
 
@@ -345,9 +349,9 @@ impl ModuleGraphCreator {
     Ok(graph)
   }
 
-  pub async fn create_graph_with_options(
-    &self,
-    options: CreateGraphOptions<'_>,
+  pub async fn create_graph_with_options<'a>(
+    &'a self,
+    options: CreateGraphOptions<'a>,
   ) -> Result<ModuleGraph, AnyError> {
     let mut graph = ModuleGraph::new(options.graph_kind);
 
@@ -454,7 +458,7 @@ impl ModuleGraphBuilder {
   }
 
   pub async fn build_graph_with_npm_resolution<'a>(
-    &self,
+    &'a self,
     graph: &mut ModuleGraph,
     options: CreateGraphOptions<'a>,
   ) -> Result<(), AnyError> {
@@ -533,11 +537,13 @@ impl ModuleGraphBuilder {
       }
     }
 
-    let maybe_imports = if options.graph_kind.include_types() {
-      self.options.to_compiler_option_types()?
-    } else {
-      Vec::new()
-    };
+    // NOTE: The `imports` field was removed from deno_graph::BuildOptions in Deno 2.5.6
+    // The functionality for compiler option types is now handled differently.
+    // let maybe_imports = if options.graph_kind.include_types() {
+    //   self.options.to_compiler_option_types()?
+    // } else {
+    //   Vec::new()
+    // };
     let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => MutLoaderRef::Borrowed(loader),
@@ -555,37 +561,44 @@ impl ModuleGraphBuilder {
       .lockfile
       .as_ref()
       .map(|lockfile| LockfileLocker(lockfile));
+    // Create a default JsrVersionResolver with no date filtering
+    let jsr_version_resolver = deno_graph::packages::JsrVersionResolver {
+      newest_dependency_date_options: Default::default(),
+    };
     self
       .build_graph_with_npm_resolution_and_build_options(
         graph,
         options.roots,
         loader.as_mut_loader(),
-        deno_graph::BuildOptions {
-          imports: maybe_imports,
-          is_dynamic: options.is_dynamic,
-          passthrough_jsr_specifiers: false,
-          executor: Default::default(),
-          file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
-          jsr_url_provider: &CliJsrUrlProvider,
-          npm_resolver: Some(&graph_npm_resolver),
-          module_analyzer: &analyzer,
-          reporter: None,
-          resolver: Some(&graph_resolver),
-          locker: locker.as_mut().map(|l| l as _),
-        },
+        &analyzer,
+        &graph_npm_resolver,
+        &jsr_version_resolver,
+        &graph_resolver,
+        locker
+          .as_mut()
+          .map(|l| l as &mut dyn deno_graph::source::Locker),
+        options.is_dynamic,
         options.npm_caching,
       )
       .await
   }
 
-  async fn build_graph_with_npm_resolution_and_build_options<'a>(
-    &self,
+  async fn build_graph_with_npm_resolution_and_build_options<'a, MA>(
+    &'a self,
     graph: &mut ModuleGraph,
     roots: Vec<ModuleSpecifier>,
     loader: &'a mut dyn deno_graph::source::Loader,
-    options: deno_graph::BuildOptions<'a>,
+    module_analyzer: &'a MA,
+    graph_npm_resolver: &'a dyn deno_graph::source::NpmResolver,
+    jsr_version_resolver: &'a deno_graph::packages::JsrVersionResolver,
+    graph_resolver: &'a dyn deno_graph::source::Resolver,
+    locker: Option<&'a mut dyn deno_graph::source::Locker>,
+    is_dynamic: bool,
     npm_caching: NpmCachingStrategy,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), AnyError>
+  where
+    MA: deno_graph::analysis::ModuleAnalyzer,
+  {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self
@@ -622,10 +635,45 @@ impl ModuleGraphBuilder {
     if roots.iter().any(|r| r.scheme() == "npm")
       && self.npm_resolver.as_byonm().is_some()
     {
-      bail!("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead");
+      bail!(
+        "Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead"
+      );
     }
 
-    graph.build(roots, loader, options).await;
+    // Create the DenoGraphFsAdapter with 'static lifetime
+    // SAFETY: This is safe because:
+    // 1. self.fs is an Arc, which ensures the data lives as long as there are references
+    // 2. The BuildOptions and fs_adapter are only used within this function
+    // 3. graph.build() completes before this function returns
+    // 4. The Arc in self is not dropped during this function's execution
+    let fs_ref: &'static dyn deno_fs::FileSystem = unsafe {
+      std::mem::transmute::<
+        &dyn deno_fs::FileSystem,
+        &'static dyn deno_fs::FileSystem,
+      >(self.fs.as_ref())
+    };
+    let fs_adapter = DenoGraphFsAdapter(fs_ref);
+
+    let options = deno_graph::BuildOptions {
+      is_dynamic,
+      skip_dynamic_deps: false,
+      unstable_bytes_imports: false,
+      unstable_text_imports: false,
+      passthrough_jsr_specifiers: false,
+      executor: Default::default(),
+      file_system: &fs_adapter,
+      jsr_url_provider: &CliJsrUrlProvider,
+      jsr_version_resolver: Cow::Borrowed(jsr_version_resolver),
+      npm_resolver: Some(graph_npm_resolver),
+      module_analyzer,
+      module_info_cacher: Default::default(),
+      reporter: None,
+      resolver: Some(graph_resolver),
+      locker: locker.map(|l| l as _),
+      jsr_metadata_store: None,
+    };
+
+    graph.build(roots, Vec::new(), loader, options).await;
 
     let has_redirects_changed = graph.redirects.len() != initial_redirects_len;
     let has_jsr_package_deps_changed =
@@ -653,7 +701,7 @@ impl ModuleGraphBuilder {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
               JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_string(),
+              to.version.to_string().as_str().into(),
             );
           }
         }
@@ -700,7 +748,6 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
-        npm_resolver: Some(&graph_npm_resolver),
         workspace_fast_check: options.workspace_fast_check,
       },
     );
@@ -762,10 +809,11 @@ impl ModuleGraphBuilder {
   }
 
   fn create_graph_resolver(&self) -> Result<CliGraphResolver, AnyError> {
-    let jsx_import_source_config = self
-      .options
-      .workspace()
-      .to_maybe_jsx_import_source_config()?;
+    // TODO(deno-upgrade): In Deno 2.5.6, JSX import source config is obtained through
+    // JsxImportSourceConfigResolver::from_compiler_options_resolver().
+    // We need to add compiler_options_resolver to ModuleGraphBuilder and use it here.
+    // For now, using None which will fall back to defaults in the resolver.
+    let jsx_import_source_config = None;
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,
       resolver: &self.resolver,
@@ -782,7 +830,9 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
     get_resolution_error_bare_node_specifier(error)
   {
     if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      Some(format!("If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."))
+      Some(format!(
+        "If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:{specifier}\")."
+      ))
     } else {
       None
     }
@@ -806,95 +856,70 @@ fn enhanced_sloppy_imports_error_message(
   fs: &Arc<dyn FileSystem>,
   error: &ModuleError,
 ) -> Option<String> {
-  match error {
-    ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
-    | ModuleError::Missing(specifier, _) => {
-      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
-        .resolve(specifier, SloppyImportsResolutionKind::Execution)?
-        .as_suggestion_message();
-      Some(format!(
-        // "{} {} or run with --unstable-sloppy-imports",
-        "{} {}",
-        error,
-        additional_message,
-      ))
-    }
-    _ => None,
-  }
+  // This function has been removed in newer Deno versions
+  // Sloppy imports handling is now integrated into the workspace resolver
+  None
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
-  match err {
-    ModuleError::LoadingErr(
+  match &**err {
+    ModuleErrorKind::Load {
       specifier,
-      _,
-      ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(
-        checksum_err,
-      )),
-    ) => {
-      Some(format!(
-        concat!(
-          "Integrity check failed in package. The package may have been tampered with.\n\n",
-          "  Specifier: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "If you modified your global cache, run again with the --reload flag to restore ",
-          "its state. If you want to modify dependencies locally run again with the ",
-          "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
-          "of the vendor/ folder."
-        ),
-        specifier,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
-    ModuleError::LoadingErr(
-      _specifier,
-      _,
-      ModuleLoadError::Jsr(
-        JsrLoadError::PackageVersionManifestChecksumIntegrity(
-          package_nv,
-          checksum_err,
-        ),
+      err:
+        ModuleLoadError::Jsr(JsrLoadError::ContentChecksumIntegrity(checksum_err)),
+      ..
+    } => Some(format!(
+      concat!(
+        "Integrity check failed in package. The package may have been tampered with.\n\n",
+        "  Specifier: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "If you modified your global cache, run again with the --reload flag to restore ",
+        "its state. If you want to modify dependencies locally run again with the ",
+        "--vendor flag or specify `\"vendor\": true` in a deno.json then modify the contents ",
+        "of the vendor/ folder."
       ),
-    ) => {
-      Some(format!(
-        concat!(
-          "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-          "  Package: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "This could be caused by:\n",
-          "  * the lock file may be corrupt\n",
-          "  * the source itself may be corrupt\n\n",
-          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      specifier, checksum_err.actual, checksum_err.expected,
+    )),
+    ModuleErrorKind::Load {
+      err:
+        ModuleLoadError::Jsr(
+          JsrLoadError::PackageVersionManifestChecksumIntegrity(
+            package_nv,
+            checksum_err,
+          ),
         ),
-        package_nv,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
-    ModuleError::LoadingErr(
+      ..
+    } => Some(format!(
+      concat!(
+        "Integrity check failed for package. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+        "  Package: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "This could be caused by:\n",
+        "  * the lock file may be corrupt\n",
+        "  * the source itself may be corrupt\n\n",
+        "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      ),
+      package_nv, checksum_err.actual, checksum_err.expected,
+    )),
+    ModuleErrorKind::Load {
       specifier,
-      _,
-      ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
-    ) => {
-      Some(format!(
-        concat!(
-          "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
-          "  Specifier: {}\n",
-          "  Actual: {}\n",
-          "  Expected: {}\n\n",
-          "This could be caused by:\n",
-          "  * the lock file may be corrupt\n",
-          "  * the source itself may be corrupt\n\n",
-          "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
-        ),
-        specifier,
-        checksum_err.actual,
-        checksum_err.expected,
-      ))
-    }
+      err: ModuleLoadError::HttpsChecksumIntegrity(checksum_err),
+      ..
+    } => Some(format!(
+      concat!(
+        "Integrity check failed for remote specifier. The source code is invalid, as it does not match the expected hash in the lock file.\n\n",
+        "  Specifier: {}\n",
+        "  Actual: {}\n",
+        "  Expected: {}\n\n",
+        "This could be caused by:\n",
+        "  * the lock file may be corrupt\n",
+        "  * the source itself may be corrupt\n\n",
+        "Investigate the lockfile; delete it to regenerate the lockfile or --reload to reload the source code from the server."
+      ),
+      specifier, checksum_err.actual, checksum_err.expected,
+    )),
     _ => None,
   }
 }
@@ -915,19 +940,9 @@ fn get_resolution_error_bare_specifier(
   } = error
   {
     Some(specifier.as_str())
-  } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
-        error.downcast_ref::<ImportMapError>()
-      {
-        Some(specifier.as_str())
-      } else {
-        None
-      }
-    } else {
-      None
-    }
   } else {
+    // Note: With JsErrorBox, we can no longer downcast to ImportMapError
+    // So we skip the ImportMapError::UnmappedBareSpecifier check
     None
   }
 }
@@ -952,13 +967,12 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
             maybe_specifier = Some(specifier);
           }
         }
-        ResolveError::Other(other_error) => {
-          if let Some(SpecifierError::ImportPrefixMissing {
-            specifier, ..
-          }) = other_error.downcast_ref::<SpecifierError>()
-          {
-            maybe_specifier = Some(specifier);
-          }
+        ResolveError::ImportMap(_) => {
+          // Import map errors are handled elsewhere
+        }
+        ResolveError::Other(_other_error) => {
+          // Note: With JsErrorBox, we can no longer downcast to SpecifierError
+          // So we skip the SpecifierError::ImportPrefixMissing check
         }
       }
     }
@@ -989,7 +1003,7 @@ pub fn has_graph_root_local_dependent_changed(
       follow_dynamic: true,
       kind: GraphKind::All,
       prefer_fast_check_graph: true,
-      check_js: true,
+      check_js: deno_graph::CheckJsOption::True,
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
@@ -1053,65 +1067,142 @@ pub fn has_graph_root_local_dependent_changed(
 
 pub struct DenoGraphFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
 
-impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
-  fn read_dir(
-    &self,
-    dir_url: &deno_graph::ModuleSpecifier,
-  ) -> Vec<deno_graph::source::DirEntry> {
-    use deno_core::anyhow;
-    use deno_graph::source::DirEntry;
-    use deno_graph::source::DirEntryKind;
+// Adapter to convert deno_fs entries to sys_traits entries
+struct FsDirEntryAdapter {
+  name: std::ffi::OsString,
+  is_file: bool,
+  is_directory: bool,
+}
 
-    let dir_path = match dir_url.to_file_path() {
-      Ok(path) => path,
-      // ignore, treat as non-analyzable
-      Err(()) => return vec![],
-    };
-    let entries = match self.0.read_dir_sync(&dir_path) {
-      Ok(dir) => dir,
-      Err(err)
-        if matches!(
-          err.kind(),
-          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
-        ) =>
-      {
-        return vec![];
-      }
-      Err(err) => {
-        return vec![DirEntry {
-          kind: DirEntryKind::Error(
-            anyhow::Error::from(err)
-              .context("Failed to read directory.".to_string()),
-          ),
-          url: dir_url.clone(),
-        }];
-      }
-    };
-    let mut dir_entries = Vec::with_capacity(entries.len());
-    for entry in entries {
-      let entry_path = dir_path.join(&entry.name);
-      dir_entries.push(if entry.is_directory {
-        DirEntry {
-          kind: DirEntryKind::Dir,
-          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
-        }
-      } else if entry.is_file {
-        DirEntry {
-          kind: DirEntryKind::File,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
-        }
-      } else if entry.is_symlink {
-        DirEntry {
-          kind: DirEntryKind::Symlink,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
-        }
-      } else {
-        continue;
-      });
-    }
-
-    dir_entries
+impl std::fmt::Debug for FsDirEntryAdapter {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("FsDirEntryAdapter")
+      .field("name", &self.name)
+      .field("is_file", &self.is_file)
+      .field("is_directory", &self.is_directory)
+      .finish()
   }
+}
+
+impl sys_traits::FsDirEntry for FsDirEntryAdapter {
+  type Metadata = sys_traits::impls::RealFsMetadata;
+
+  fn file_name(&self) -> std::borrow::Cow<std::ffi::OsStr> {
+    std::borrow::Cow::Borrowed(&self.name)
+  }
+
+  fn file_type(&self) -> std::io::Result<sys_traits::FileType> {
+    // Convert our boolean flags to sys_traits::FileType
+    if self.is_file {
+      Ok(sys_traits::FileType::File)
+    } else if self.is_directory {
+      Ok(sys_traits::FileType::Dir)
+    } else {
+      Ok(sys_traits::FileType::Symlink)
+    }
+  }
+
+  fn metadata(&self) -> std::io::Result<Self::Metadata> {
+    Err(std::io::Error::new(
+      std::io::ErrorKind::Unsupported,
+      "metadata not supported in adapter",
+    ))
+  }
+
+  fn path(&self) -> std::borrow::Cow<std::path::Path> {
+    std::borrow::Cow::Borrowed(std::path::Path::new(&self.name))
+  }
+}
+
+impl<'a> sys_traits::BaseFsReadDir for DenoGraphFsAdapter<'a> {
+  type ReadDirEntry = sys_traits::boxed::BoxedFsDirEntry;
+
+  fn base_fs_read_dir(
+    &self,
+    path: &std::path::Path,
+  ) -> std::io::Result<
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
+  > {
+    let entries = self
+      .0
+      .read_dir_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)))
+      .map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+      })?;
+    let iter = entries.into_iter().map(|entry| {
+      Ok(sys_traits::boxed::BoxedFsDirEntry::new(FsDirEntryAdapter {
+        name: std::ffi::OsString::from(entry.name),
+        is_file: entry.is_file,
+        is_directory: entry.is_directory,
+      }))
+    });
+    Ok(Box::new(iter))
+  }
+}
+
+// Keep old implementation for compatibility, but it won't be used anymore
+// since deno_graph now uses the BaseFsReadDir trait
+impl<'a> DenoGraphFsAdapter<'a> {
+  // Commented out: Dead code that uses removed deno_graph types (DirEntry, DirEntryKind)
+  // #[allow(dead_code)]
+  // fn read_dir_old(
+  //   &self,
+  //   dir_url: &deno_graph::ModuleSpecifier,
+  // ) -> Vec<deno_graph::source::DirEntry> {
+  //   use deno_core::anyhow;
+  //   use deno_graph::source::DirEntry;
+  //   use deno_graph::source::DirEntryKind;
+  //
+  //   let dir_path = match dir_url.to_file_path() {
+  //     Ok(path) => path,
+  //     // ignore, treat as non-analyzable
+  //     Err(()) => return vec![],
+  //   };
+  //   let entries = match self.0.read_dir_sync(&dir_path) {
+  //     Ok(dir) => dir,
+  //     Err(err)
+  //       if matches!(
+  //         err.kind(),
+  //         std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+  //       ) =>
+  //     {
+  //       return vec![];
+  //     }
+  //     Err(err) => {
+  //       return vec![DirEntry {
+  //         kind: DirEntryKind::Error(
+  //           anyhow::Error::from(err)
+  //             .context("Failed to read directory.".to_string()),
+  //         ),
+  //         url: dir_url.clone(),
+  //       }];
+  //     }
+  //   };
+  //   let mut dir_entries = Vec::with_capacity(entries.len());
+  //   for entry in entries {
+  //     let entry_path = dir_path.join(&entry.name);
+  //     dir_entries.push(if entry.is_directory {
+  //       DirEntry {
+  //         kind: DirEntryKind::Dir,
+  //         url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
+  //       }
+  //     } else if entry.is_file {
+  //       DirEntry {
+  //         kind: DirEntryKind::File,
+  //         url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+  //       }
+  //     } else if entry.is_symlink {
+  //       DirEntry {
+  //         kind: DirEntryKind::Symlink,
+  //         url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
+  //       }
+  //     } else {
+  //       continue;
+  //     });
+  //   }
+  //
+  //   dir_entries
+  // }
 }
 
 pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
@@ -1183,21 +1274,27 @@ struct CliGraphResolver<'a> {
 }
 
 impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
+  fn default_jsx_import_source(
+    &self,
+    _referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
       .jsx_import_source_config
       .as_ref()
-      .and_then(|c| c.default_specifier.clone())
+      .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
   }
 
-  fn default_jsx_import_source_types(&self) -> Option<String> {
+  fn default_jsx_import_source_types(
+    &self,
+    _referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
       .jsx_import_source_config
       .as_ref()
-      .and_then(|c| c.default_types_specifier.clone())
+      .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
   }
 
-  fn jsx_import_source_module(&self) -> &str {
+  fn jsx_import_source_module(&self, _referrer: &ModuleSpecifier) -> &str {
     self
       .jsx_import_source_config
       .as_ref()

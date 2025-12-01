@@ -5,18 +5,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
+use deno::DenoOptions;
 use deno::deno_npm::NpmSystemInfo;
 use deno::npm::CliNpmResolver;
 use deno::npm::InnerCliNpmResolverRef;
-use deno::DenoOptions;
 use deno_core::error::AnyError;
 use eszip_trait::AsyncEszipDataRead;
+use fs::VfsOpts;
 use fs::virtual_fs::FileBackedVfs;
 use fs::virtual_fs::VfsBuilder;
 use fs::virtual_fs::VfsEntry;
 use fs::virtual_fs::VfsRoot;
 use fs::virtual_fs::VirtualDirectory;
-use fs::VfsOpts;
 
 pub fn load_npm_vfs(
   eszip: Arc<dyn AsyncEszipDataRead + 'static>,
@@ -31,11 +31,60 @@ pub fn load_npm_vfs(
       .to_string_lossy()
       .to_string();
 
+    // Debug logging to trace VFS contents (recursive)
+    fn log_vfs_tree(entry: &VfsEntry, indent: usize) {
+      let prefix = "  ".repeat(indent);
+      match entry {
+        VfsEntry::Dir(dir) => {
+          log::debug!("{}DIR: {} ({} entries)", prefix, dir.name, dir.entries.len());
+          for e in &dir.entries {
+            log_vfs_tree(e, indent + 1);
+          }
+        }
+        VfsEntry::File(f) => {
+          log::debug!("{}FILE: {} (offset={}, len={})", prefix, f.name, f.offset, f.len);
+        }
+        VfsEntry::Symlink(s) => {
+          log::debug!("{}LINK: {} -> {}", prefix, s.name, s.dest_parts.join("/"));
+        }
+      }
+    }
+
+    log::debug!(
+      "load_npm_vfs: root_path={}, dir.name={}, num_entries={}",
+      root_dir_path.display(),
+      dir.name,
+      dir.entries.len()
+    );
+    // Log first few entries to understand VFS structure
+    for (i, entry) in dir.entries.iter().enumerate() {
+      if i < 3 {
+        log_vfs_tree(entry, 1);
+      }
+    }
+    // Specifically look for fastify
+    for entry in &dir.entries {
+      if entry.name() == "localhost" {
+        if let VfsEntry::Dir(localhost_dir) = entry {
+          for pkg in &localhost_dir.entries {
+            if pkg.name() == "fastify" {
+              log::debug!("=== FASTIFY VFS STRUCTURE ===");
+              log_vfs_tree(pkg, 2);
+            }
+          }
+        }
+      }
+    }
+
     VfsRoot {
       dir,
       root_path: root_dir_path,
     }
   } else {
+    log::debug!(
+      "load_npm_vfs: root_path={}, NO virtual_dir (empty VFS)",
+      root_dir_path.display()
+    );
     VfsRoot {
       dir: VirtualDirectory {
         name: "".to_string(),
@@ -131,8 +180,9 @@ where
       }
       // traverse and add all the node_modules directories in the workspace
       let mut pending_dirs = VecDeque::new();
-      pending_dirs
-        .push_back(deno_options.workspace().root_dir().to_file_path().unwrap());
+      pending_dirs.push_back(
+        deno_options.workspace().root_dir().dir_path().to_path_buf(),
+      );
       while let Some(pending_dir) = pending_dirs.pop_front() {
         let mut entries = std::fs::read_dir(&pending_dir)
           .with_context(|| {

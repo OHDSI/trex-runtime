@@ -1,22 +1,26 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
 import { Console } from "ext:deno_node/internal/console/constructor.mjs";
-import * as DenoConsole from "ext:deno_console/01_console.js";
-import { nonEnumerable } from "ext:runtime/fieldUtils.js";
-
-import { core } from "ext:core/mod.js";
-
+import { windowOrWorkerGlobalScope } from "ext:runtime/98_global_scope_shared.js";
 // Don't rely on global `console` because during bootstrapping, it is pointing
 // to native `console` object provided by V8.
-const _intConsole = nonEnumerable(
-  new DenoConsole.Console((msg, level) => core.print(msg, level > 1)),
-);
-const console = _intConsole.value;
+const console = windowOrWorkerGlobalScope.console.value;
 
-export default Object.assign({}, console, { Console });
+const { ObjectDefineProperty, ObjectHasOwn } = primordials;
+
+// Only define Console property if it doesn't already exist
+// In Deno 2.5.6, the console object may already have Console defined
+if (!ObjectHasOwn(console, "Console")) {
+  ObjectDefineProperty(console, "Console", {
+    value: Console,
+    writable: true,
+    enumerable: false,
+    configurable: true,
+  });
+}
+
+export default console;
 
 export { Console };
 export const {

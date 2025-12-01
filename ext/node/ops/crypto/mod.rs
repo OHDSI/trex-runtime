@@ -1,12 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::future::Future;
+use std::rc::Rc;
+
+use aws_lc_rs::signature::Ed25519KeyPair;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::StringOrBuffer;
 use deno_core::ToJsBuffer;
+use deno_core::op2;
+use deno_core::unsync::spawn_blocking;
+use deno_error::JsErrorBox;
 use elliptic_curve::sec1::ToEncodedPoint;
 use hkdf::Hkdf;
 use keys::AsymmetricPrivateKey;
@@ -16,22 +19,18 @@ use keys::EcPublicKey;
 use keys::KeyObjectHandle;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
-use rand::distributions::Distribution;
-use rand::distributions::Uniform;
-use rand::Rng;
-use ring::signature::Ed25519KeyPair;
-use std::future::Future;
-use std::rc::Rc;
-
 use p224::NistP224;
 use p256::NistP256;
 use p384::NistP384;
-use rsa::pkcs8::DecodePrivateKey;
-use rsa::pkcs8::DecodePublicKey;
+use rand::Rng;
+use rand::distributions::Distribution;
+use rand::distributions::Uniform;
 use rsa::Oaep;
 use rsa::Pkcs1v15Encrypt;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use rsa::pkcs8::DecodePrivateKey;
+use rsa::pkcs8::DecodePublicKey;
 
 pub mod cipher;
 mod dh;
@@ -76,7 +75,7 @@ pub async fn op_node_check_prime_async(
 pub fn op_node_check_prime_bytes_async(
   #[anybuffer] bytes: &[u8],
   #[number] checks: usize,
-) -> impl Future<Output = Result<bool, tokio::task::JoinError>> {
+) -> impl Future<Output = Result<bool, tokio::task::JoinError>> + use<> {
   let candidate = BigInt::from_bytes_be(num_bigint::Sign::Plus, bytes);
   // TODO(@littledivy): use rayon for CPU-bound tasks
   async move {
@@ -97,6 +96,11 @@ pub fn op_node_create_hash(
 #[serde]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
   digest::Hash::get_hashes()
+}
+
+#[op2]
+pub fn op_node_get_hash_size(#[string] algorithm: &str) -> Option<u8> {
+  digest::Hash::get_size(algorithm)
 }
 
 #[op2(fast)]
@@ -141,16 +145,21 @@ pub fn op_node_hash_clone(
   hasher.clone_inner(output_length.map(|l| l as usize))
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrivateEncryptDecryptError {
+  #[class(generic)]
   #[error(transparent)]
   Pkcs8(#[from] pkcs8::Error),
+  #[class(generic)]
   #[error(transparent)]
   Spki(#[from] spki::Error),
+  #[class(generic)]
   #[error(transparent)]
   Utf8(#[from] std::str::Utf8Error),
+  #[class(generic)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
+  #[class(type)]
   #[error("Unknown padding")]
   UnknownPadding,
 }
@@ -270,13 +279,10 @@ pub fn op_node_cipheriv_final(
   #[buffer] input: &[u8],
   #[anybuffer] output: &mut [u8],
 ) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::CipherContext>(rid)
-    .map_err(cipher::CipherContextError::Resource)?;
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
-  context.r#final(auto_pad, input, output).map_err(Into::into)
+  context.r#final(auto_pad, input, output)
 }
 
 #[op2]
@@ -285,10 +291,7 @@ pub fn op_node_cipheriv_take(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<Option<Vec<u8>>, cipher::CipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::CipherContext>(rid)
-    .map_err(cipher::CipherContextError::Resource)?;
+  let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::CipherContextError::ContextInUse)?;
   Ok(context.take_tag())
@@ -301,9 +304,27 @@ pub fn op_node_create_decipheriv(
   #[string] algorithm: &str,
   #[buffer] key: &[u8],
   #[buffer] iv: &[u8],
+  #[smi] auth_tag_length: i32,
 ) -> Result<u32, cipher::DecipherContextError> {
-  let context = cipher::DecipherContext::new(algorithm, key, iv)?;
+  let auth_tag_length = if auth_tag_length == -1 {
+    None
+  } else {
+    Some(auth_tag_length as usize)
+  };
+
+  let context =
+    cipher::DecipherContext::new(algorithm, key, iv, auth_tag_length)?;
   Ok(state.resource_table.add(context))
+}
+
+#[op2(fast)]
+pub fn op_node_decipheriv_auth_tag(
+  state: &mut OpState,
+  #[smi] rid: u32,
+  #[smi] length: u32,
+) -> Result<(), cipher::DecipherContextError> {
+  let context = state.resource_table.get::<cipher::DecipherContext>(rid)?;
+  context.validate_auth_tag(length as usize)
 }
 
 #[op2(fast)]
@@ -335,20 +356,6 @@ pub fn op_node_decipheriv_decrypt(
   true
 }
 
-#[op2(fast)]
-pub fn op_node_decipheriv_take(
-  state: &mut OpState,
-  #[smi] rid: u32,
-) -> Result<(), cipher::DecipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::DecipherContext>(rid)
-    .map_err(cipher::DecipherContextError::Resource)?;
-  Rc::try_unwrap(context)
-    .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
-  Ok(())
-}
-
 #[op2]
 pub fn op_node_decipheriv_final(
   state: &mut OpState,
@@ -358,15 +365,10 @@ pub fn op_node_decipheriv_final(
   #[anybuffer] output: &mut [u8],
   #[buffer] auth_tag: &[u8],
 ) -> Result<(), cipher::DecipherContextError> {
-  let context = state
-    .resource_table
-    .take::<cipher::DecipherContext>(rid)
-    .map_err(cipher::DecipherContextError::Resource)?;
+  let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| cipher::DecipherContextError::ContextInUse)?;
-  context
-    .r#final(auto_pad, input, output, auth_tag)
-    .map_err(Into::into)
+  context.r#final(auto_pad, input, output, auth_tag)
 }
 
 #[op2]
@@ -404,12 +406,50 @@ pub fn op_node_verify(
   )
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+enum ErrorCode {
+  ERR_CRYPTO_INVALID_DIGEST,
+}
+
+impl std::fmt::Display for ErrorCode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl ErrorCode {
+  pub fn as_str(&self) -> &str {
+    match self {
+      Self::ERR_CRYPTO_INVALID_DIGEST => "ERR_CRYPTO_INVALID_DIGEST",
+    }
+  }
+}
+
+impl From<ErrorCode> for deno_error::PropertyValue {
+  fn from(code: ErrorCode) -> Self {
+    deno_error::PropertyValue::from(code.as_str().to_string())
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Pbkdf2Error {
-  #[error("unsupported digest: {0}")]
+  #[class(type)]
+  #[error("Invalid digest: {0}")]
+  #[property("code" = self.code())]
   UnsupportedDigest(String),
+  #[class(inherit)]
   #[error(transparent)]
   Join(#[from] tokio::task::JoinError),
+}
+
+impl Pbkdf2Error {
+  fn code(&self) -> ErrorCode {
+    match self {
+      Self::UnsupportedDigest(_) => ErrorCode::ERR_CRYPTO_INVALID_DIGEST,
+      Self::Join(_) => unreachable!(),
+    }
+  }
 }
 
 fn pbkdf2_sync(
@@ -433,20 +473,36 @@ fn pbkdf2_sync(
 
 #[op2]
 pub fn op_node_pbkdf2(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
+  #[anybuffer] password: &[u8],
+  #[anybuffer] salt: &[u8],
   #[smi] iterations: u32,
   #[string] digest: &str,
   #[buffer] derived_key: &mut [u8],
 ) -> bool {
-  pbkdf2_sync(&password, &salt, iterations, digest, derived_key).is_ok()
+  pbkdf2_sync(password, salt, iterations, digest, derived_key).is_ok()
+}
+
+#[op2(fast)]
+pub fn op_node_pbkdf2_validate(
+  #[string] digest: &str,
+) -> Result<(), Pbkdf2Error> {
+  // Validate the digest algorithm name
+  match_fixed_digest_with_eager_block_buffer!(
+    digest,
+    fn <_D>() {
+      Ok(())
+    },
+    _ => {
+      Err(Pbkdf2Error::UnsupportedDigest(digest.to_string()))
+    }
+  )
 }
 
 #[op2(async)]
 #[serde]
 pub async fn op_node_pbkdf2_async(
-  #[serde] password: StringOrBuffer,
-  #[serde] salt: StringOrBuffer,
+  #[anybuffer] password: JsBuffer,
+  #[anybuffer] salt: JsBuffer,
   #[smi] iterations: u32,
   #[string] digest: String,
   #[number] keylen: usize,
@@ -476,14 +532,18 @@ pub async fn op_node_fill_random_async(#[smi] len: i32) -> ToJsBuffer {
   .unwrap()
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HkdfError {
+  #[class(type)]
   #[error("expected secret key")]
   ExpectedSecretKey,
+  #[class(type)]
   #[error("HKDF-Expand failed")]
   HkdfExpandFailed,
+  #[class(type)]
   #[error("Unsupported digest: {0}")]
   UnsupportedDigest(String),
+  #[class(inherit)]
   #[error(transparent)]
   Join(#[from] tokio::task::JoinError),
 }
@@ -577,7 +637,7 @@ fn scrypt(
   parallelization: u32,
   _maxmem: u32,
   output_buffer: &mut [u8],
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsErrorBox> {
   // Construct Params
   let params = scrypt::Params::new(
     cost as u8,
@@ -585,7 +645,7 @@ fn scrypt(
     parallelization,
     keylen as usize,
   )
-  .unwrap();
+  .map_err(|_| JsErrorBox::generic("Invalid scrypt param"))?;
 
   // Call into scrypt
   let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
@@ -593,7 +653,7 @@ fn scrypt(
     Ok(())
   } else {
     // TODO(lev): key derivation failed, so what?
-    Err(generic_error("scrypt key derivation failed"))
+    Err(JsErrorBox::generic("scrypt key derivation failed"))
   }
 }
 
@@ -608,7 +668,7 @@ pub fn op_node_scrypt_sync(
   #[smi] parallelization: u32,
   #[smi] maxmem: u32,
   #[anybuffer] output_buffer: &mut [u8],
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsErrorBox> {
   scrypt(
     password,
     salt,
@@ -621,12 +681,14 @@ pub fn op_node_scrypt_sync(
   )
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ScryptAsyncError {
+  #[class(inherit)]
   #[error(transparent)]
   Join(#[from] tokio::task::JoinError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
 }
 
 #[op2(async)]
@@ -659,12 +721,15 @@ pub async fn op_node_scrypt_async(
   .await?
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EcdhEncodePubKey {
+  #[class(type)]
   #[error("Invalid public key")]
   InvalidPublicKey,
+  #[class(type)]
   #[error("Unsupported curve")]
   UnsupportedCurve,
+  #[class(generic)]
   #[error(transparent)]
   Sec1(#[from] sec1::Error),
 }
@@ -744,7 +809,7 @@ pub fn op_node_ecdh_generate_keys(
   #[buffer] pubbuf: &mut [u8],
   #[buffer] privbuf: &mut [u8],
   #[string] format: &str,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsErrorBox> {
   let mut rng = rand::thread_rng();
   let compress = format == "compressed";
   match curve {
@@ -781,7 +846,10 @@ pub fn op_node_ecdh_generate_keys(
 
       Ok(())
     }
-    &_ => Err(type_error(format!("Unsupported curve: {}", curve))),
+    &_ => Err(JsErrorBox::type_error(format!(
+      "Unsupported curve: {}",
+      curve
+    ))),
   }
 }
 
@@ -914,7 +982,8 @@ pub async fn op_node_gen_prime_async(
   spawn_blocking(move || gen_prime(size)).await
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum DiffieHellmanError {
   #[error("Expected private key")]
   ExpectedPrivateKey,
@@ -1006,7 +1075,8 @@ pub fn op_node_diffie_hellman(
   Ok(res)
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum SignEd25519Error {
   #[error("Expected private key")]
   ExpectedPrivateKey,
@@ -1038,7 +1108,8 @@ pub fn op_node_sign_ed25519(
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum VerifyEd25519Error {
   #[error("Expected public key")]
   ExpectedPublicKey,
@@ -1061,12 +1132,55 @@ pub fn op_node_verify_ed25519(
     _ => return Err(VerifyEd25519Error::ExpectedEd25519PublicKey),
   };
 
-  let verified = ring::signature::UnparsedPublicKey::new(
-    &ring::signature::ED25519,
+  let verified = aws_lc_rs::signature::UnparsedPublicKey::new(
+    &aws_lc_rs::signature::ED25519,
     ed25519.as_bytes().as_slice(),
   )
   .verify(data, signature)
   .is_ok();
 
   Ok(verified)
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SpkacError {
+  #[error("spkac is too large")]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  #[class(range)]
+  BufferOutOfRange,
+}
+
+#[op2(fast)]
+pub fn op_node_verify_spkac(
+  #[buffer] spkac: &[u8],
+) -> Result<bool, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::verify_spkac(spkac))
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cert_export_public_key(
+  #[buffer] spkac: &[u8],
+) -> Result<Option<Vec<u8>>, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::export_public_key(spkac))
+}
+
+#[op2]
+#[buffer]
+pub fn op_node_cert_export_challenge(
+  #[buffer] spkac: &[u8],
+) -> Result<Option<Vec<u8>>, SpkacError> {
+  if spkac.len() > i32::MAX as usize {
+    return Err(SpkacError::BufferOutOfRange);
+  }
+
+  Ok(deno_crypto_provider::spki::export_challenge(spkac))
 }

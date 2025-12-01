@@ -12,16 +12,16 @@ use tracing::instrument;
 use tracing::trace;
 use xxhash_rust::xxh3::Xxh3;
 
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Error;
+use anyhow::anyhow;
 use ort::execution_providers::CPUExecutionProvider;
 use ort::execution_providers::CUDAExecutionProvider;
 use ort::execution_providers::ExecutionProvider;
 use ort::execution_providers::ExecutionProviderDispatch;
+use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::builder::SessionBuilder;
-use ort::session::Session;
 
 use crate::onnx::ensure_onnx_env_init;
 
@@ -74,8 +74,8 @@ pub(crate) fn get_session_builder() -> Result<SessionBuilder, AnyError> {
   Ok(builder)
 }
 
-fn cpu_execution_provider(
-) -> Box<dyn Iterator<Item = ExecutionProviderDispatch>> {
+fn cpu_execution_provider()
+-> Box<dyn Iterator<Item = ExecutionProviderDispatch>> {
   Box::new(
     [
       // NOTE(Nyannacha): See the comment above. This makes `enable_cpu_mem_arena` set to
@@ -90,8 +90,8 @@ fn cpu_execution_provider(
   )
 }
 
-fn cuda_execution_provider(
-) -> Box<dyn Iterator<Item = ExecutionProviderDispatch>> {
+fn cuda_execution_provider()
+-> Box<dyn Iterator<Item = ExecutionProviderDispatch>> {
   let cuda = CUDAExecutionProvider::default();
   let providers = match cuda.is_available() {
     Ok(is_cuda_available) => {

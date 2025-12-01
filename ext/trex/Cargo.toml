@@ -10,42 +10,24 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 duckdb.workspace = true
 pgwire = { version = "0.23.0", default-features = false, features = ["server-api"] }
-chrono = {version = "0.4.40", features = ["serde"] }
+chrono = { version = "0.4.40", features = ["serde"] }
 tracing-subscriber.workspace = true
 thiserror = "1.0"
-arrow-json = {version = "54.0.0"}
-arrow-array = {version = "54.0.0", features = ["chrono-tz"] }
-arrow-schema = {version = "54.0.0"}
-arrow-data = {version = "54.0.0"}
+arrow-json = { version = "54.0.0" }
+arrow-array = { version = "54.0.0", features = ["chrono-tz"] }
+arrow-schema = { version = "54.0.0" }
+arrow-data = { version = "54.0.0" }
 async-trait = { workspace = true }
-bigdecimal = { version = "0.4.6", features = ["std"] }
 bytes = { workspace = true }
-byteorder = { version = "1.5.0", default-features = false }
 futures = { workspace = true }
-pg_escape = { version = "0.1.1", default-features = false }
-pin-project-lite = { version = "0.2", default-features = false }
-postgres-protocol = { git = "https://github.com/imor/rust-postgres", rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b" }
-postgres-replication = { git = "https://github.com/imor/rust-postgres", default-features = false, rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b" }
-prost = { version = "0.13.1", default-features = false }
-rustls = { version = "0.23.12", features = ["aws-lc-rs", "logging"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tokio-postgres = { git = "https://github.com/imor/rust-postgres", rev = "20265ef38e32a06f76b6f9b678e2077fc2211f6b",  features = [
-    "runtime",
-    "with-chrono-0_4",
-    "with-uuid-1",
-    "with-serde_json-1",
-] }
 tracing = { workspace = true, default-features = true }
 uuid = { workspace = true, features = ["v4"] }
-#llama-cpp-2 = { git = "https://github.com/utilityai/llama-cpp-rs/", tag = "0.1.105" }
-#hf-hub = { version = "0.3.2" }
-#clap = { version = "4.5.31", features = ["derive"] }
-#anyhow = "1.0.97"
-#encoding_rs = "0.8.33"
 base64.workspace = true
 
 
@@ -60,12 +42,5 @@ tracing-subscriber = { workspace = true, default-features = true, features = [
 ] }
 
 [features]
-unknown_types_to_bytes = []
-duckdb = []
-stdout = []
-default = ["unknown_types_to_bytes", "duckdb"]
-#cuda = [] # ["llama-cpp-2/cuda"]
-#metal = ["llama-cpp-2/metal"]
-#native = ["llama-cpp-2/native"]
-#vulkan = [] #["llama-cpp-2/vulkan"]
+default = []
 

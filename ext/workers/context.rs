@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
-use anyhow::anyhow;
 use anyhow::Error;
+use anyhow::anyhow;
 use deno::deno_permissions::PermissionsOptions;
-use deno_core::unsync::sync::AtomicFlag;
 use deno_core::FastString;
+use deno_core::unsync::sync::AtomicFlag;
 use deno_facade::EszipPayloadKind;
 use deno_telemetry::OtelConfig;
 use enum_as_inner::EnumAsInner;
@@ -20,12 +20,12 @@ use fs::tmp_fs::TmpFsConfig;
 use hyper_v014::Body;
 use hyper_v014::Request;
 use hyper_v014::Response;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::OwnedSemaphorePermit;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -138,7 +138,7 @@ impl Default for UserWorkerRuntimeOpts {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct UserWorkerProfile {
   pub worker_request_msg_tx: mpsc::UnboundedSender<WorkerRequestMsg>,
   pub early_drop_tx: mpsc::UnboundedSender<oneshot::Sender<bool>>,
@@ -151,6 +151,10 @@ pub struct UserWorkerProfile {
   pub cancel: CancellationToken,
   pub status: TimingStatus,
   pub exit: WorkerExit,
+
+  // Phase 3: Add thread and isolate handles for dedicated-thread-per-isolate model
+  pub thread_handle: Option<std::thread::JoinHandle<Result<(), anyhow::Error>>>,
+  pub isolate_handle: Option<deno_core::v8::IsolateHandle>,
 }
 
 #[derive(Debug, Clone)]
@@ -258,6 +262,7 @@ impl Default for Timing {
 pub struct WorkerContextInitOpts {
   pub service_path: PathBuf,
   pub no_module_cache: bool,
+  pub no_npm: Option<bool>,
   pub env_vars: HashMap<String, String>,
   pub conf: WorkerRuntimeOpts,
   pub static_patterns: Vec<String>,

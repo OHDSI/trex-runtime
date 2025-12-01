@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use anyhow::Context;
-use deno::args::check_warn_tsconfig;
+use anyhow::anyhow;
 use deno::args::TsConfigType;
+use deno::args::check_warn_tsconfig;
 use deno::deno_graph::ModuleGraph;
 use deno::file_fetcher::File;
-use deno_core::error::AnyError;
 use deno_core::FastString;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use eszip::EszipRelativeFileBaseUrl;
 use eszip::EszipV2;
 
@@ -31,7 +31,9 @@ pub async fn create_eszip_from_graph_raw(
   check_warn_tsconfig(&ts_config_result);
   let (transpile_options, _) =
     deno::args::ts_config_to_transpile_and_emit_options(
-      ts_config_result.ts_config,
+      deno::deno_config::deno_json::CompilerOptions(
+        ts_config_result.ts_config.0,
+      ),
     )?;
   let emit_options = emitter.emit_options();
 

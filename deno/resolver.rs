@@ -3,50 +3,68 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use anyhow::Context;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
-use deno_config::workspace::MappedResolutionDiagnostic;
-use deno_config::workspace::MappedResolutionError;
+use deno_core::ModuleSourceCode;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url::Url;
-use deno_core::ModuleSourceCode;
-use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
-use deno_graph::source::ResolveError;
-use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
+use deno_graph::source::ResolveError;
 use deno_npm::resolution::NpmResolutionError;
-use deno_resolver::sloppy_imports::SloppyImportsResolver;
+use deno_permissions::CheckedPathBuf;
+use deno_resolver::workspace::MappedResolutionError;
+use deno_resolver::workspace::SloppyImportsResolver;
+use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_semver::package::PackageReq;
-use ext_node::is_builtin_node_module;
 use ext_node::DenoFsNodeResolverEnv;
+use ext_node::is_builtin_node_module;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::errors::UnknownBuiltInNodeModuleError;
+use sys_traits::impls::RealSys;
 use thiserror::Error;
 
-use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
+use crate::args::NpmCachingStrategy;
+use crate::cache::CliSys;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::CliNpmResolver;
 use crate::npm::InnerCliNpmResolverRef;
 use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
-pub type CliSloppyImportsResolver =
-  SloppyImportsResolver<SloppyImportsCachedFs>;
-pub type CliDenoResolver = deno_resolver::DenoResolver<
-  CliDenoResolverFs,
-  DenoFsNodeResolverEnv,
-  SloppyImportsCachedFs,
+pub type CjsTracker = deno_resolver::cjs::CjsTracker<
+  deno_resolver::npm::DenoInNpmPackageChecker,
+  CliSys,
 >;
-pub type CliNpmReqResolver =
-  deno_resolver::npm::NpmReqResolver<CliDenoResolverFs, DenoFsNodeResolverEnv>;
+pub type CliSloppyImportsResolver = SloppyImportsResolver<CliSys>;
+pub type CliDenoResolver = deno_resolver::graph::DenoResolver<
+  deno_resolver::npm::DenoInNpmPackageChecker,
+  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  deno_resolver::npm::NpmResolver<CliSys>,
+  CliSys,
+>;
+
+// Trait for npm package requirement resolution
+pub trait CliNpmReqResolver: std::fmt::Debug + Send + Sync {
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &ModuleSpecifier,
+  ) -> Result<
+    std::path::PathBuf,
+    deno_resolver::npm::ResolvePkgFolderFromDenoReqError,
+  >;
+}
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
@@ -57,49 +75,50 @@ pub struct ModuleCodeStringSource {
 #[derive(Debug, Clone)]
 pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
 
-impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, str>> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn realpath_sync(&self, path: &Path) -> std::io::Result<PathBuf> {
-    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
-  }
-
-  fn exists_sync(&self, path: &Path) -> bool {
-    self.0.exists_sync(path)
-  }
-
-  fn is_dir_sync(&self, path: &Path) -> bool {
-    self.0.is_dir_sync(path)
-  }
-
-  fn read_dir_sync(
-    &self,
-    dir_path: &Path,
-  ) -> std::io::Result<Vec<deno_resolver::fs::DirEntry>> {
-    self
-      .0
-      .read_dir_sync(dir_path)
-      .map(|entries| {
-        entries
-          .into_iter()
-          .map(|e| deno_resolver::fs::DirEntry {
-            name: e.name,
-            is_file: e.is_file,
-            is_directory: e.is_directory,
-          })
-          .collect::<Vec<_>>()
-      })
-      .map_err(|err| err.into_io_error())
-  }
-}
+// Commented out: deno_resolver::fs module no longer exists in Deno 2.5.6
+// impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
+//   fn read_to_string_lossy(
+//     &self,
+//     path: &Path,
+//   ) -> std::io::Result<Cow<'static, str>> {
+//     self
+//       .0
+//       .read_text_file_lossy_sync(path, None)
+//       .map_err(|e| e.into_io_error())
+//   }
+//
+//   fn realpath_sync(&self, path: &Path) -> std::io::Result<PathBuf> {
+//     self.0.realpath_sync(path).map_err(|e| e.into_io_error())
+//   }
+//
+//   fn exists_sync(&self, path: &Path) -> bool {
+//     self.0.exists_sync(path)
+//   }
+//
+//   fn is_dir_sync(&self, path: &Path) -> bool {
+//     self.0.is_dir_sync(path)
+//   }
+//
+//   fn read_dir_sync(
+//     &self,
+//     dir_path: &Path,
+//   ) -> std::io::Result<Vec<deno_resolver::fs::DirEntry>> {
+//     self
+//       .0
+//       .read_dir_sync(dir_path)
+//       .map(|entries| {
+//         entries
+//           .into_iter()
+//           .map(|e| deno_resolver::fs::DirEntry {
+//             name: e.name,
+//             is_file: e.is_file,
+//             is_directory: e.is_directory,
+//           })
+//           .collect::<Vec<_>>()
+//       })
+//       .map_err(|err| err.into_io_error())
+//   }
+// }
 
 #[derive(Debug, Error)]
 #[error("{media_type} files are not supported in npm packages: {specifier}")]
@@ -137,7 +156,7 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_file_async(file_path.clone(), None)
+      .read_file_async(CheckedPathBuf::unsafe_new(file_path.clone()))
       .await
       .map_err(AnyError::from)
       .with_context(|| {
@@ -206,6 +225,133 @@ impl NpmModuleLoader {
   }
 }
 
+/// Generic NpmModuleLoader for any sys_traits-compatible system.
+/// This is used when the filesystem is backed by VFS (e.g., eszip bundles).
+///
+/// Type parameters:
+/// - `TInNpmPackageChecker`: Type that implements `node_resolver::InNpmPackageChecker`
+/// - `TSys`: System type that implements `sys_traits::FsRead + sys_traits::FsMetadata`
+/// - `TCjsCodeAnalyzer`: Type that implements `node_resolver::analyze::CjsCodeAnalyzer`
+/// - `TIsBuiltInNodeModuleChecker`: Type that implements `node_resolver::IsBuiltInNodeModuleChecker`
+/// - `TNpmPackageFolderResolver`: Type that implements `node_resolver::NpmPackageFolderResolver`
+#[derive(Clone)]
+pub struct GenericNpmModuleLoader<
+  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
+  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
+  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
+  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
+> {
+  cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
+  fs: Arc<dyn deno_fs::FileSystem>,
+  node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>,
+}
+
+impl<
+  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
+  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
+  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
+  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
+> GenericNpmModuleLoader<TInNpmPackageChecker, TSys, TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TNpmPackageFolderResolver>
+{
+  pub fn new(
+    cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
+      TCjsCodeAnalyzer,
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >>,
+  ) -> Self {
+    Self {
+      cjs_tracker,
+      node_code_translator,
+      fs,
+    }
+  }
+
+  pub async fn load(
+    &self,
+    specifier: &ModuleSpecifier,
+    maybe_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<ModuleCodeStringSource, AnyError> {
+    let file_path = specifier.to_file_path().unwrap();
+    let code = self
+      .fs
+      .read_file_async(CheckedPathBuf::unsafe_new(file_path.clone()))
+      .await
+      .map_err(AnyError::from)
+      .with_context(|| {
+        if file_path.is_dir() {
+          let dir_path = file_path;
+          let mut msg = "Directory import ".to_string();
+          msg.push_str(&dir_path.to_string_lossy());
+          if let Some(referrer) = &maybe_referrer {
+            msg.push_str(" is not supported resolving import from ");
+            msg.push_str(referrer.as_str());
+            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
+              .iter()
+              .find(|e| dir_path.join(e).is_file());
+            if let Some(entrypoint_name) = entrypoint_name {
+              msg.push_str("\nDid you mean to import ");
+              msg.push_str(entrypoint_name);
+              msg.push_str(" within the directory?");
+            }
+          }
+          msg
+        } else {
+          let mut msg = "Unable to load ".to_string();
+          msg.push_str(&file_path.to_string_lossy());
+          if let Some(referrer) = &maybe_referrer {
+            msg.push_str(" imported from ");
+            msg.push_str(referrer.as_str());
+          }
+          msg
+        }
+      })?;
+
+    let media_type = MediaType::from_specifier(specifier);
+    if media_type.is_emittable() {
+      return Err(AnyError::from(NotSupportedKindInNpmError {
+        media_type,
+        specifier: specifier.clone(),
+      }));
+    }
+
+    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
+      let code = from_utf8_lossy_cow(code);
+      ModuleSourceCode::String(
+        self
+          .node_code_translator
+          .translate_cjs_to_esm(specifier, Some(code))
+          .await?
+          .into_owned()
+          .into(),
+      )
+    } else {
+      ModuleSourceCode::Bytes(match code {
+        Cow::Owned(bytes) => bytes.into_boxed_slice().into(),
+        Cow::Borrowed(bytes) => bytes.into(),
+      })
+    };
+
+    Ok(ModuleCodeStringSource {
+      code,
+      found_url: specifier.clone(),
+      media_type: MediaType::from_specifier(specifier),
+    })
+  }
+}
+
 pub struct CliResolverOptions {
   pub deno_resolver: Arc<CliDenoResolver>,
   pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
@@ -256,46 +402,28 @@ impl CliResolver {
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Result<ModuleSpecifier, ResolveError> {
-    let resolution = self
+    self
       .deno_resolver
-      .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
+      .resolve(
+        raw_specifier,
+        referrer,
+        referrer_range_start,
+        resolution_mode,
+        resolution_kind,
+      )
       .map_err(|err| match err.into_kind() {
         deno_resolver::DenoResolveErrorKind::MappedResolution(
           mapped_resolution_error,
         ) => match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::Other(e.into()),
-          err => ResolveError::Other(err.into()),
-        },
-        err => ResolveError::Other(err.into()),
-      })?;
-
-    if resolution.found_package_json_dep {
-      // mark that we need to do an "npm install" later
-      self.found_package_json_dep_flag.raise();
-    }
-
-    if let Some(diagnostic) = resolution.maybe_diagnostic {
-      match &*diagnostic {
-        MappedResolutionDiagnostic::ConstraintNotMatchedLocalVersion {
-          reference,
-          ..
-        } => {
-          if self.warned_pkgs.insert(reference.req().clone()) {
-            log::warn!(
-              "{} {}\n    at {}:{}",
-              "Warning",
-              diagnostic,
-              referrer,
-              referrer_range_start,
-            );
+          MappedResolutionError::ImportMap(e) => {
+            ResolveError::Other(JsErrorBox::generic(e.to_string()))
           }
-        }
-      }
-    }
-
-    Ok(resolution.url)
+          err => ResolveError::Other(JsErrorBox::generic(err.to_string())),
+        },
+        err => ResolveError::Other(JsErrorBox::generic(err.to_string())),
+      })
   }
 }
 
@@ -309,34 +437,6 @@ pub struct WorkerCliNpmGraphResolver<'a> {
 
 #[async_trait(?Send)]
 impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
-  fn resolve_builtin_node_module(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<String>, UnknownBuiltInNodeModuleError> {
-    if specifier.scheme() != "node" {
-      return Ok(None);
-    }
-
-    let module_name = specifier.path().to_string();
-    if is_builtin_node_module(&module_name) {
-      Ok(Some(module_name))
-    } else {
-      Err(UnknownBuiltInNodeModuleError { module_name })
-    }
-  }
-
-  fn on_resolve_bare_builtin_node_module(
-    &self,
-    module_name: &str,
-    range: &deno_graph::Range,
-  ) {
-    let start = range.range.start;
-    let specifier = &range.specifier;
-    if !*DENO_DISABLE_PEDANTIC_NODE_WARNINGS {
-      log::warn!("{} Resolving \"{module_name}\" as \"node:{module_name}\" at {specifier}:{start}. If you want to use a built-in Node module, add a \"node:\" prefix.", "Warning")
-    }
-  }
-
   fn load_and_cache_npm_package_info(&self, package_name: &str) {
     match self.npm_resolver {
       Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
@@ -395,94 +495,47 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
             .into_iter()
             .map(|r| {
               r.map_err(|err| match err {
-                NpmResolutionError::Registry(e) => {
-                  NpmLoadError::RegistryInfo(Arc::new(e.into()))
-                }
+                NpmResolutionError::Registry(e) => NpmLoadError::RegistryInfo(
+                  Arc::new(JsErrorBox::generic(e.to_string()))
+                    as Arc<dyn JsErrorClass>,
+                ),
                 NpmResolutionError::Resolution(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                  NpmLoadError::PackageReqResolution(Arc::new(
+                    JsErrorBox::generic(e.to_string()),
+                  )
+                    as Arc<dyn JsErrorClass>)
                 }
                 NpmResolutionError::DependencyEntry(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                  NpmLoadError::PackageReqResolution(Arc::new(
+                    JsErrorBox::generic(e.to_string()),
+                  )
+                    as Arc<dyn JsErrorClass>)
                 }
               })
             })
-            .collect(),
+            .collect::<Vec<_>>(),
           dep_graph_result: match top_level_result {
-            Ok(()) => result.dependencies_result.map_err(Arc::new),
-            Err(err) => Err(Arc::new(err)),
+            Ok(()) => result.dependencies_result.map_err(|e| {
+              Arc::new(JsErrorBox::generic(e.to_string()))
+                as Arc<dyn JsErrorClass>
+            }),
+            Err(err) => Err(Arc::new(JsErrorBox::generic(err.to_string()))
+              as Arc<dyn JsErrorClass>),
           },
         }
       }
       None => {
-        let err = Arc::new(anyhow!(
-          "npm specifiers were requested; but --no-npm is specified"
+        let err = Arc::new(JsErrorBox::generic(
+          "npm specifiers were requested; but --no-npm is specified",
         ));
         NpmResolvePkgReqsResult {
           results: package_reqs
             .iter()
             .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
-            .collect(),
+            .collect::<Vec<_>>(),
           dep_graph_result: Err(err),
         }
       }
     }
-  }
-
-  fn enables_bare_builtin_node_module(&self) -> bool {
-    self.bare_node_builtins_enabled
-  }
-}
-
-#[derive(Debug)]
-pub struct SloppyImportsCachedFs {
-  fs: Arc<dyn deno_fs::FileSystem>,
-  cache: Option<
-    DashMap<
-      PathBuf,
-      Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry>,
-    >,
-  >,
-}
-
-impl SloppyImportsCachedFs {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self {
-      fs,
-      cache: Some(Default::default()),
-    }
-  }
-
-  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
-    Self { fs, cache: None }
-  }
-}
-
-impl deno_resolver::sloppy_imports::SloppyImportResolverFs
-  for SloppyImportsCachedFs
-{
-  fn stat_sync(
-    &self,
-    path: &Path,
-  ) -> Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry> {
-    if let Some(cache) = &self.cache {
-      if let Some(entry) = cache.get(path) {
-        return *entry;
-      }
-    }
-
-    let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
-      if stat.is_file {
-        Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::File)
-      } else if stat.is_directory {
-        Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::Dir)
-      } else {
-        None
-      }
-    });
-
-    if let Some(cache) = &self.cache {
-      cache.insert(path.to_owned(), entry);
-    }
-    entry
   }
 }

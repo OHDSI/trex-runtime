@@ -23,10 +23,10 @@ use crate::runtime::ops::permissions::PermissionError;
 // use deno_broadcast_channel::BroadcastChannelError;
 // use deno_cache::CacheError;
 // use deno_canvas::CanvasError;
+use deno_core::ModuleResolutionError;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url;
-use deno_core::ModuleResolutionError;
 // use deno_cron::CronError;
 use deno_crypto::DecryptError;
 use deno_crypto::EncryptError;
@@ -45,7 +45,7 @@ use deno_fs::FsOpsError;
 use deno_fs::FsOpsErrorKind;
 use deno_http::HttpError;
 use deno_http::HttpNextError;
-use deno_http::WebSocketUpgradeError;
+// use deno_http::WebSocketUpgradeError; // Removed in Deno 2.5.6
 use deno_io::fs::FsError;
 // use deno_kv::KvCheckError;
 // use deno_kv::KvError;
@@ -59,6 +59,8 @@ use deno_permissions::PathResolveError;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::RunDescriptorParseError;
 use deno_permissions::SysDescriptorParseError;
+// IpcJsonStreamError is now part of IpcError in Deno 2.5.6
+// use deno_process::ipc::IpcJsonStreamError;
 use deno_tls::TlsError;
 use deno_web::BlobError;
 use deno_web::CompressionError;
@@ -93,6 +95,8 @@ fn get_path_resolve_error(e: &PathResolveError) -> &'static str {
   match e {
     PathResolveError::CwdResolve(e) => get_io_error_class(e),
     PathResolveError::EmptyPath => "Error",
+    PathResolveError::Canonicalize(_) => "Error",
+    PathResolveError::NotFound(_) => "NotFound",
   }
 }
 
@@ -468,34 +472,67 @@ fn get_crypto_x25519_error_class(e: &deno_crypto::X25519Error) -> &'static str {
   }
 }
 
-fn get_crypto_error_class(e: &deno_crypto::Error) -> &'static str {
+// deno_crypto::Error enum removed in Deno 2.5.6
+// Now uses specific error types like CryptoError, DecryptError, EncryptError, etc.
+// fn get_crypto_error_class(e: &deno_crypto::Error) -> &'static str {
+//   match e {
+//     deno_crypto::Error::Der(_) => "Error",
+//     deno_crypto::Error::JoinError(_) => "Error",
+//     deno_crypto::Error::MissingArgumentHash => "TypeError",
+//     deno_crypto::Error::MissingArgumentSaltLength => "TypeError",
+//     deno_crypto::Error::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+//     deno_crypto::Error::UnsupportedAlgorithm => "TypeError",
+//     deno_crypto::Error::KeyRejected(_) => "Error",
+//     deno_crypto::Error::RSA(_) => "Error",
+//     deno_crypto::Error::Pkcs1(_) => "Error",
+//     deno_crypto::Error::Unspecified(_) => "Error",
+//     deno_crypto::Error::InvalidKeyFormat => "TypeError",
+//     deno_crypto::Error::MissingArgumentPublicKey => "TypeError",
+//     deno_crypto::Error::P256Ecdsa(_) => "Error",
+//     deno_crypto::Error::DecodePrivateKey => "TypeError",
+//     deno_crypto::Error::MissingArgumentNamedCurve => "TypeError",
+//     deno_crypto::Error::MissingArgumentInfo => "TypeError",
+//     deno_crypto::Error::HKDFLengthTooLarge => "DOMExceptionOperationError",
+//     deno_crypto::Error::General(e) => get_crypto_shared_error_class(e),
+//     deno_crypto::Error::Base64Decode(_) => "Error",
+//     deno_crypto::Error::DataInvalidSize => "TypeError",
+//     deno_crypto::Error::InvalidKeyLength => "TypeError",
+//     deno_crypto::Error::EncryptionError => "DOMExceptionOperationError",
+//     deno_crypto::Error::DecryptionError => "DOMExceptionOperationError",
+//     deno_crypto::Error::ArrayBufferViewLengthExceeded(_) => {
+//       "DOMExceptionQuotaExceededError"
+//     }
+//   }
+// }
+
+fn get_crypto_error_class(e: &deno_crypto::CryptoError) -> &'static str {
+  use deno_crypto::CryptoError;
   match e {
-    deno_crypto::Error::Der(_) => "Error",
-    deno_crypto::Error::JoinError(_) => "Error",
-    deno_crypto::Error::MissingArgumentHash => "TypeError",
-    deno_crypto::Error::MissingArgumentSaltLength => "TypeError",
-    deno_crypto::Error::Other(e) => get_error_class_name(e).unwrap_or("Error"),
-    deno_crypto::Error::UnsupportedAlgorithm => "TypeError",
-    deno_crypto::Error::KeyRejected(_) => "Error",
-    deno_crypto::Error::RSA(_) => "Error",
-    deno_crypto::Error::Pkcs1(_) => "Error",
-    deno_crypto::Error::Unspecified(_) => "Error",
-    deno_crypto::Error::InvalidKeyFormat => "TypeError",
-    deno_crypto::Error::MissingArgumentPublicKey => "TypeError",
-    deno_crypto::Error::P256Ecdsa(_) => "Error",
-    deno_crypto::Error::DecodePrivateKey => "TypeError",
-    deno_crypto::Error::MissingArgumentNamedCurve => "TypeError",
-    deno_crypto::Error::MissingArgumentInfo => "TypeError",
-    deno_crypto::Error::HKDFLengthTooLarge => "DOMExceptionOperationError",
-    deno_crypto::Error::General(e) => get_crypto_shared_error_class(e),
-    deno_crypto::Error::Base64Decode(_) => "Error",
-    deno_crypto::Error::DataInvalidSize => "TypeError",
-    deno_crypto::Error::InvalidKeyLength => "TypeError",
-    deno_crypto::Error::EncryptionError => "DOMExceptionOperationError",
-    deno_crypto::Error::DecryptionError => "DOMExceptionOperationError",
-    deno_crypto::Error::ArrayBufferViewLengthExceeded(_) => {
+    CryptoError::General(_) => "Error",
+    CryptoError::JoinError(_) => "Error",
+    CryptoError::Der(_) => "Error",
+    CryptoError::MissingArgumentHash => "TypeError",
+    CryptoError::MissingArgumentSaltLength => "TypeError",
+    CryptoError::UnsupportedAlgorithm => "TypeError",
+    CryptoError::RSA(_) => "Error",
+    CryptoError::Pkcs1(_) => "Error",
+    CryptoError::Unspecified(_) => "Error",
+    CryptoError::InvalidKeyFormat => "TypeError",
+    CryptoError::MissingArgumentPublicKey => "TypeError",
+    CryptoError::P256Ecdsa(_) => "Error",
+    CryptoError::DecodePrivateKey => "TypeError",
+    CryptoError::MissingArgumentNamedCurve => "TypeError",
+    CryptoError::MissingArgumentInfo => "TypeError",
+    CryptoError::HKDFLengthTooLarge => "DOMExceptionOperationError",
+    CryptoError::Base64Decode(_) => "Error",
+    CryptoError::DataInvalidSize => "TypeError",
+    CryptoError::InvalidKeyLength => "TypeError",
+    CryptoError::EncryptionError => "DOMExceptionOperationError",
+    CryptoError::DecryptionError => "DOMExceptionOperationError",
+    CryptoError::ArrayBufferViewLengthExceeded(_) => {
       "DOMExceptionQuotaExceededError"
     }
+    _ => "Error",
   }
 }
 
@@ -534,11 +571,8 @@ fn get_web_message_port_error_class(e: &MessagePortError) -> &'static str {
     MessagePortError::InvalidTransfer => "TypeError",
     MessagePortError::NotReady => "TypeError",
     MessagePortError::TransferSelf => "TypeError",
-    MessagePortError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
-    MessagePortError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    MessagePortError::Canceled(_) => "Interrupted",
+    MessagePortError::Resource(_) => "Error",
   }
 }
 
@@ -546,10 +580,7 @@ fn get_web_stream_resource_error_class(
   e: &StreamResourceError,
 ) -> &'static str {
   match e {
-    StreamResourceError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
+    StreamResourceError::Canceled(_) => "Interrupted",
     StreamResourceError::Js(_) => "TypeError",
   }
 }
@@ -693,7 +724,7 @@ fn get_tls_error_class(e: &TlsError) -> &'static str {
 
 fn get_fetch_error(error: &FetchError) -> &'static str {
   match error {
-    FetchError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    FetchError::Resource(_) => "Error",
     FetchError::Permission(e) => get_permission_check_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
@@ -713,7 +744,8 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::ClientSend(_) => "TypeError",
     FetchError::RequestBuilderHook(_) => "TypeError",
     FetchError::Io(e) => get_io_error_class(e),
-    FetchError::Hyper(e) => get_hyper_error_class(e),
+    FetchError::Dns(_) => "Error",
+    FetchError::PermissionCheck(_) => "Error",
   }
 }
 
@@ -724,30 +756,29 @@ fn get_http_client_create_error(error: &HttpClientCreateError) -> &'static str {
     HttpClientCreateError::InvalidProxyUrl => "TypeError",
     HttpClientCreateError::HttpVersionSelectionInvalid => "TypeError",
     HttpClientCreateError::RootCertStore(_) => "TypeError",
+    HttpClientCreateError::InvalidAddress(_) => "TypeError",
+    HttpClientCreateError::UnixProxyNotSupportedOnWindows => "TypeError",
+    HttpClientCreateError::VsockProxyNotSupported => "TypeError",
   }
 }
 
 fn get_websocket_error(error: &WebsocketError) -> &'static str {
   match error {
-    WebsocketError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+    WebsocketError::Resource(_) => "Error",
     WebsocketError::Permission(e) => get_permission_check_error_class(e),
     WebsocketError::Url(e) => get_url_parse_error_class(e),
     WebsocketError::Io(e) => get_io_error_class(e),
     WebsocketError::WebSocket(_) => "TypeError",
     WebsocketError::ConnectionFailed(_) => "DOMExceptionNetworkError",
     WebsocketError::Uri(_) => "Error",
-    WebsocketError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
+    WebsocketError::Canceled(_) => "Interrupted",
+    WebsocketError::ClientCreate(_) => "Error",
   }
 }
 
 fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
   match error {
-    HandshakeError::RootStoreError(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    HandshakeError::RootStoreError(_) => "Error",
     HandshakeError::Tls(e) => get_tls_error_class(e),
     HandshakeError::MissingPath => "TypeError",
     HandshakeError::Http(_) => "Error",
@@ -760,6 +791,9 @@ fn get_websocket_handshake_error(error: &HandshakeError) -> &'static str {
     HandshakeError::WebSocket(_) => "TypeError",
     HandshakeError::HeaderName(_) => "TypeError",
     HandshakeError::HeaderValue(_) => "TypeError",
+    HandshakeError::MissingHost => "Error",
+    HandshakeError::InvalidScheme => "Error",
+    HandshakeError::Connect(_) => "Error",
   }
 }
 
@@ -769,20 +803,17 @@ fn get_fs_ops_error(error: &FsOpsError) -> &'static str {
     Io(e) => get_io_error_class(e),
     OperationError(e) => get_fs_error(&e.err),
     Permission(e) => get_permission_check_error_class(e),
-    Resource(e) | Other(e) => get_error_class_name(e).unwrap_or("Error"),
+    Resource(_) => "Error",
+    Other(_) => "Error",
     InvalidUtf8(_) => "InvalidData",
     StripPrefix(_) => "Error",
-    Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
+    Canceled(_) => "Interrupted",
     InvalidSeekMode(_) => "TypeError",
     InvalidControlCharacter(_) => "Error",
     InvalidCharacter(_) => "Error",
     #[cfg(windows)]
     InvalidTrailingCharacter => "Error",
-    NotCapableAccess { .. } => "NotCapable",
-    NotCapable(_) => "NotCapable",
+    // NotCapable variant was removed in newer deno_fs versions
   }
 }
 
@@ -837,17 +868,13 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::SocketBusy => "Busy",
     NetError::Io(e) => get_io_error_class(e),
     NetError::AcceptTaskOngoing => "Busy",
-    NetError::RootCertStore(e) | NetError::Resource(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    NetError::RootCertStore(_) => "Error",
+    NetError::Resource(_) => "Error",
     NetError::Permission(e) => get_permission_check_error_class(e),
     NetError::NoResolvedAddress => "Error",
     NetError::AddrParse(_) => "Error",
     NetError::Map(e) => get_net_map_error(e),
-    NetError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
+    NetError::Canceled(_) => "Interrupted",
     NetError::DnsNotFound(_) => "NotFound",
     NetError::DnsNotConnected(_) => "NotConnected",
     NetError::DnsTimedOut(_) => "TimedOut",
@@ -861,6 +888,8 @@ fn get_net_error(error: &NetError) -> &'static str {
     NetError::Tls(e) => get_tls_error_class(e),
     NetError::ListenTlsRequiresKey => "InvalidData",
     NetError::Reunite(_) => "Error",
+    NetError::VsockUnsupported => "Error",
+    NetError::TunnelMissing => "Error",
   }
 }
 
@@ -988,10 +1017,7 @@ fn get_child_permission_error(e: &ChildPermissionError) -> &'static str {
 
 fn get_http_error(error: &HttpError) -> &'static str {
   match error {
-    HttpError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
+    HttpError::Canceled(_) => "Interrupted",
     HttpError::HyperV014(e) => get_hyper_v014_error_class(e),
     HttpError::InvalidHeaderName(_) => "Error",
     HttpError::InvalidHeaderValue(_) => "Error",
@@ -1003,48 +1029,45 @@ fn get_http_error(error: &HttpError) -> &'static str {
     HttpError::NoResponseHeaders => "Http",
     HttpError::ResponseAlreadyCompleted => "Http",
     HttpError::UpgradeBodyUsed => "Http",
-    HttpError::Resource(e) | HttpError::Other(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    HttpError::Resource(e) => "Error",
+    HttpError::Other(e) => "Error",
   }
 }
 
 fn get_http_next_error(error: &HttpNextError) -> &'static str {
   match error {
     HttpNextError::Io(e) => get_io_error_class(e),
-    HttpNextError::WebSocketUpgrade(e) => get_websocket_upgrade_error(e),
     HttpNextError::Hyper(e) => get_hyper_error_class(e),
     HttpNextError::JoinError(_) => "Error",
-    HttpNextError::Canceled(e) => {
-      let io_err: io::Error = e.to_owned().into();
-      get_io_error_class(&io_err)
-    }
+    HttpNextError::Canceled(_) => "Interrupted",
     HttpNextError::UpgradeUnavailable(_) => "Error",
-    HttpNextError::HttpPropertyExtractor(e) | HttpNextError::Resource(e) => {
-      get_error_class_name(e).unwrap_or("Error")
-    }
+    HttpNextError::Resource(e) => "Error",
+    HttpNextError::Other(_) => "Error",
+    HttpNextError::InvalidHttpStatusLine => "Http",
+    HttpNextError::RawUpgradeFailed => "Error",
   }
 }
 
-fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
-  match error {
-    WebSocketUpgradeError::InvalidHeaders => "Http",
-    WebSocketUpgradeError::HttpParse(_) => "Error",
-    WebSocketUpgradeError::Http(_) => "Error",
-    WebSocketUpgradeError::Utf8(_) => "Error",
-    WebSocketUpgradeError::InvalidHeaderName(_) => "Error",
-    WebSocketUpgradeError::InvalidHeaderValue(_) => "Error",
-    WebSocketUpgradeError::InvalidHttpStatusLine => "Http",
-    WebSocketUpgradeError::UpgradeBufferAlreadyCompleted => "Http",
-  }
-}
+// Commented out: WebSocketUpgradeError removed in Deno 2.5.6
+// fn get_websocket_upgrade_error(error: &WebSocketUpgradeError) -> &'static str {
+//   match error {
+//     WebSocketUpgradeError::InvalidHeaders => "Http",
+//     WebSocketUpgradeError::HttpParse(_) => "Error",
+//     WebSocketUpgradeError::Http(_) => "Error",
+//     WebSocketUpgradeError::Utf8(_) => "Error",
+//     WebSocketUpgradeError::InvalidHeaderName(_) => "Error",
+//     WebSocketUpgradeError::InvalidHeaderValue(_) => "Error",
+//     WebSocketUpgradeError::InvalidHttpStatusLine => "Http",
+//     WebSocketUpgradeError::UpgradeBufferAlreadyCompleted => "Http",
+//   }
+// }
 
 fn get_fs_error(e: &FsError) -> &'static str {
   match &e {
     FsError::Io(e) => get_io_error_class(e),
     FsError::FileBusy => "Busy",
     FsError::NotSupported => "NotSupported",
-    FsError::NotCapable(_) => "NotCapable",
+    FsError::PermissionCheck(e) => get_permission_check_error_class(e),
   }
 }
 
@@ -1054,7 +1077,17 @@ mod node {
   use super::get_permission_check_error_class;
   use super::get_serde_json_error_class;
   use super::get_url_parse_error_class;
+  // IpcJsonStreamError is now part of IpcError in Deno 2.5.6
+  // use deno_process::ipc::IpcJsonStreamError;
   pub use ext_node::ops::blocklist::BlocklistError;
+  pub use ext_node::ops::crypto::DiffieHellmanError;
+  pub use ext_node::ops::crypto::EcdhEncodePubKey;
+  pub use ext_node::ops::crypto::HkdfError;
+  pub use ext_node::ops::crypto::Pbkdf2Error;
+  pub use ext_node::ops::crypto::PrivateEncryptDecryptError;
+  pub use ext_node::ops::crypto::ScryptAsyncError;
+  pub use ext_node::ops::crypto::SignEd25519Error;
+  pub use ext_node::ops::crypto::VerifyEd25519Error;
   pub use ext_node::ops::crypto::cipher::CipherContextError;
   pub use ext_node::ops::crypto::cipher::CipherError;
   pub use ext_node::ops::crypto::cipher::DecipherContextError;
@@ -1075,27 +1108,19 @@ mod node {
   pub use ext_node::ops::crypto::keys::X509PublicKeyError;
   pub use ext_node::ops::crypto::sign::KeyObjectHandlePrehashedSignAndVerifyError;
   pub use ext_node::ops::crypto::x509::X509Error;
-  pub use ext_node::ops::crypto::DiffieHellmanError;
-  pub use ext_node::ops::crypto::EcdhEncodePubKey;
-  pub use ext_node::ops::crypto::HkdfError;
-  pub use ext_node::ops::crypto::Pbkdf2Error;
-  pub use ext_node::ops::crypto::PrivateEncryptDecryptError;
-  pub use ext_node::ops::crypto::ScryptAsyncError;
-  pub use ext_node::ops::crypto::SignEd25519Error;
-  pub use ext_node::ops::crypto::VerifyEd25519Error;
   pub use ext_node::ops::fs::FsError;
   pub use ext_node::ops::http2::Http2Error;
   pub use ext_node::ops::idna::IdnaError;
   pub use ext_node::ops::ipc::IpcError;
-  pub use ext_node::ops::ipc::IpcJsonStreamError;
-  use ext_node::ops::os::priority::PriorityError;
   pub use ext_node::ops::os::OsError;
+  use ext_node::ops::os::priority::PriorityError;
   pub use ext_node::ops::require::RequireError;
   use ext_node::ops::require::RequireErrorKind;
   pub use ext_node::ops::worker_threads::WorkerThreadsFilenameError;
-  pub use ext_node::ops::zlib::brotli::BrotliError;
-  pub use ext_node::ops::zlib::mode::ModeError;
+  // BrotliError removed in Deno 2.5.6 - brotli errors are now part of ZlibError
+  // pub use ext_node::ops::zlib::BrotliError;
   pub use ext_node::ops::zlib::ZlibError;
+  pub use ext_node::ops::zlib::mode::ModeError;
 
   pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
     match error {
@@ -1126,22 +1151,22 @@ mod node {
     }
   }
 
-  pub fn get_ipc_json_stream_error(error: &IpcJsonStreamError) -> &'static str {
-    match error {
-      IpcJsonStreamError::Io(e) => get_io_error_class(e),
-      IpcJsonStreamError::SimdJson(_) => "Error",
-    }
-  }
+  // IpcJsonStreamError handling removed in Deno 2.5.6
+  // Now handled directly within IpcError
+  // pub fn get_ipc_json_stream_error(error: &IpcJsonStreamError) -> &'static str {
+  //   match error {
+  //     IpcJsonStreamError::Io(e) => get_io_error_class(e),
+  //     IpcJsonStreamError::SimdJson(_) => "Error",
+  //   }
+  // }
 
   pub fn get_ipc_error(error: &IpcError) -> &'static str {
     match error {
-      IpcError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
-      IpcError::IpcJsonStream(e) => get_ipc_json_stream_error(e),
-      IpcError::Canceled(e) => {
-        let io_err: std::io::Error = e.to_owned().into();
-        get_io_error_class(&io_err)
-      }
+      IpcError::Resource(_) => "Error",
+      IpcError::Canceled(_) => "Interrupted",
       IpcError::SerdeJson(e) => get_serde_json_error_class(e),
+      // Handle any other IpcError variants
+      _ => "Error",
     }
   }
 
@@ -1149,9 +1174,7 @@ mod node {
     error: &WorkerThreadsFilenameError,
   ) -> &'static str {
     match error {
-      WorkerThreadsFilenameError::Permission(e) => {
-        get_error_class_name(e).unwrap_or("Error")
-      }
+      WorkerThreadsFilenameError::Permission(_) => "Error",
       WorkerThreadsFilenameError::UrlParse(e) => get_url_parse_error_class(e),
       WorkerThreadsFilenameError::InvalidRelativeUrl => "Error",
       WorkerThreadsFilenameError::UrlFromPathString => "Error",
@@ -1159,6 +1182,7 @@ mod node {
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
       WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
+      WorkerThreadsFilenameError::Io(_) => "Error",
     }
   }
 
@@ -1166,23 +1190,25 @@ mod node {
     use RequireErrorKind::*;
     match error.as_kind() {
       UrlParse(e) => get_url_parse_error_class(e),
-      Permission(e) => get_error_class_name(e).unwrap_or("Error"),
+      Permission(_) => "Error",
       PackageExportsResolve(_)
       | PackageJsonLoad(_)
-      | ClosestPkgJson(_)
       | FilePathConversion(_)
       | UrlConversion(_)
       | ReadModule(_)
       | PackageImportsResolve(_) => "Error",
-      Fs(e) | UnableToGetCwd(e) => super::get_fs_error(e),
+      Fs(e) => super::get_fs_error(e),
+      UnableToGetCwd(_) => "Error", // UnableToGetCwdError doesn't have fs error
+      Io(e) => get_io_error_class(e),
     }
   }
 
   pub fn get_http2_error(error: &Http2Error) -> &'static str {
     match error {
-      Http2Error::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+      Http2Error::Resource(_) => "Error",
       Http2Error::UrlParse(e) => get_url_parse_error_class(e),
       Http2Error::H2(_) => "Error",
+      Http2Error::TakeNetworkStream(_) => "Error",
     }
   }
 
@@ -1194,21 +1220,21 @@ mod node {
         PriorityError::InvalidPriority => "TypeError",
       },
       OsError::Permission(e) => get_permission_check_error_class(e),
-      OsError::FailedToGetCpuInfo => "TypeError",
       OsError::FailedToGetUserInfo(e) => get_io_error_class(e),
     }
   }
 
-  pub fn get_brotli_error(error: &BrotliError) -> &'static str {
-    match error {
-      BrotliError::InvalidEncoderMode => "TypeError",
-      BrotliError::CompressFailed => "TypeError",
-      BrotliError::DecompressFailed => "TypeError",
-      BrotliError::Join(_) => "Error",
-      BrotliError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
-      BrotliError::Io(e) => get_io_error_class(e),
-    }
-  }
+  // BrotliError removed in Deno 2.5.6 - brotli errors are now part of ZlibError
+  // pub fn get_brotli_error(error: &BrotliError) -> &'static str {
+  //   match error {
+  //     BrotliError::InvalidEncoderMode => "TypeError",
+  //     BrotliError::CompressFailed => "TypeError",
+  //     BrotliError::DecompressFailed => "TypeError",
+  //     BrotliError::Join(_) => "Error",
+  //     BrotliError::Resource(e) => get_error_class_name(e).unwrap_or("Error"),
+  //     BrotliError::Io(e) => get_io_error_class(e),
+  //   }
+  // }
 
   pub fn get_mode_error(_: &ModeError) -> &'static str {
     "Error"
@@ -1218,7 +1244,7 @@ mod node {
     match e {
       ZlibError::NotInitialized => "TypeError",
       ZlibError::Mode(e) => get_mode_error(e),
-      ZlibError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+      ZlibError::Other(_) => "Error",
     }
   }
 
@@ -1228,9 +1254,7 @@ mod node {
     match e {
       CipherContextError::ContextInUse => "TypeError",
       CipherContextError::Cipher(e) => get_crypto_cipher_error(e),
-      CipherContextError::Resource(e) => {
-        get_error_class_name(e).unwrap_or("Error")
-      }
+      CipherContextError::Resource(_) => "Error",
     }
   }
 
@@ -1250,9 +1274,7 @@ mod node {
     match e {
       DecipherContextError::ContextInUse => "TypeError",
       DecipherContextError::Decipher(e) => get_crypto_decipher_error(e),
-      DecipherContextError::Resource(e) => {
-        get_error_class_name(e).unwrap_or("Error")
-      }
+      DecipherContextError::Resource(_) => "Error",
     }
   }
 
@@ -1266,6 +1288,8 @@ mod node {
       DecipherError::SetAutoPaddingFalseAes128GcmUnsupported => "TypeError",
       DecipherError::SetAutoPaddingFalseAes256GcmUnsupported => "TypeError",
       DecipherError::UnknownCipher(_) => "TypeError",
+      DecipherError::InvalidAuthTag(_) => "TypeError",
+      DecipherError::InvalidFinalBlockLength => "TypeError",
     }
   }
 
@@ -1412,7 +1436,7 @@ mod node {
   pub fn get_scrypt_async_error(e: &ScryptAsyncError) -> &'static str {
     match e {
       ScryptAsyncError::Join(_) => "Error",
-      ScryptAsyncError::Other(e) => get_error_class_name(e).unwrap_or("Error"),
+      ScryptAsyncError::Other(_) => "Error",
     }
   }
 
@@ -1570,11 +1594,10 @@ mod node {
 // }
 
 pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
-  deno_core::error::get_custom_error_class(e)
-    .or_else(|| {
-      e.downcast_ref::<ChildPermissionError>()
-        .map(get_child_permission_error)
-    })
+  // Note: get_custom_error_class was removed in deno_core 0.363.0
+  // We now check error types directly
+  e.downcast_ref::<ChildPermissionError>()
+    .map(get_child_permission_error)
     .or_else(|| {
       e.downcast_ref::<PermissionCheckError>()
         .map(get_permission_check_error_class)
@@ -1593,10 +1616,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<node::IdnaError>()
         .map(node::get_idna_error)
     })
-    .or_else(|| {
-      e.downcast_ref::<node::IpcJsonStreamError>()
-        .map(node::get_ipc_json_stream_error)
-    })
+    // IpcJsonStreamError removed in Deno 2.5.6
+    // .or_else(|| {
+    //   e.downcast_ref::<node::IpcJsonStreamError>()
+    //     .map(node::get_ipc_json_stream_error)
+    // })
     .or_else(|| e.downcast_ref::<node::IpcError>().map(node::get_ipc_error))
     .or_else(|| {
       e.downcast_ref::<node::WorkerThreadsFilenameError>()
@@ -1611,10 +1635,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(node::get_http2_error)
     })
     .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
-    .or_else(|| {
-      e.downcast_ref::<node::BrotliError>()
-        .map(node::get_brotli_error)
-    })
+    // BrotliError removed in Deno 2.5.6
+    // .or_else(|| {
+    //   e.downcast_ref::<node::BrotliError>()
+    //     .map(node::get_brotli_error)
+    // })
     .or_else(|| {
       e.downcast_ref::<node::ModeError>()
         .map(node::get_mode_error)
@@ -1762,10 +1787,11 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     // .or_else(|| e.downcast_ref::<ReprError>().map(get_ffi_repr_error_class))
     .or_else(|| e.downcast_ref::<HttpError>().map(get_http_error))
     .or_else(|| e.downcast_ref::<HttpNextError>().map(get_http_next_error))
-    .or_else(|| {
-      e.downcast_ref::<WebSocketUpgradeError>()
-        .map(get_websocket_upgrade_error)
-    })
+    // WebSocketUpgradeError removed in Deno 2.5.6
+    // .or_else(|| {
+    //   e.downcast_ref::<WebSocketUpgradeError>()
+    //     .map(get_websocket_upgrade_error)
+    // })
     .or_else(|| e.downcast_ref::<FsOpsError>().map(get_fs_ops_error))
     // .or_else(|| {
     //   e.downcast_ref::<DlfcnError>()
@@ -1865,17 +1891,18 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(get_crypto_x25519_error_class)
     })
     .or_else(|| {
-      e.downcast_ref::<deno_crypto::Error>()
+      e.downcast_ref::<deno_crypto::CryptoError>()
         .map(get_crypto_error_class)
     })
     .or_else(|| {
       e.downcast_ref::<WebStorageError>()
         .map(get_webstorage_class_name)
     })
-    .or_else(|| {
-      e.downcast_ref::<deno_url::UrlPatternError>()
-        .map(|_| "TypeError")
-    })
+    // UrlPatternError was removed from deno_url in newer versions
+    // .or_else(|| {
+    //   e.downcast_ref::<deno_url::UrlPatternError>()
+    //     .map(|_| "TypeError")
+    // })
     // .or_else(|| {
     //   e.downcast_ref::<dlopen2::Error>()
     //     .map(get_dlopen_error_class)
@@ -1894,10 +1921,8 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
         .map(|e| get_hyper_v014_error_class(e))
     })
     .or_else(|| {
-      e.downcast_ref::<deno_core::Canceled>().map(|e| {
-        let io_err: io::Error = e.to_owned().into();
-        get_io_error_class(&io_err)
-      })
+      e.downcast_ref::<deno_core::Canceled>()
+        .map(|_| "Interrupted")
     })
     .or_else(|| {
       e.downcast_ref::<env::VarError>()

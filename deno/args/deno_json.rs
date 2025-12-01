@@ -1,6 +1,14 @@
 use std::collections::HashSet;
 
-use deno_config::deno_json::TsConfigForEmit;
+// TsConfigForEmit has been removed from deno_config in Deno 2.5.6
+// Creating a stub type until proper migration can be completed
+pub struct TsConfigForEmit {
+  pub ts_config: TsConfigWrapper,
+  pub maybe_ignored_options: Option<String>,
+}
+
+pub struct TsConfigWrapper(pub deno_core::serde_json::Value);
+
 use deno_core::serde_json;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
