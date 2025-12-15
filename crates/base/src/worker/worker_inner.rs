@@ -232,16 +232,18 @@ impl Worker {
     // For user workers, use dedicated thread spawning
     // For main/event workers, use the existing thread pool approach
     if worker_kind.is_user_worker() {
-      return self.start_on_dedicated_thread(
-        eager_module_init,
-        booter_signal,
-        exit,
-        worker_name,
-        worker_key,
-        Some(event_metadata.clone()),
-        events_msg_tx.clone(),
-        pool_msg_tx.clone(),
-      ).await;
+      return self
+        .start_on_dedicated_thread(
+          eager_module_init,
+          booter_signal,
+          exit,
+          worker_name,
+          worker_key,
+          Some(event_metadata.clone()),
+          events_msg_tx.clone(),
+          pool_msg_tx.clone(),
+        )
+        .await;
     }
 
     let rt = imp.runtime_handle();
@@ -306,15 +308,15 @@ impl Worker {
 
             let supervise_fut = match imp.clone().supervise(&mut new_runtime) {
               Some(v) => v.boxed(),
-              None if worker_kind.is_user_worker() => return Ok(WorkerEvents::Shutdown(ShutdownEvent { 
+              None if worker_kind.is_user_worker() => return Ok(WorkerEvents::Shutdown(ShutdownEvent {
                   reason: ShutdownReason::EarlyDrop,
-                  cpu_time_used: 0, 
+                  cpu_time_used: 0,
                   memory_used: WorkerMemoryUsed {
                       total: 0,
                       heap: 0,
                       external: 0,
                       mem_check_captured: Default::default(),
-                  } 
+                  }
               })),
               None => ready(Ok(())).boxed(),
             };
@@ -588,7 +590,10 @@ impl Worker {
                 }
                 Ok(Err(err)) => {
                   // This is expected - the worker boot error was already sent via booter_signal
-                  debug!("worker thread exited with error after boot failure: {}", err);
+                  debug!(
+                    "worker thread exited with error after boot failure: {}",
+                    err
+                  );
                 }
                 Err(_panic) => {
                   error!("worker thread panicked during boot failure cleanup");

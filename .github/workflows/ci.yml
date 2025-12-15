@@ -59,12 +59,14 @@ jobs:
     if: github.event.pull_request.draft == false
     name: 'cargo clippy'
     runs-on: ubuntu-latest
+    env:
+      V8_FROM_SOURCE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev unzip wget
+          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
       - name: Install DuckDB library
         run: |
           wget -O /tmp/libduckdb-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.3.2/libduckdb-linux-amd64.zip

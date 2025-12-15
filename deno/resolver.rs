@@ -237,40 +237,67 @@ impl NpmModuleLoader {
 #[derive(Clone)]
 pub struct GenericNpmModuleLoader<
   TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
-  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
+  TSys: sys_traits::FsCanonicalize
+    + sys_traits::FsMetadata
+    + sys_traits::FsRead
+    + sys_traits::FsReadDir
+    + Send
+    + Sync
+    + Clone
+    + 'static,
   TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
   TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
 > {
   cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
-    TCjsCodeAnalyzer,
-    TInNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver,
-    TSys,
-  >>,
-}
-
-impl<
-  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
-  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
-  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
-  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
-  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
-> GenericNpmModuleLoader<TInNpmPackageChecker, TSys, TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TNpmPackageFolderResolver>
-{
-  pub fn new(
-    cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
+  node_code_translator: Arc<
+    node_resolver::analyze::NodeCodeTranslator<
       TCjsCodeAnalyzer,
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
       TSys,
-    >>,
+    >,
+  >,
+}
+
+impl<
+  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
+  TSys: sys_traits::FsCanonicalize
+    + sys_traits::FsMetadata
+    + sys_traits::FsRead
+    + sys_traits::FsReadDir
+    + Send
+    + Sync
+    + Clone
+    + 'static,
+  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
+  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
+>
+  GenericNpmModuleLoader<
+    TInNpmPackageChecker,
+    TSys,
+    TCjsCodeAnalyzer,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+  >
+{
+  pub fn new(
+    cjs_tracker: Arc<
+      deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>,
+    >,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    node_code_translator: Arc<
+      node_resolver::analyze::NodeCodeTranslator<
+        TCjsCodeAnalyzer,
+        TInNpmPackageChecker,
+        TIsBuiltInNodeModuleChecker,
+        TNpmPackageFolderResolver,
+        TSys,
+      >,
+    >,
   ) -> Self {
     Self {
       cjs_tracker,

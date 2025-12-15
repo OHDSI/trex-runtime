@@ -486,11 +486,12 @@ impl WorkerPool {
           let handles_opt = handles_guard.take();
           drop(handles_guard);
 
-          let (thread_handle, isolate_handle) = if let Some(handles) = handles_opt {
-            (Some(handles.thread_handle), Some(handles.isolate_handle))
-          } else {
-            (None, None)
-          };
+          let (thread_handle, isolate_handle) =
+            if let Some(handles) = handles_opt {
+              (Some(handles.thread_handle), Some(handles.isolate_handle))
+            } else {
+              (None, None)
+            };
 
           let profile = UserWorkerProfile {
             worker_request_msg_tx: surface.msg_tx,

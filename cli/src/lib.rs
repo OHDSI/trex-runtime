@@ -4,7 +4,8 @@ use std::net::SocketAddr;
 
 use anyhow::{Error, Result};
 use base::server::{
-  Builder, RequestIdleTimeout, ServerFlags, ServerHealth, Tls, WorkerEntrypoints,
+  Builder, RequestIdleTimeout, ServerFlags, ServerHealth, Tls,
+  WorkerEntrypoints,
 };
 use base::worker::pool::WorkerPoolPolicy;
 use base::InspectorOption;

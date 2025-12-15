@@ -16,16 +16,16 @@ mod supabase_startup_snapshot {
   use deno::deno_permissions::OpenAccessKind;
   use deno::deno_permissions::PermissionCheckError;
   use deno::PermissionsContainer;
+  use deno_core::error::AnyError;
+  use deno_core::extension;
   use deno_core::snapshot::create_snapshot;
   use deno_core::snapshot::CreateSnapshotOptions;
   use deno_core::url::Url;
   use deno_core::Extension;
-  use deno_core::extension;
   use deno_core::ExtensionFileSource;
   use deno_core::FastString;
   use deno_core::ModuleSpecifier;
   use deno_core::SourceMapData;
-  use deno_core::error::AnyError;
   use deno_error::JsErrorBox;
 
   use super::*;
@@ -33,7 +33,13 @@ mod supabase_startup_snapshot {
   fn transpile_ts(
     specifier: deno_core::ModuleName,
     code: deno_core::ModuleCodeString,
-  ) -> Result<(deno_core::ModuleCodeString, Option<deno_core::SourceMapData>), deno_error::JsErrorBox> {
+  ) -> Result<
+    (
+      deno_core::ModuleCodeString,
+      Option<deno_core::SourceMapData>,
+    ),
+    deno_error::JsErrorBox,
+  > {
     deno::transpile::maybe_transpile_source(specifier, code)
   }
 

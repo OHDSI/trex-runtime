@@ -464,7 +464,10 @@ struct ScopedFuture<F> {
 impl<F: Future> Future for ScopedFuture<F> {
   type Output = F::Output;
 
-  fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+  fn poll(
+    self: std::pin::Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> Poll<Self::Output> {
     let isolate = unsafe { &mut *self.isolate };
     let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
     let mut scope = scope_storage.init();
@@ -1158,22 +1161,23 @@ where
 
         // Now create V8 scope for bootstrap operations
         // deno_core::scope!(scope, &mut bootstrap.js_runtime);
-        let scope_storage = std::pin::pin!(v8::HandleScope::new(bootstrap.js_runtime.v8_isolate()));
+        let scope_storage = std::pin::pin!(v8::HandleScope::new(
+          bootstrap.js_runtime.v8_isolate()
+        ));
         let mut handle_scope = scope_storage.init();
 
         // Bootstrapping stage
         let (runtime_context, extra_context, bootstrap_fn) = {
           let context = context_global.clone();
           let context_local = v8::Local::new(&mut handle_scope, context);
-          let mut context_scope = v8::ContextScope::new(&mut handle_scope, context_local);
+          let mut context_scope =
+            v8::ContextScope::new(&mut handle_scope, context_local);
           let scope = &mut context_scope;
 
           let global_obj = context_local.global(scope);
-          let bootstrap_str = v8::String::new_external_onebyte_static(
-            scope,
-            b"bootstrapSBEdge",
-          )
-          .unwrap();
+          let bootstrap_str =
+            v8::String::new_external_onebyte_static(scope, b"bootstrapSBEdge")
+              .unwrap();
           let bootstrap_fn = v8::Local::<v8::Function>::try_from(
             global_obj.get(scope, bootstrap_str.into()).unwrap(),
           )
@@ -1203,7 +1207,8 @@ where
         {
           let context = context_global;
           let context_local = v8::Local::new(&mut handle_scope, context);
-          let mut context_scope = v8::ContextScope::new(&mut handle_scope, context_local);
+          let mut context_scope =
+            v8::ContextScope::new(&mut handle_scope, context_local);
           let scope = &mut context_scope;
 
           let bootstrap_fn_local = v8::Local::new(scope, &bootstrap_fn);
@@ -1237,9 +1242,7 @@ where
       beforeunload_mem_threshold,
       ..
     } = match bootstrap_ret {
-      Ok(v) => {
-        v
-      },
+      Ok(v) => v,
       Err(err) => {
         return Err(err.context("failed to bootstrap runtime"));
       }
@@ -1372,7 +1375,12 @@ where
           let res = self.js_runtime.load_main_es_module(&url);
           res
         };
-        ScopedFuture { future, isolate: isolate_ptr, context }.await?
+        ScopedFuture {
+          future,
+          isolate: isolate_ptr,
+          context,
+        }
+        .await?
       }
       Some(Entrypoint::ModuleCode(module_code)) => {
         let isolate_ptr = {
@@ -1387,7 +1395,12 @@ where
             .js_runtime
             .load_main_es_module_from_code(&url, module_code)
         };
-        let id = ScopedFuture { future, isolate: isolate_ptr, context }.await?;
+        let id = ScopedFuture {
+          future,
+          isolate: isolate_ptr,
+          context,
+        }
+        .await?;
         id
       }
     };
@@ -1449,12 +1462,10 @@ where
       });
 
       {
-        let _guard = scopeguard::guard(
-          state.found_inspector_session.clone(),
-          |v| {
+        let _guard =
+          scopeguard::guard(state.found_inspector_session.clone(), |v| {
             v.raise();
-          },
-        );
+          });
 
         // XXX(Nyannyacha): Suppose the user skips this function by
         // passing the `--inspect` argument. In that case, the runtime
@@ -1658,10 +1669,10 @@ where
         };
 
         let isolate_ptr = {
-            let isolate_ref: &mut v8::Isolate = this.js_runtime.v8_isolate();
-            isolate_ref as *mut v8::Isolate
+          let isolate_ref: &mut v8::Isolate = this.js_runtime.v8_isolate();
+          isolate_ref as *mut v8::Isolate
         };
-        
+
         let isolate = unsafe { &mut *isolate_ptr };
         let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
         let mut scope = scope_storage.init();
