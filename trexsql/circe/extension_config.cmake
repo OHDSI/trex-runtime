@@ -28,7 +28,7 @@ file(APPEND ${CIRCE_BUILD_SCRIPT} "cat > target/bootstrap/CirceBootstrapMain.jav
 file(APPEND ${CIRCE_BUILD_SCRIPT} "javac -cp target/circe-cli.jar -d target/bootstrap target/bootstrap/CirceBootstrapMain.java\n")
 file(APPEND ${CIRCE_BUILD_SCRIPT} "CP=$(tr -d '\r' < target/classpath.txt)\n")
 file(APPEND ${CIRCE_BUILD_SCRIPT} "echo '[circe-native] native-image'\n")
-file(APPEND ${CIRCE_BUILD_SCRIPT} "${NATIVE_IMAGE_CMD} --no-fallback --shared --enable-all-security-services -H:+ReportExceptionStackTraces -J-Xss8m -J-Xmx2g -H:ConfigurationFileDirectories='${GRAAL_CONF_DIR}' --initialize-at-build-time=org.ohdsi.circe,com.fasterxml.jackson -H:Name=circe-native -cp target/circe-cli.jar:target/bootstrap:$CP -H:Class=CirceBootstrapMain\n")
+file(APPEND ${CIRCE_BUILD_SCRIPT} "${NATIVE_IMAGE_CMD} --no-fallback --shared --enable-all-security-services -H:+ReportExceptionStackTraces -J-Xss8m -J-Xmx2g -R:StackSize=16m -H:ConfigurationFileDirectories='${GRAAL_CONF_DIR}' --initialize-at-build-time=org.ohdsi.circe,com.fasterxml.jackson -H:Name=circe-native -cp target/circe-cli.jar:target/bootstrap:$CP -H:Class=CirceBootstrapMain\n")
 file(APPEND ${CIRCE_BUILD_SCRIPT} "mkdir -p '${CIRCE_NATIVE_DIR}'\n")
 file(APPEND ${CIRCE_BUILD_SCRIPT} "# Handle both Linux (.so) and macOS (.dylib) outputs\n")
 file(APPEND ${CIRCE_BUILD_SCRIPT} "if [ -f circe-native.dylib ]; then\n")
