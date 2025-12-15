@@ -32,6 +32,7 @@ on:
   push:
     branches:
       - develop
+      - deno2.5.6
 
 env:
   GIT_BRANCH_NAME: ${{ github.event.inputs.GIT_BRANCH_NAME || github.head_ref || github.ref_name }} # workflow_dispatch || pull_request || push
@@ -50,6 +51,8 @@ jobs:
           if [[ $GITHUB_EVENT_NAME == 'workflow_dispatch' ]]; then
             RELEASE_VERSION=${{ github.event.inputs.tag }}
             jq --arg v $RELEASE_VERSION '.version=$v' package.json > tmppkg; mv tmppkg package.json
+          elif [[ $GITHUB_REF_NAME == 'deno2.5.6' ]]; then
+            jq --arg v "-$(date +%s)-$GITHUB_SHA-d256" '.version+=$v' package.json > tmppkg; mv tmppkg package.json
           else
             jq --arg v "-$(date +%s)-$GITHUB_SHA" '.version+=$v' package.json > tmppkg; mv tmppkg package.json
           fi
