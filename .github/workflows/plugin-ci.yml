@@ -153,6 +153,18 @@ jobs:
           #$(grep -m1 '^FROM ' $GITHUB_WORKSPACE/services/trex/Dockerfile | sed -E 's/.*@(sha256:[a-f0-9]+).*/\1/')
           echo "Using TREX_DOCKER_TAG=$TREX_DOCKER_TAG"
           npm run build
+      - name: Sign extensions
+        if: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY != '' }}
+        env:
+          DUCKDB_EXTENSION_SIGNING_KEY: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY }}
+        run: |
+          echo "$DUCKDB_EXTENSION_SIGNING_KEY" > /tmp/signing_key.pem
+          chmod 600 /tmp/signing_key.pem
+          find ${{ matrix.DESTPATH || matrix.PKGPATH }} -name "*.duckdb_extension" -type f | while read ext; do
+            echo "Signing: $ext"
+            $GITHUB_WORKSPACE/trexsql/extension-ci-tools/extension_signing/trexsql-sign.sh sign -k /tmp/signing_key.pem "$ext"
+          done
+          rm -f /tmp/signing_key.pem
       - name: Use Node.js - OSS Develop
         uses: actions/setup-node@v4
         if: env.NPM_ARTIFACT_TYPE == 'OSS-develop'
