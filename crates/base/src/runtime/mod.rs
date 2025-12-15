@@ -2513,7 +2513,7 @@ mod test {
     where
       T: DeserializeOwned + 'static,
     {
-      let scope = &mut self.js_runtime.handle_scope();
+      let scope = &mut (*self.js_runtime).handle_scope();
       let value = v8::Local::new(scope, global_value.clone());
       Ok(serde_v8::from_v8(scope, value)?)
     }
@@ -2747,6 +2747,7 @@ mod test {
       DenoOptionsBuilder::new()
         .entrypoint(path_buf)
         .build()
+        .await
         .unwrap(),
     );
 
@@ -2839,7 +2840,7 @@ mod test {
     let mut emitter_factory = EmitterFactory::new();
 
     emitter_factory.set_deno_options(
-      DenoOptionsBuilder::new().entrypoint(file).build().unwrap(),
+      DenoOptionsBuilder::new().entrypoint(file).build().await.unwrap(),
     );
 
     let mut metadata = Metadata::default();
@@ -2926,7 +2927,7 @@ mod test {
 
     {
       let mut locker = unsafe { runtime.with_locker() };
-      let scope = &mut locker.js_runtime.handle_scope();
+      let scope = &mut (*locker.js_runtime).handle_scope();
       let context = scope.get_current_context();
       let inner_scope = &mut v8::ContextScope::new(scope, context);
       let global = context.global(inner_scope);
@@ -2954,7 +2955,7 @@ mod test {
 
     {
       let mut locker = unsafe { runtime.with_locker() };
-      let scope = &mut locker.js_runtime.handle_scope();
+      let scope = &mut (*locker.js_runtime).handle_scope();
       let context = scope.get_current_context();
       let inner_scope = &mut v8::ContextScope::new(scope, context);
       let global = context.global(inner_scope);
