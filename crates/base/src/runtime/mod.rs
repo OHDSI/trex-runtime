@@ -2840,7 +2840,11 @@ mod test {
     let mut emitter_factory = EmitterFactory::new();
 
     emitter_factory.set_deno_options(
-      DenoOptionsBuilder::new().entrypoint(file).build().await.unwrap(),
+      DenoOptionsBuilder::new()
+        .entrypoint(file)
+        .build()
+        .await
+        .unwrap(),
     );
 
     let mut metadata = Metadata::default();

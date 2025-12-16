@@ -169,17 +169,20 @@ impl<
     let auth_tokens = AuthTokens::new_from_sys(&sys);
     // Convert MaybeArc to Arc with trait object using raw pointers
     // MaybeArc is Arc when sync is enabled, so we can safely convert via raw pointer
-    let cloned = memory_files.clone();
-    // Convert the MaybeArc<MemoryFiles> to *const MemoryFiles
-    let raw_ptr: *const loader::MemoryFiles =
-      deno_maybe_sync::MaybeArc::into_raw(cloned);
-    // Then coerce to trait object and reconstruct as Arc<dyn MemoryFiles>
+    #[allow(clippy::disallowed_types)]
     let memory_files_arc: std::sync::Arc<
       dyn deno_cache_dir::file_fetcher::MemoryFiles,
-    > = unsafe {
-      std::sync::Arc::from_raw(
-        raw_ptr as *const dyn deno_cache_dir::file_fetcher::MemoryFiles,
-      )
+    > = {
+      let cloned = memory_files.clone();
+      // Convert the MaybeArc<MemoryFiles> to *const MemoryFiles
+      let raw_ptr: *const loader::MemoryFiles =
+        deno_maybe_sync::MaybeArc::into_raw(cloned);
+      // Then coerce to trait object and reconstruct as Arc<dyn MemoryFiles>
+      unsafe {
+        std::sync::Arc::from_raw(
+          raw_ptr as *const dyn deno_cache_dir::file_fetcher::MemoryFiles,
+        )
+      }
     };
 
     let file_fetcher = deno_cache_dir::file_fetcher::FileFetcher::new(

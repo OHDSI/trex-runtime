@@ -531,6 +531,7 @@ impl CompilerOptionsData {
     logged_warnings: LoggedWarningsRc,
     overrides: CompilerOptionsOverrides,
   ) -> Self {
+    #[allow(clippy::disallowed_types)]
     let last_source_specifier = sources
       .last()
       .map(|s| deno_maybe_sync::MaybeArc::from((*s.specifier).clone()));
