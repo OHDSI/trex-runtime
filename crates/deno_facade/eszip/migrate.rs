@@ -471,23 +471,22 @@ mod v2 {
       let import_map_url = ModuleSpecifier::parse(import_map_path.as_str())?;
       if let Some(import_map_module) =
         v1_1_eszip.ensure_import_map(import_map_url.as_str())
+        && let Some(source) = import_map_module.source().await
       {
-        if let Some(source) = import_map_module.source().await {
-          let source = String::from_utf8_lossy(&source);
-          let import_map =
-            import_map::parse_from_json(import_map_url.clone(), &source)?;
-          let resolver = SerializedWorkspaceResolver {
-            import_map: Some(SerializedWorkspaceResolverImportMap {
-              specifier: import_map_url.to_string(),
-              json: import_map.import_map.to_json(),
-            }),
-            ..Default::default()
-          };
-          result = Some(
-            serde_json::to_vec(&resolver)
-              .with_context(|| "failed to serialize workspace resolver")?,
-          );
-        }
+        let source = String::from_utf8_lossy(&source);
+        let import_map =
+          import_map::parse_from_json(import_map_url.clone(), &source)?;
+        let resolver = SerializedWorkspaceResolver {
+          import_map: Some(SerializedWorkspaceResolverImportMap {
+            specifier: import_map_url.to_string(),
+            json: import_map.import_map.to_json(),
+          }),
+          ..Default::default()
+        };
+        result = Some(
+          serde_json::to_vec(&resolver)
+            .with_context(|| "failed to serialize workspace resolver")?,
+        );
       }
       result
     } else {

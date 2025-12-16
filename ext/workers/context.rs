@@ -174,7 +174,7 @@ pub struct EventWorkerRuntimeOpts {
 
 #[derive(Debug, EnumAsInner)]
 pub enum WorkerRuntimeOpts {
-  UserWorker(UserWorkerRuntimeOpts),
+  UserWorker(Box<UserWorkerRuntimeOpts>),
   MainWorker(MainWorkerRuntimeOpts),
   EventsWorker(EventWorkerRuntimeOpts),
 }
@@ -278,7 +278,7 @@ pub struct WorkerContextInitOpts {
 #[derive(Debug)]
 pub enum UserWorkerMsgs {
   Create(
-    WorkerContextInitOpts,
+    Box<WorkerContextInitOpts>,
     oneshot::Sender<Result<CreateUserWorkerResult, Error>>,
   ),
   Created(Uuid, UserWorkerProfile),

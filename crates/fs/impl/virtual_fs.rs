@@ -24,13 +24,13 @@ use deno_io::fs::FsError;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 use eszip_trait::AsyncEszipDataRead;
-use sys_traits::boxed::BoxedFsDirEntry;
-use sys_traits::boxed::FsMetadataBoxed;
-use sys_traits::boxed::FsReadDirBoxed;
 use futures::future::OptionFuture;
 use rkyv::Archive;
 use rkyv::Deserialize;
 use rkyv::Serialize;
+use sys_traits::boxed::BoxedFsDirEntry;
+use sys_traits::boxed::FsMetadataBoxed;
+use sys_traits::boxed::FsReadDirBoxed;
 use thiserror::Error;
 
 use crate::rt::IO_RT;
@@ -517,10 +517,7 @@ impl VfsRoot {
       match entry {
         VfsEntryRef::Symlink(symlink) => {
           if !seen.insert(path.to_path_buf()) {
-            return Err(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              "circular symlinks",
-            ));
+            return Err(std::io::Error::other("circular symlinks"));
           }
           path = Cow::Owned(symlink.resolve_dest_from_root(&self.root_path));
         }
@@ -907,10 +904,9 @@ impl FileBackedVfs {
       VfsEntryRef::Symlink(symlink) => {
         Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
       }
-      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "not a symlink",
-      )),
+      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => {
+        Err(std::io::Error::other("not a symlink"))
+      }
     }
   }
 
@@ -952,20 +948,14 @@ impl FileBackedVfs {
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
-      VfsEntryRef::File(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a file",
-      )),
+      VfsEntryRef::File(_) => Err(std::io::Error::other("path is a file")),
     }
   }
 
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
     let (_, entry) = self.fs_root.find_entry(path)?;
     match entry {
-      VfsEntryRef::Dir(_) => Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "path is a directory",
-      )),
+      VfsEntryRef::Dir(_) => Err(std::io::Error::other("path is a directory")),
       VfsEntryRef::Symlink(_) => unreachable!(),
       VfsEntryRef::File(file) => Ok(file),
     }
@@ -1149,7 +1139,10 @@ impl sys_traits::BaseFsMetadata for VfsSys {
   }
 
   #[inline]
-  fn base_fs_symlink_metadata(&self, path: &Path) -> std::io::Result<Self::Metadata> {
+  fn base_fs_symlink_metadata(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Self::Metadata> {
     if self.0.is_path_within(path) {
       let stat = self.0.lstat(path)?;
       let file_type = if stat.is_directory {
@@ -1220,7 +1213,9 @@ impl sys_traits::BaseFsReadDir for VfsSys {
   fn base_fs_read_dir(
     &self,
     path: &Path,
-  ) -> std::io::Result<Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>> {
+  ) -> std::io::Result<
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
+  > {
     if self.0.is_path_within(path) {
       let entries = self.0.read_dir(path)?;
       let parent_path = path.to_path_buf();
@@ -1275,7 +1270,10 @@ impl sys_traits::EnvCurrentDir for VfsSys {
 }
 
 impl sys_traits::BaseEnvVar for VfsSys {
-  fn base_env_var_os(&self, key: &std::ffi::OsStr) -> Option<std::ffi::OsString> {
+  fn base_env_var_os(
+    &self,
+    key: &std::ffi::OsStr,
+  ) -> Option<std::ffi::OsString> {
     sys_traits::impls::RealSys.base_env_var_os(key)
   }
 }

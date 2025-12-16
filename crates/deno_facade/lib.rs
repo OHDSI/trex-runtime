@@ -53,16 +53,16 @@ async fn create_module_path(
   let cleaned_path =
     pathdiff::diff_paths(&*cleaned_specifier, entry_path).unwrap();
 
-  if let Some(parent) = cleaned_path.parent() {
-    if parent.parent().is_some() {
-      let output_folder_and_mod_folder = output_folder.join(
-        parent
-          .strip_prefix("/")
-          .unwrap_or_else(|_| ensure_unix_relative_path(parent)),
-      );
-      if !output_folder_and_mod_folder.exists() {
-        create_dir_all(&output_folder_and_mod_folder).await.unwrap();
-      }
+  if let Some(parent) = cleaned_path.parent()
+    && parent.parent().is_some()
+  {
+    let output_folder_and_mod_folder = output_folder.join(
+      parent
+        .strip_prefix("/")
+        .unwrap_or_else(|_| ensure_unix_relative_path(parent)),
+    );
+    if !output_folder_and_mod_folder.exists() {
+      create_dir_all(&output_folder_and_mod_folder).await.unwrap();
     }
   }
 
@@ -134,6 +134,7 @@ mod test {
       DenoOptionsBuilder::new()
         .entrypoint(PathBuf::from("../base/test_cases/npm/index.ts"))
         .build()
+        .await
         .unwrap(),
     );
 

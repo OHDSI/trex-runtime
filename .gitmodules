@@ -1,6 +1,6 @@
 [submodule "trexsql/extension-ci-tools"]
 	path = trexsql/extension-ci-tools
-	url = https://github.com/duckdb/extension-ci-tools.git
+	url = https://github.com/p-hoffmann/extension-ci-tools.git
 [submodule "trexsql/circe/circe-be"]
 	path = trexsql/circe/circe-be
 	url = https://github.com/p-hoffmann/circe-be.git

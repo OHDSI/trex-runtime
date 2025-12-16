@@ -36,16 +36,32 @@ pub fn load_npm_vfs(
       let prefix = "  ".repeat(indent);
       match entry {
         VfsEntry::Dir(dir) => {
-          log::debug!("{}DIR: {} ({} entries)", prefix, dir.name, dir.entries.len());
+          log::debug!(
+            "{}DIR: {} ({} entries)",
+            prefix,
+            dir.name,
+            dir.entries.len()
+          );
           for e in &dir.entries {
             log_vfs_tree(e, indent + 1);
           }
         }
         VfsEntry::File(f) => {
-          log::debug!("{}FILE: {} (offset={}, len={})", prefix, f.name, f.offset, f.len);
+          log::debug!(
+            "{}FILE: {} (offset={}, len={})",
+            prefix,
+            f.name,
+            f.offset,
+            f.len
+          );
         }
         VfsEntry::Symlink(s) => {
-          log::debug!("{}LINK: {} -> {}", prefix, s.name, s.dest_parts.join("/"));
+          log::debug!(
+            "{}LINK: {} -> {}",
+            prefix,
+            s.name,
+            s.dest_parts.join("/")
+          );
         }
       }
     }
@@ -64,13 +80,13 @@ pub fn load_npm_vfs(
     }
     // Specifically look for fastify
     for entry in &dir.entries {
-      if entry.name() == "localhost" {
-        if let VfsEntry::Dir(localhost_dir) = entry {
-          for pkg in &localhost_dir.entries {
-            if pkg.name() == "fastify" {
-              log::debug!("=== FASTIFY VFS STRUCTURE ===");
-              log_vfs_tree(pkg, 2);
-            }
+      if entry.name() == "localhost"
+        && let VfsEntry::Dir(localhost_dir) = entry
+      {
+        for pkg in &localhost_dir.entries {
+          if pkg.name() == "fastify" {
+            log::debug!("=== FASTIFY VFS STRUCTURE ===");
+            log_vfs_tree(pkg, 2);
           }
         }
       }

@@ -10,7 +10,6 @@ use std::sync::atomic::Ordering;
 
 use deno_core::OpState;
 use deno_core::op2;
-use deno_core::v8;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
@@ -435,6 +434,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 // ) { ... }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
+#[allow(dead_code)]
 fn rss() -> u64 {
   // Inspired by https://github.com/Arc-blroth/memory-stats/blob/5364d0d09143de2a470d33161b2330914228fde9/src/linux.rs
 

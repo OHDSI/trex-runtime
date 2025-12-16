@@ -8,8 +8,8 @@ use deno::deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_core::ModuleLoader;
 use eszip_trait::EszipStaticFiles;
 use ext_node::NodeExtInitServices;
-use fs::virtual_fs::FileBackedVfs;
 use fs::VfsSys;
+use fs::virtual_fs::FileBackedVfs;
 use url::Url;
 
 use crate::Metadata;

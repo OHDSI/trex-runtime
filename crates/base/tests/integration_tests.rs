@@ -905,7 +905,7 @@ async fn test_worker_boot_invalid_imports() {
     maybe_eszip: None,
     maybe_entrypoint: None,
     maybe_module_code: None,
-    conf: WorkerRuntimeOpts::UserWorker(test_user_runtime_opts()),
+    conf: WorkerRuntimeOpts::UserWorker(Box::new(test_user_runtime_opts())),
     static_patterns: vec![],
 
     maybe_s3_fs_config: None,
@@ -935,7 +935,7 @@ async fn test_worker_boot_with_0_byte_eszip() {
     maybe_eszip: Some(EszipPayloadKind::VecKind(vec![])),
     maybe_entrypoint: Some("file:///src/index.ts".to_string()),
     maybe_module_code: None,
-    conf: WorkerRuntimeOpts::UserWorker(test_user_runtime_opts()),
+    conf: WorkerRuntimeOpts::UserWorker(Box::new(test_user_runtime_opts())),
     static_patterns: vec![],
 
     maybe_s3_fs_config: None,
@@ -964,7 +964,7 @@ async fn test_worker_boot_with_invalid_entrypoint() {
     maybe_eszip: None,
     maybe_entrypoint: Some("file:///meow/mmmmeeeow.ts".to_string()),
     maybe_module_code: None,
-    conf: WorkerRuntimeOpts::UserWorker(test_user_runtime_opts()),
+    conf: WorkerRuntimeOpts::UserWorker(Box::new(test_user_runtime_opts())),
     static_patterns: vec![],
 
     maybe_s3_fs_config: None,
@@ -2828,19 +2828,21 @@ async fn test_js_entrypoint() {
 async fn test_should_be_able_to_bundle_against_various_exts() {
   let get_eszip_buf = |path: &str| {
     let path = path.to_string();
-    let mut emitter_factory = EmitterFactory::new();
 
-    emitter_factory.set_permissions_options(Some(get_default_permissions(
-      WorkerKind::UserWorker,
-    )));
-    emitter_factory.set_deno_options(
-      DenoOptionsBuilder::new()
-        .entrypoint(PathBuf::from(path))
-        .build()
-        .unwrap(),
-    );
+    async move {
+      let mut emitter_factory = EmitterFactory::new();
 
-    async {
+      emitter_factory.set_permissions_options(Some(get_default_permissions(
+        WorkerKind::UserWorker,
+      )));
+      emitter_factory.set_deno_options(
+        DenoOptionsBuilder::new()
+          .entrypoint(PathBuf::from(path))
+          .build()
+          .await
+          .unwrap(),
+      );
+
       let mut metadata = Metadata::default();
       let eszip = generate_binary_eszip(
         &mut metadata,
@@ -3040,6 +3042,7 @@ async fn test_private_npm_package_import() {
             "./test_cases/private-npm-package-import/index.js",
           ))
           .build()
+          .await
           .unwrap(),
       );
 

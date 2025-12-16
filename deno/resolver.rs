@@ -1,12 +1,8 @@
 use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
-use anyhow::anyhow;
 use async_trait::async_trait;
-use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_core::ModuleSourceCode;
@@ -24,17 +20,11 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_permissions::CheckedPathBuf;
 use deno_resolver::workspace::MappedResolutionError;
 use deno_resolver::workspace::SloppyImportsResolver;
-use deno_resolver::workspace::sloppy_imports_resolve;
 use deno_semver::package::PackageReq;
-use ext_node::DenoFsNodeResolverEnv;
-use ext_node::is_builtin_node_module;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use node_resolver::errors::UnknownBuiltInNodeModuleError;
-use sys_traits::impls::RealSys;
 use thiserror::Error;
 
-use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::args::NpmCachingStrategy;
 use crate::cache::CliSys;
 use crate::node::CliNodeCodeTranslator;
@@ -237,40 +227,67 @@ impl NpmModuleLoader {
 #[derive(Clone)]
 pub struct GenericNpmModuleLoader<
   TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
-  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
+  TSys: sys_traits::FsCanonicalize
+    + sys_traits::FsMetadata
+    + sys_traits::FsRead
+    + sys_traits::FsReadDir
+    + Send
+    + Sync
+    + Clone
+    + 'static,
   TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
   TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
 > {
   cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
   fs: Arc<dyn deno_fs::FileSystem>,
-  node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
-    TCjsCodeAnalyzer,
-    TInNpmPackageChecker,
-    TIsBuiltInNodeModuleChecker,
-    TNpmPackageFolderResolver,
-    TSys,
-  >>,
-}
-
-impl<
-  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
-  TSys: sys_traits::FsCanonicalize + sys_traits::FsMetadata + sys_traits::FsRead + sys_traits::FsReadDir + Send + Sync + Clone + 'static,
-  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
-  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
-  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
-> GenericNpmModuleLoader<TInNpmPackageChecker, TSys, TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TNpmPackageFolderResolver>
-{
-  pub fn new(
-    cjs_tracker: Arc<deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>>,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    node_code_translator: Arc<node_resolver::analyze::NodeCodeTranslator<
+  node_code_translator: Arc<
+    node_resolver::analyze::NodeCodeTranslator<
       TCjsCodeAnalyzer,
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
       TSys,
-    >>,
+    >,
+  >,
+}
+
+impl<
+  TInNpmPackageChecker: node_resolver::InNpmPackageChecker,
+  TSys: sys_traits::FsCanonicalize
+    + sys_traits::FsMetadata
+    + sys_traits::FsRead
+    + sys_traits::FsReadDir
+    + Send
+    + Sync
+    + Clone
+    + 'static,
+  TCjsCodeAnalyzer: node_resolver::analyze::CjsCodeAnalyzer,
+  TIsBuiltInNodeModuleChecker: node_resolver::IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: node_resolver::NpmPackageFolderResolver,
+>
+  GenericNpmModuleLoader<
+    TInNpmPackageChecker,
+    TSys,
+    TCjsCodeAnalyzer,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+  >
+{
+  pub fn new(
+    cjs_tracker: Arc<
+      deno_resolver::cjs::CjsTracker<TInNpmPackageChecker, TSys>,
+    >,
+    fs: Arc<dyn deno_fs::FileSystem>,
+    node_code_translator: Arc<
+      node_resolver::analyze::NodeCodeTranslator<
+        TCjsCodeAnalyzer,
+        TInNpmPackageChecker,
+        TIsBuiltInNodeModuleChecker,
+        TNpmPackageFolderResolver,
+        TSys,
+      >,
+    >,
   ) -> Self {
     Self {
       cjs_tracker,
@@ -366,6 +383,7 @@ pub struct CliResolver {
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: AtomicFlag,
   bare_node_builtins_enabled: bool,
+  #[allow(dead_code)]
   warned_pkgs: DashSet<PackageReq>,
 }
 
@@ -431,6 +449,7 @@ impl CliResolver {
 pub struct WorkerCliNpmGraphResolver<'a> {
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: &'a AtomicFlag,
+  #[allow(dead_code)]
   bare_node_builtins_enabled: bool,
   npm_caching: NpmCachingStrategy,
 }

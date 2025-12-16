@@ -16,7 +16,7 @@ fn op_user_worker_log(
 ) -> Result<(), JsErrorBox> {
   let maybe_tx =
     state.try_borrow::<mpsc::UnboundedSender<WorkerEventWithMetadata>>();
-  let level = LogLevel::try_from(level as u8).unwrap_or_default();
+  let level = LogLevel::from(level as u8);
 
   if let Some(tx) = maybe_tx {
     let event_metadata = state
@@ -48,7 +48,7 @@ fn op_user_worker_log(
 
     #[cfg(not(feature = "tracing"))]
     {
-      log::error!("[{:?}] {}", level, msg.to_string());
+      log::error!("[{:?}] {}", level, msg);
     }
   }
 

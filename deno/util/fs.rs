@@ -303,7 +303,7 @@ pub fn canonicalize_path_maybe_not_exists(
 
 pub fn canonicalize_path_maybe_not_exists_with_fs(
   path: &Path,
-  fs: &dyn FileSystem,
+  _fs: &dyn FileSystem,
 ) -> Result<PathBuf, Error> {
   // For now, use the same implementation as above since we don't have easy access to fs-based sys
   deno_path_util::fs::canonicalize_path_maybe_not_exists(
@@ -611,6 +611,7 @@ struct LaxSingleProcessFsFlagInner {
 #[allow(unstable_name_collisions)]
 impl Drop for LaxSingleProcessFsFlagInner {
   fn drop(&mut self) {
+    #[allow(unused_imports)]
     use fs3::FileExt;
     // kill the poll thread
     self.finished_token.cancel();

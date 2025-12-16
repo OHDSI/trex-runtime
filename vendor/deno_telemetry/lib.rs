@@ -1330,7 +1330,7 @@ fn op_otel_log<'s>(
 #[op2(fast)]
 fn op_otel_log_foreign(
   scope: &mut v8::PinScope<'_, '_>,
-  state: &mut OpState,
+  _state: &mut OpState,
   #[string] message: String,
   #[smi] level: i32,
   trace_id: v8::Local<'_, v8::Value>,

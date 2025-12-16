@@ -197,6 +197,7 @@ pub mod dirs {
 
   // This piece of code is taken from the deprecated home_dir() function in Rust's standard library: https://github.com/rust-lang/rust/blob/master/src/libstd/sys/unix/os.rs#L579
   // The same code is used by the dirs crate
+  #[allow(unsafe_op_in_unsafe_fn)]
   unsafe fn fallback() -> Option<std::ffi::OsString> {
     let amt = match libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) {
       n if n < 0 => 512_usize,

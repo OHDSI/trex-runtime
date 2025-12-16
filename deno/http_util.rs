@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use crate::auth_tokens::AuthToken;
 use crate::util::progress_bar::UpdateGuard;
 use crate::versions::user_agent;
@@ -24,7 +26,6 @@ use header::AUTHORIZATION;
 use header::HeaderName;
 use header::HeaderValue;
 use header::IF_NONE_MATCH;
-use header::LOCATION;
 use http::HeaderMap;
 use http::StatusCode;
 use http::header;
@@ -658,6 +659,7 @@ pub async fn get_response_body_with_progress(
 
 /// Construct the next uri based on base uri and location header fragment
 /// See <https://tools.ietf.org/html/rfc3986#section-4.2>
+#[allow(dead_code)]
 fn resolve_url_from_location(base_url: &Url, location: &str) -> Url {
   if location.starts_with("http://") || location.starts_with("https://") {
     // absolute uri

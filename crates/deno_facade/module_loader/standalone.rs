@@ -1,12 +1,9 @@
+use fs::VfsSys;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use fs::VfsSys;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsCreateDirAll;
-use sys_traits::impls::RealSys;
 
 use anyhow::Context;
 use anyhow::anyhow;
@@ -54,12 +51,8 @@ use deno::npm::CreateInNpmPkgCheckerOptions;
 use deno::npm::byonm::CliByonmNpmResolverCreateOptions;
 use deno::npm::create_cli_npm_resolver;
 use deno::npm::create_in_npm_pkg_checker;
-use deno::resolver::CjsTracker;
-use deno::resolver::CliDenoResolverFs;
-use deno::resolver::CliNpmReqResolver;
 // CliSloppyImportsResolver disabled in Deno 2.5.6 - API changed
 // use deno::resolver::CliSloppyImportsResolver;
-use deno::resolver::NpmModuleLoader;
 // SloppyImportsCachedFs removed in Deno 2.5.6 - sloppy imports resolver disabled
 use deno::resolver::GenericNpmModuleLoader;
 use deno::standalone::binary;
@@ -79,9 +72,7 @@ use deno_error::JsErrorBox;
 use deno_maybe_sync::new_rc;
 use eszip::EszipRelativeFileBaseUrl;
 use eszip::ModuleKind;
-use eszip::deno_graph;
 use eszip_trait::AsyncEszipDataRead;
-use ext_node::DenoFsNodeResolverEnv;
 use ext_node::NodeExtInitServices;
 use ext_node::NodeRequireLoader;
 use ext_node::NodeResolver;
@@ -251,11 +242,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
           NodeResolutionKind::Execution,
         )
         .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
-      return Ok(
-        url_or_path
-          .into_url()
-          .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?,
-      );
+      return url_or_path
+        .into_url()
+        .map_err(|e| JsErrorBox::generic(format!("{:#}", e)));
     }
 
     let mapped_resolution = self.shared.workspace_resolver.resolve(
@@ -298,16 +287,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .resolve_package_import(
             specifier,
             Some(&referrer_path_ref),
-            Some(&pkg_json),
+            Some(pkg_json),
             referrer_kind,
             NodeResolutionKind::Execution,
           )
           .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
-        Ok(
-          url_or_path
-            .into_url()
-            .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?,
-        )
+        url_or_path
+          .into_url()
+          .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))
       }
       Ok(MappedResolution::PackageJson {
         dep_result,
@@ -400,10 +387,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
           return Ok(url);
         }
 
-        if specifier.scheme() == "jsr" {
-          if let Some(module) = self.shared.eszip.get_module(&specifier) {
-            return Ok(module.specifier);
-          }
+        if specifier.scheme() == "jsr"
+          && let Some(module) = self.shared.eszip.get_module(&specifier)
+        {
+          return Ok(module.specifier);
         }
 
         let final_specifier = self
@@ -427,11 +414,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
           NodeResolutionKind::Execution,
         );
         if let Ok(Some(res)) = maybe_res {
-          return Ok(
-            res
-              .into_url()
-              .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?,
-          );
+          return res
+            .into_url()
+            .map_err(|e| JsErrorBox::generic(format!("{:#}", e)));
         }
         Err(JsErrorBox::type_error(format!("{:#}", err)))
       }
@@ -755,7 +740,8 @@ pub async fn create_module_loader_for_eszip(
   let root_path = if cfg!(target_family = "unix") {
     // Canonicalize /var/tmp to resolve symlinks (e.g., /var -> /private/var on macOS)
     // This ensures VFS paths match the canonical paths Deno resolves to
-    std::fs::canonicalize("/var/tmp").unwrap_or_else(|_| PathBuf::from("/var/tmp"))
+    std::fs::canonicalize("/var/tmp")
+      .unwrap_or_else(|_| PathBuf::from("/var/tmp"))
   } else {
     std::env::temp_dir()
   }
@@ -771,24 +757,28 @@ pub async fn create_module_loader_for_eszip(
   let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
 
   // If no embedded npm packages, use global Deno npm cache with real registry
-  let (root_node_modules_path, npm_registry_url, use_real_fs) = if has_embedded_npm {
-    // Compiled binary with embedded npm packages - use dummy localhost
-    let root_node_modules_path = match &node_modules {
-      Some(binary::NodeModules::Managed { .. }) | None => {
-        root_path.join("node_modules")
-      }
-      Some(binary::NodeModules::Byonm { .. }) => root_path.clone(),
+  let (root_node_modules_path, npm_registry_url, use_real_fs) =
+    if has_embedded_npm {
+      // Compiled binary with embedded npm packages - use dummy localhost
+      let root_node_modules_path = match &node_modules {
+        Some(binary::NodeModules::Managed { .. }) | None => {
+          root_path.join("node_modules")
+        }
+        Some(binary::NodeModules::Byonm { .. }) => root_path.clone(),
+      };
+      let npm_registry_url =
+        ModuleSpecifier::parse("https://localhost/").unwrap();
+      (root_node_modules_path, npm_registry_url, false)
+    } else {
+      // Development mode - use global Deno npm cache with real registry
+      let deno_dir = deno_dir_provider
+        .get_or_create()
+        .map_err(|e| anyhow!("failed to get deno dir: {}", e))?;
+      let npm_folder = deno_dir.npm_folder_path();
+      let npm_registry_url =
+        ModuleSpecifier::parse("https://registry.npmjs.org/").unwrap();
+      (npm_folder, npm_registry_url, true)
     };
-    let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
-    (root_node_modules_path, npm_registry_url, false)
-  } else {
-    // Development mode - use global Deno npm cache with real registry
-    let deno_dir = deno_dir_provider.get_or_create()
-      .map_err(|e| anyhow!("failed to get deno dir: {}", e))?;
-    let npm_folder = deno_dir.npm_folder_path();
-    let npm_registry_url = ModuleSpecifier::parse("https://registry.npmjs.org/").unwrap();
-    (npm_folder, npm_registry_url, true)
-  };
 
   // Log npm cache path for debugging
   tracing::debug!(
@@ -811,40 +801,41 @@ pub async fn create_module_loader_for_eszip(
     metadata.unsafely_ignore_certificate_errors.clone(),
   ));
 
-  let (fs, vfs): (Arc<dyn deno::deno_fs::FileSystem>, Arc<FileBackedVfs>) = if use_real_fs {
-    // Development mode: use real filesystem for npm packages
-    // Create a minimal VFS for non-npm modules from eszip, but allow FS fallback
-    let vfs = load_npm_vfs(
-      Arc::new(eszip.clone()),
-      root_node_modules_path.clone(),
-      None, // No virtual_dir - will create empty VFS
-    )
-    .context("Failed to load npm vfs.")?;
+  let (fs, vfs): (Arc<dyn deno::deno_fs::FileSystem>, Arc<FileBackedVfs>) =
+    if use_real_fs {
+      // Development mode: use real filesystem for npm packages
+      // Create a minimal VFS for non-npm modules from eszip, but allow FS fallback
+      let vfs = load_npm_vfs(
+        Arc::new(eszip.clone()),
+        root_node_modules_path.clone(),
+        None, // No virtual_dir - will create empty VFS
+      )
+      .context("Failed to load npm vfs.")?;
 
-    let fs = DenoCompileFileSystem::new(vfs).use_real_fs(true);
-    let fs_backed_vfs = fs.file_backed_vfs().clone();
+      let fs = DenoCompileFileSystem::new(vfs).use_real_fs(true);
+      let fs_backed_vfs = fs.file_backed_vfs().clone();
 
-    (
-      Arc::new(fs) as Arc<dyn deno::deno_fs::FileSystem>,
-      fs_backed_vfs,
-    )
-  } else {
-    // Compiled binary mode: use VFS with embedded npm packages
-    let vfs = load_npm_vfs(
-      Arc::new(eszip.clone()),
-      root_node_modules_path.clone(),
-      metadata.virtual_dir.take(),
-    )
-    .context("Failed to load npm vfs.")?;
+      (
+        Arc::new(fs) as Arc<dyn deno::deno_fs::FileSystem>,
+        fs_backed_vfs,
+      )
+    } else {
+      // Compiled binary mode: use VFS with embedded npm packages
+      let vfs = load_npm_vfs(
+        Arc::new(eszip.clone()),
+        root_node_modules_path.clone(),
+        metadata.virtual_dir.take(),
+      )
+      .context("Failed to load npm vfs.")?;
 
-    let fs = DenoCompileFileSystem::new(vfs).use_real_fs(false);
-    let fs_backed_vfs = fs.file_backed_vfs().clone();
+      let fs = DenoCompileFileSystem::new(vfs).use_real_fs(false);
+      let fs_backed_vfs = fs.file_backed_vfs().clone();
 
-    (
-      Arc::new(fs) as Arc<dyn deno::deno_fs::FileSystem>,
-      fs_backed_vfs,
-    )
-  };
+      (
+        Arc::new(fs) as Arc<dyn deno::deno_fs::FileSystem>,
+        fs_backed_vfs,
+      )
+    };
 
   // Create VfsSys for reading files from the eszip VFS.
   // VfsSys automatically falls back to RealSys for paths outside the VFS,
@@ -862,8 +853,9 @@ pub async fn create_module_loader_for_eszip(
 
   let snapshot = eszip.take_npm_snapshot();
 
-  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(vfs_sys.clone(), None));
-  let (in_npm_pkg_checker, npm_resolver) = match node_modules {
+  let pkg_json_resolver =
+    Arc::new(PackageJsonResolver::new(vfs_sys.clone(), None));
+  let (_in_npm_pkg_checker, npm_resolver) = match node_modules {
     Some(binary::NodeModules::Managed { .. }) | None => {
       let in_npm_pkg_checker =
         create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
@@ -912,7 +904,8 @@ pub async fn create_module_loader_for_eszip(
       // For Byonm, create with RealSys (cli_sys) since the CLI npm resolver types require CliSys
       // The concrete_npm_resolver will be created later with VfsSys
       let cli_sys = sys_traits::impls::RealSys;
-      let cli_pkg_json_resolver = Arc::new(PackageJsonResolver::new(cli_sys.clone(), None));
+      let cli_pkg_json_resolver =
+        Arc::new(PackageJsonResolver::new(cli_sys.clone(), None));
       let npm_resolver = create_cli_npm_resolver(
         CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
           sys: deno::node_resolver::cache::NodeResolutionSys::new(
@@ -958,9 +951,7 @@ pub async fn create_module_loader_for_eszip(
       // Create an upstream NpmResolutionCell from the snapshot
       use deno::deno_resolver::npm::managed::NpmResolutionCell;
       let npm_resolution_cell = NpmResolutionCell::new(snapshot);
-      let npm_resolution = deno_maybe_sync::MaybeArc::from(
-        std::sync::Arc::new(npm_resolution_cell),
-      );
+      let npm_resolution = std::sync::Arc::new(npm_resolution_cell);
 
       // Get node_modules path from the CLI resolver
       let maybe_node_modules_path =
@@ -970,27 +961,34 @@ pub async fn create_module_loader_for_eszip(
       use deno::deno_resolver::npm::managed::{
         ManagedNpmResolver, ManagedNpmResolverCreateOptions,
       };
-      let upstream_resolver = ManagedNpmResolver::<VfsSys>::new(
-        ManagedNpmResolverCreateOptions {
+      let upstream_resolver =
+        ManagedNpmResolver::<VfsSys>::new(ManagedNpmResolverCreateOptions {
           npm_cache_dir: npm_cache_dir.clone(),
           sys: vfs_sys.clone(),
           maybe_node_modules_path,
           npm_system_info: inner.npm_system_info().clone(),
           npmrc: inner.npmrc().clone(),
           npm_resolution,
-        },
-      );
+        });
 
       deno::deno_resolver::npm::NpmResolver::Managed(new_rc(upstream_resolver))
     }
     deno::npm::InnerCliNpmResolverRef::Byonm(inner) => {
       // Create a new ByonmNpmResolver with VfsSys instead of using the CliSys-typed inner
-      use deno::deno_resolver::npm::{ByonmNpmResolver, ByonmNpmResolverCreateOptions};
-      let byonm_resolver = ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
-        root_node_modules_dir: inner.root_node_modules_path().map(|p| p.to_path_buf()),
-        sys: node_resolver::cache::NodeResolutionSys::new(vfs_sys.clone(), None),
-        pkg_json_resolver: pkg_json_resolver.clone(),
-      });
+      use deno::deno_resolver::npm::{
+        ByonmNpmResolver, ByonmNpmResolverCreateOptions,
+      };
+      let byonm_resolver =
+        ByonmNpmResolver::new(ByonmNpmResolverCreateOptions {
+          root_node_modules_dir: inner
+            .root_node_modules_path()
+            .map(|p| p.to_path_buf()),
+          sys: node_resolver::cache::NodeResolutionSys::new(
+            vfs_sys.clone(),
+            None,
+          ),
+          pkg_json_resolver: pkg_json_resolver.clone(),
+        });
       deno::deno_resolver::npm::NpmResolver::Byonm(new_rc(byonm_resolver))
     }
   };
@@ -1005,23 +1003,21 @@ pub async fn create_module_loader_for_eszip(
   ));
 
   // Use VfsSys-based CjsTracker - the pkg_json_resolver already uses VfsSys
-  let cjs_tracker: Arc<VfsCjsTracker> = Arc::new(deno::deno_resolver::cjs::CjsTracker::new(
-    concrete_in_npm_pkg_checker.clone(),
-    pkg_json_resolver.clone(),
-    IsCjsResolutionMode::ExplicitTypeCommonJs,
-  ));
+  let cjs_tracker: Arc<VfsCjsTracker> =
+    Arc::new(deno::deno_resolver::cjs::CjsTracker::new(
+      concrete_in_npm_pkg_checker.clone(),
+      pkg_json_resolver.clone(),
+      IsCjsResolutionMode::ExplicitTypeCommonJs,
+    ));
 
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let npm_req_resolver =
-    Arc::new(NpmReqResolver::new(NpmReqResolverOptions {
-      in_npm_pkg_checker: concrete_in_npm_pkg_checker.clone(),
-      node_resolver: deno_maybe_sync::MaybeArc::from(Arc::clone(
-        &node_resolver,
-      )),
-      npm_resolver: concrete_npm_resolver.clone(),
-      sys: vfs_sys.clone(),
-    }));
+  let npm_req_resolver = Arc::new(NpmReqResolver::new(NpmReqResolverOptions {
+    in_npm_pkg_checker: concrete_in_npm_pkg_checker.clone(),
+    node_resolver: Arc::clone(&node_resolver),
+    npm_resolver: concrete_npm_resolver.clone(),
+    sys: vfs_sys.clone(),
+  }));
 
   let cjs_esm_code_analyzer = GenericCjsCodeAnalyzer::new(
     node_analysis_cache,
@@ -1033,7 +1029,7 @@ pub async fn create_module_loader_for_eszip(
     Arc::new(node_resolver::analyze::CjsModuleExportAnalyzer::new(
       cjs_esm_code_analyzer,
       concrete_in_npm_pkg_checker.clone(),
-      deno_maybe_sync::MaybeArc::from(Arc::clone(&node_resolver)),
+      Arc::clone(&node_resolver),
       concrete_npm_resolver.clone(),
       pkg_json_resolver.clone(),
       vfs_sys.clone(),
@@ -1103,7 +1099,7 @@ pub async fn create_module_loader_for_eszip(
           serialized_workspace_resolver.pkg_json_resolution,
           Default::default(), // sloppy_imports_options
           Default::default(), // fs_cache_options
-          vfs_sys.clone(), // sys
+          vfs_sys.clone(),    // sys
         )
       },
       cjs_tracker: cjs_tracker.clone(),

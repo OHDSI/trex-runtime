@@ -12,7 +12,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
-use deno_error::JsErrorBox;
 use deno_http::HttpRequestReader;
 use deno_http::HttpStreamReadResource;
 use deno_websocket::ws_create_server_stream;

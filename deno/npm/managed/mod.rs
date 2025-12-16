@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
@@ -203,7 +205,7 @@ async fn resolve_snapshot(
 
 async fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
-  api: &dyn NpmRegistryApi,
+  _api: &dyn NpmRegistryApi,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let lock = lockfile.lock();
 

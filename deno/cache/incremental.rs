@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;

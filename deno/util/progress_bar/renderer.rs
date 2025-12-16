@@ -241,10 +241,39 @@ fn get_elapsed_text(elapsed: Duration) -> String {
 mod test {
   use std::time::Duration;
 
-  use pretty_assertions::assert_eq;
-  use test_util::assert_contains;
-
   use super::*;
+
+  fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+      if c == '\x1b' {
+        if chars.peek() == Some(&'[') {
+          chars.next();
+          while let Some(&next) = chars.peek() {
+            chars.next();
+            if next.is_ascii_alphabetic() {
+              break;
+            }
+          }
+        }
+      } else {
+        result.push(c);
+      }
+    }
+    result
+  }
+
+  macro_rules! assert_contains {
+    ($haystack:expr, $needle:expr) => {
+      assert!(
+        $haystack.contains($needle),
+        "Expected {:?} to contain {:?}",
+        $haystack,
+        $needle
+      );
+    };
+  }
 
   #[test]
   fn should_get_elapsed_text() {
@@ -292,7 +321,7 @@ mod test {
       terminal_width: 50,
     };
     let text = renderer.render(data.clone());
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_eq!(
       text,
       concat!(
@@ -306,13 +335,13 @@ mod test {
     data.display_entries[0].message = "".to_string();
     data.total_entries = 3;
     let text = renderer.render(data.clone());
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [####>------] 5.00KiB/10.00KiB (2/3)",);
 
     // just ensure this doesn't panic
     data.terminal_width = 0;
     let text = renderer.render(data.clone());
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [-] 5.00KiB/10.00KiB (2/3)",);
 
     data.terminal_width = 50;
@@ -320,7 +349,7 @@ mod test {
     data.display_entries[0].position = 10 * BYTES_TO_KIB;
     data.percent_done = 1.0f64;
     let text = renderer.render(data.clone());
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [###########] 10.00KiB/10.00KiB (3/3)",);
 
     data.display_entries[0].position = 0;
@@ -328,7 +357,7 @@ mod test {
     data.pending_entries = 0;
     data.total_entries = 1;
     let text = renderer.render(data);
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_eq!(text, "[00:01] [###################################]",);
   }
 
@@ -349,7 +378,7 @@ mod test {
       terminal_width: 50,
     };
     let text = renderer.render(data.clone());
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_contains!(text, "Blocking ▰▰▱▱▱▱");
     assert_contains!(text, "2/3\n  data 0.00KiB/10.00KiB\n");
 
@@ -358,7 +387,7 @@ mod test {
     data.display_entries[0].position = 0;
     data.display_entries[0].total_size = 0;
     let text = renderer.render(data);
-    let text = test_util::strip_ansi_codes(&text);
+    let text = strip_ansi_codes(&text);
     assert_contains!(text, "Blocking ▰▰▰▱▱▱");
     assert_contains!(text, "\n  data\n");
   }

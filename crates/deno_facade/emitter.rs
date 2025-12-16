@@ -1,7 +1,5 @@
 use std::future::Future;
 use std::sync::Arc;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsCreateDirAll;
 
 use anyhow::Context;
 use deno::DenoOptions;
@@ -36,8 +34,6 @@ use deno::file_fetcher::FileFetcher;
 use deno::graph_util::ModuleGraphBuilder;
 use deno::graph_util::ModuleGraphCreator;
 use deno::http_util::HttpClientProvider;
-use deno::node_resolver::DenoIsBuiltInNodeModuleChecker;
-use deno::node_resolver::InNpmPackageChecker;
 use deno::node_resolver::PackageJsonResolverRc;
 use deno::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use deno::npm::CliManagedNpmResolverCreateOptions;
@@ -47,11 +43,8 @@ use deno::npm::CliNpmResolverManagedSnapshotOption;
 use deno::npm::CreateInNpmPkgCheckerOptions;
 use deno::npm::byonm::CliByonmNpmResolverCreateOptions;
 use deno::npm::create_cli_npm_resolver;
-use deno::npm::create_in_npm_pkg_checker;
 use deno::resolver::CjsTracker;
 use deno::resolver::CliDenoResolver;
-use deno::resolver::CliDenoResolverFs;
-use deno::resolver::CliNpmReqResolver;
 use deno::resolver::CliResolver;
 use deno::resolver::CliResolverOptions;
 use deno::resolver::CliSloppyImportsResolver;
@@ -59,8 +52,6 @@ use deno::util::fs::canonicalize_path_maybe_not_exists;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_maybe_sync::new_rc;
-use ext_node::DenoFsNodeResolverEnv;
-use node_resolver;
 use sys_traits::impls::RealSys;
 
 // Type aliases matching the Deno ecosystem types
@@ -70,7 +61,6 @@ type CliNodeResolver = node_resolver::NodeResolver<
   deno::deno_resolver::npm::NpmResolver<CliSys>,
   CliSys,
 >;
-type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 type CliNpmReqResolverType = deno::deno_resolver::npm::NpmReqResolver<
   deno::deno_resolver::npm::DenoInNpmPackageChecker,
   node_resolver::DenoIsBuiltInNodeModuleChecker,
@@ -448,8 +438,7 @@ impl EmitterFactory {
             // Create an upstream NpmResolutionCell from the snapshot
             use deno::deno_resolver::npm::managed::NpmResolutionCell;
             let npm_resolution_cell = NpmResolutionCell::new(snapshot);
-            let npm_resolution =
-              deno_maybe_sync::MaybeArc::from(Arc::new(npm_resolution_cell));
+            let npm_resolution = Arc::new(npm_resolution_cell);
 
             // Get node_modules path from the CLI resolver
             let maybe_node_modules_path =
@@ -483,9 +472,7 @@ impl EmitterFactory {
         Ok(Arc::new(CliNpmReqResolverType::new(
           NpmReqResolverOptions {
             in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
-            node_resolver: deno_maybe_sync::MaybeArc::from(Arc::clone(
-              self.node_resolver().await?,
-            )),
+            node_resolver: Arc::clone(self.node_resolver().await?),
             npm_resolver: npm_resolver_clone,
             sys: deno::cache::CliSys::default(),
           },
@@ -511,8 +498,7 @@ impl EmitterFactory {
             // Create an upstream NpmResolutionCell from the snapshot
             use deno::deno_resolver::npm::managed::NpmResolutionCell;
             let npm_resolution_cell = NpmResolutionCell::new(snapshot);
-            let npm_resolution =
-              deno_maybe_sync::MaybeArc::from(Arc::new(npm_resolution_cell));
+            let npm_resolution = Arc::new(npm_resolution_cell);
 
             // Get node_modules path from the CLI resolver
             let maybe_node_modules_path =
@@ -547,13 +533,9 @@ impl EmitterFactory {
           deno::deno_resolver::RawDenoResolver::new(DenoResolverOptions {
             in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
             node_and_req_resolver: Some(NodeAndNpmResolvers {
-              node_resolver: deno_maybe_sync::MaybeArc::from(Arc::clone(
-                self.node_resolver().await?,
-              )),
+              node_resolver: Arc::clone(self.node_resolver().await?),
               npm_resolver: npm_resolver_clone.clone(),
-              npm_req_resolver: deno_maybe_sync::MaybeArc::from(Arc::clone(
-                self.npm_req_resolver().await?,
-              )),
+              npm_req_resolver: Arc::clone(self.npm_req_resolver().await?),
             }),
             workspace_resolver: self.workspace_resolver()?.clone(),
             bare_node_builtins: options.unstable_detect_cjs(), // or some appropriate value
@@ -588,11 +570,11 @@ impl EmitterFactory {
 
   pub fn npm_cache_dir(&self) -> Result<&Arc<NpmCacheDir>, anyhow::Error> {
     self.npm_cache_dir.get_or_try_init(|| {
-      let fs = self.fs();
+      let _fs = self.fs();
       let global_path = self.deno_dir.npm_folder_path();
       let options = self.deno_options()?;
       Ok(Arc::new(NpmCacheDir::new(
-        &sys_traits::impls::RealSys::default(),
+        &sys_traits::impls::RealSys,
         global_path,
         options.npmrc().get_all_known_registries_urls(),
       )))
@@ -624,8 +606,7 @@ impl EmitterFactory {
               // Create an upstream NpmResolutionCell from the snapshot
               use deno::deno_resolver::npm::managed::NpmResolutionCell;
               let npm_resolution_cell = NpmResolutionCell::new(snapshot);
-              let npm_resolution =
-                deno_maybe_sync::MaybeArc::from(Arc::new(npm_resolution_cell));
+              let npm_resolution = Arc::new(npm_resolution_cell);
 
               // Get node_modules path from the CLI resolver
               let maybe_node_modules_path =
@@ -778,6 +759,7 @@ impl EmitterFactory {
       .module_graph_builder
       .get_or_try_init_async(async {
         let options = self.deno_options()?.clone();
+        #[allow(clippy::arc_with_non_send_sync)]
         Ok(Arc::new(ModuleGraphBuilder::new(
           self.caches()?.clone(),
           self.cjs_tracker()?.clone(),
@@ -804,6 +786,7 @@ impl EmitterFactory {
       .module_graph_creator
       .get_or_try_init_async(async {
         let options = self.deno_options()?;
+        #[allow(clippy::arc_with_non_send_sync)]
         Ok(Arc::new(ModuleGraphCreator::new(
           options.clone(),
           self.npm_resolver().await?.clone(),

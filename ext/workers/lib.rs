@@ -234,7 +234,7 @@ pub async fn op_user_worker_create(
       no_npm,
 
       env_vars: env_vars.into_iter().collect(),
-      conf: WorkerRuntimeOpts::UserWorker({
+      conf: WorkerRuntimeOpts::UserWorker(Box::new({
         static DEFAULT: Lazy<UserWorkerRuntimeOpts> =
           Lazy::new(Default::default);
 
@@ -262,7 +262,7 @@ pub async fn op_user_worker_create(
 
           ..Default::default()
         }
-      }),
+      })),
 
       static_patterns,
       timing: None,
@@ -276,8 +276,11 @@ pub async fn op_user_worker_create(
       maybe_otel_config,
     };
 
-    tx.send(UserWorkerMsgs::Create(user_worker_options, result_tx))
-      .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
+    tx.send(UserWorkerMsgs::Create(
+      Box::new(user_worker_options),
+      result_tx,
+    ))
+    .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
     result_rx
   };
 
@@ -560,10 +563,10 @@ pub async fn op_user_worker_fetch_send(
       let mut req_reader_mut =
         RcRef::map(&req_stream, |r| &r.rd).borrow_mut().await;
 
-      if let HttpRequestReader::Headers(orig_req) = &mut *req_reader_mut {
-        if let Some(upgrade) = orig_req.extensions_mut().remove::<OnUpgrade>() {
-          let _ = req.0.extensions_mut().insert(upgrade);
-        }
+      if let HttpRequestReader::Headers(orig_req) = &mut *req_reader_mut
+        && let Some(upgrade) = orig_req.extensions_mut().remove::<OnUpgrade>()
+      {
+        let _ = req.0.extensions_mut().insert(upgrade);
       }
     }
 
@@ -659,9 +662,8 @@ pub async fn op_user_worker_fetch_send(
     .to_string();
 
   let size = HttpBody::size_hint(res.body()).exact();
-  let stream: BytesStream = Box::pin(res.into_body().map(|r| {
-    r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-  }));
+  let stream: BytesStream =
+    Box::pin(res.into_body().map(|r| r.map_err(std::io::Error::other)));
 
   let mut op_state = state.borrow_mut();
 

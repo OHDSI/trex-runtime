@@ -51,5 +51,5 @@ fn op_http_start(
     return Ok((conn, conn_watcher));
   }
 
-  Err(crate::RuntimeError::Runtime("Bad resource ID".to_string()).into())
+  Err(crate::RuntimeError::Runtime("Bad resource ID".to_string()))
 }

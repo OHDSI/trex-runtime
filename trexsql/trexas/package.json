@@ -3,7 +3,7 @@
     "version": "0.5.0",
     "description": "as",
     "scripts": {
-      "prepack": "sudo apt-get install -y curl unzip libopenblas-dev && curl -L -O https://install.duckdb.org/v1.4.1/libduckdb-linux-amd64.zip && unzip libduckdb-linux-amd64.zip && sudo cp duckdb.h* /usr/local/include/ && sudo cp libduckdb.so /usr/local/lib/ && sudo ldconfig && make configure && make release && mv build/release/extension/*/*_extension ."
+      "prepack": "sudo apt-get install -y curl unzip libopenblas-dev libglib2.0-dev && curl -L -O https://install.duckdb.org/v1.4.1/libduckdb-linux-amd64.zip && unzip libduckdb-linux-amd64.zip && sudo cp duckdb.h* /usr/local/include/ && sudo cp libduckdb.so /usr/local/lib/ && sudo ldconfig && make configure && make release && mv build/release/extension/*/*_extension ."
     },
     "author": "",
     "license": "Apache-2.0",

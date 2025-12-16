@@ -11,6 +11,8 @@ ENV ZERO_AR_DATE=1
 ENV DUCKDB_STATIC_BUILD=1
 ENV LLAMA_CUBLAS=1
 ENV duckdb_version=1.3.2
+ENV V8_FROM_SOURCE=1
+ENV EXTRA_GN_ARGS="v8_monolithic=true v8_monolithic_for_shared_library=true"
 
 RUN echo "Platform: $TARGETPLATFORM"
 
@@ -22,7 +24,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
     export CXX=clang++ \
     ; fi
 
-RUN apt-get update && apt-get install -y binutils llvm-dev libclang-dev clang cmake ninja-build libgomp1 libopenblas-dev unzip wget
+RUN apt-get update && apt-get install -y binutils llvm-dev libclang-dev clang cmake ninja-build libgomp1 libopenblas-dev unzip wget python3
 RUN rustup component add rustfmt
 
 # Download and install DuckDB library

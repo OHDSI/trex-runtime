@@ -39,7 +39,7 @@ fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, JsErrorBox> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_env_all()
-    .map_err(|e| JsErrorBox::from_err(e))?;
+    .map_err(JsErrorBox::from_err)?;
   let env_vars = state.borrow::<EnvVars>();
   Ok(env_vars.0.clone())
 }
@@ -56,7 +56,7 @@ fn op_get_env(
     state
       .borrow_mut::<PermissionsContainer>()
       .check_env(&key)
-      .map_err(|e| JsErrorBox::from_err(e))?;
+      .map_err(JsErrorBox::from_err)?;
   }
 
   if key.is_empty() {

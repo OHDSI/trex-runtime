@@ -246,10 +246,10 @@ fn register_sigalrm() {
               match msg {
                 SignalMsg::Alarm(ref timer_id) => {
                   if let Some(cpu_timer) = registry.get(timer_id) {
-                    if let Some(tx) = (*cpu_timer.cpu_alarm_val.cpu_alarms_tx.lock().await).clone() {
-                      if tx.send(()).is_err() {
-                          debug!("failed to send cpu alarm to the provided channel");
-                      }
+                    if let Some(tx) = (*cpu_timer.cpu_alarm_val.cpu_alarms_tx.lock().await).clone()
+                        && tx.send(()).is_err()
+                    {
+                        debug!("failed to send cpu alarm to the provided channel");
                     }
                   } else {
                     // NOTE: Unix signals are being delivered asynchronously,

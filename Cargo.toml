@@ -322,5 +322,6 @@ inherits = "dev"
 debug-assertions = false
 
 [profile.release]
-debug = true
+debug = false
 lto = "thin"
+strip = "debuginfo"

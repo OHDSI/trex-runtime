@@ -896,6 +896,7 @@ impl DenoFsNodeResolverEnv {
 pub struct DenoFsMetadata {
   is_file: bool,
   is_directory: bool,
+  #[allow(dead_code)]
   is_symlink: bool,
 }
 
@@ -1120,6 +1121,7 @@ impl sys_traits::BaseFsReadDir for DenoFsNodeResolverEnv {
 }
 
 impl sys_traits::EnvCurrentDir for DenoFsNodeResolverEnv {
+  #[allow(clippy::disallowed_methods)]
   fn env_current_dir(&self) -> std::io::Result<std::path::PathBuf> {
     std::env::current_dir()
   }

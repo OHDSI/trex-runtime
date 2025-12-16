@@ -35,10 +35,8 @@ pub type CliNodeCodeTranslator = NodeCodeTranslator<
 >;
 
 /// Generic CjsTracker type for any sys_traits-compatible system
-pub type GenericCjsTracker<TSys> = deno_resolver::cjs::CjsTracker<
-  DenoInNpmPackageChecker,
-  TSys,
->;
+pub type GenericCjsTracker<TSys> =
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, TSys>;
 
 /// Resolves a specifier that is pointing into a node_modules folder.
 ///
@@ -167,7 +165,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<Cow<'a, str>>,
-    esm_analysis_mode: EsmAnalysisMode,
+    _esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
@@ -210,14 +208,18 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
 
 /// Generic CJS code analyzer that works with any sys_traits-compatible system.
 /// This is used when the filesystem is backed by VFS (e.g., eszip bundles).
-pub struct GenericCjsCodeAnalyzer<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static> {
+pub struct GenericCjsCodeAnalyzer<
+  TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static,
+> {
   cache: NodeAnalysisCache,
   cjs_tracker: Arc<GenericCjsTracker<TSys>>,
   fs: deno_fs::FileSystemRc,
   parsed_source_cache: Option<Arc<ParsedSourceCache>>,
 }
 
-impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static> GenericCjsCodeAnalyzer<TSys> {
+impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static>
+  GenericCjsCodeAnalyzer<TSys>
+{
   pub fn new(
     cache: NodeAnalysisCache,
     cjs_tracker: Arc<GenericCjsTracker<TSys>>,
@@ -307,7 +309,9 @@ impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static>
 }
 
 #[async_trait::async_trait(?Send)]
-impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static> CjsCodeAnalyzer for GenericCjsCodeAnalyzer<TSys> {
+impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static>
+  CjsCodeAnalyzer for GenericCjsCodeAnalyzer<TSys>
+{
   async fn analyze_cjs<'a>(
     &self,
     specifier: &ModuleSpecifier,

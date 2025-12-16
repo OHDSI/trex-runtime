@@ -34,7 +34,7 @@ where
   let main_url = deno_core::resolve_url_or_path(&main, cwd.as_path())
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
   if main_url.scheme() == "file" {
-    let main_path = std::env::current_dir()
+    let _main_path = std::env::current_dir()
       .map_err(|e| {
         JsErrorBox::type_error(format!(
           "Failed to get current working directory: {}",

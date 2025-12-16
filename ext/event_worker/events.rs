@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::convert::Infallible;
 
 use base_mem_check::MemCheckState;
 use enum_as_inner::EnumAsInner;
@@ -63,16 +62,14 @@ pub enum LogLevel {
   Error,
 }
 
-impl TryFrom<u8> for LogLevel {
-  type Error = Infallible;
-
-  fn try_from(value: u8) -> Result<Self, Infallible> {
+impl From<u8> for LogLevel {
+  fn from(value: u8) -> Self {
     match value {
-      0 => Ok(Self::Debug),
-      1 => Ok(Self::Info),
-      2 => Ok(Self::Warning),
-      3 => Ok(Self::Error),
-      _ => Ok(Self::Debug),
+      0 => Self::Debug,
+      1 => Self::Info,
+      2 => Self::Warning,
+      3 => Self::Error,
+      _ => Self::Debug,
     }
   }
 }

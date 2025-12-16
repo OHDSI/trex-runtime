@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -23,7 +25,6 @@ use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_semver::SmallStackString;
-use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;

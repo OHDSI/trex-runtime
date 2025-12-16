@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use crate::args::CacheSetting;
 use crate::auth_tokens::AuthTokens;
 use crate::http_util::CacheSemantics;

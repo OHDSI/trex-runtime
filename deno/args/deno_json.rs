@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use std::collections::HashSet;
 
 // TsConfigForEmit has been removed from deno_config in Deno 2.5.6

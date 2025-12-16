@@ -255,11 +255,31 @@ mod test {
   use std::time::Duration;
 
   use parking_lot::Mutex;
-  use test_util::TempDir;
   use tokio::sync::Notify;
 
   use super::*;
   use crate::LogReporter;
+
+  #[derive(Clone)]
+  struct TempDir(Arc<tempfile::TempDir>);
+
+  impl TempDir {
+    fn new() -> Self {
+      Self(Arc::new(tempfile::TempDir::new().unwrap()))
+    }
+
+    fn path(&self) -> &std::path::Path {
+      self.0.path()
+    }
+
+    fn write(&self, name: &str, content: &str) {
+      std::fs::write(self.0.path().join(name), content).unwrap();
+    }
+
+    fn read_to_string(&self, name: &str) -> String {
+      std::fs::read_to_string(self.0.path().join(name)).unwrap()
+    }
+  }
 
   #[tokio::test]
   async fn lax_fs_lock_basic() {

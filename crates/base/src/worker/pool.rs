@@ -406,7 +406,7 @@ impl WorkerPool {
 
           if worker_pool_msgs_tx
             .send(UserWorkerMsgs::Create(
-              WorkerContextInitOpts {
+              Box::new(WorkerContextInitOpts {
                 service_path,
                 no_module_cache,
                 no_npm,
@@ -421,7 +421,7 @@ impl WorkerPool {
                 maybe_s3_fs_config,
                 maybe_tmp_fs_config,
                 maybe_otel_config: otel_config,
-              },
+              }),
               tx,
             ))
             .is_err()
@@ -486,11 +486,12 @@ impl WorkerPool {
           let handles_opt = handles_guard.take();
           drop(handles_guard);
 
-          let (thread_handle, isolate_handle) = if let Some(handles) = handles_opt {
-            (Some(handles.thread_handle), Some(handles.isolate_handle))
-          } else {
-            (None, None)
-          };
+          let (thread_handle, isolate_handle) =
+            if let Some(handles) = handles_opt {
+              (Some(handles.thread_handle), Some(handles.isolate_handle))
+            } else {
+              (None, None)
+            };
 
           let profile = UserWorkerProfile {
             worker_request_msg_tx: surface.msg_tx,
@@ -630,10 +631,7 @@ impl WorkerPool {
               Ok(req) => Ok((req, req_end_tx)),
               Err(err) => {
                 let _ = req_end_tx.send(());
-                error!(
-                  "failed to send request to user worker: {}",
-                  err.to_string()
-                );
+                error!("failed to send request to user worker: {err}");
                 Err(err)
               }
             }
@@ -838,8 +836,8 @@ pub async fn create_user_worker_pool(
               None => break,
               Some(UserWorkerMsgs::Create(worker_options, tx)) => {
                 worker_pool.create_user_worker(WorkerContextInitOpts {
-                  static_patterns: [worker_options.static_patterns, static_patterns.clone()].concat(),
-                  ..worker_options
+                  static_patterns: [worker_options.static_patterns.clone(), static_patterns.clone()].concat(),
+                  ..*worker_options
                 }, tx, token.map(TerminationToken::child_token));
               }
 

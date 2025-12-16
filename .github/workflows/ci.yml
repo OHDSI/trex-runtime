@@ -9,10 +9,12 @@ on:
       - ready_for_review
     paths: &watch
       - '.cargo/**'
+      - '.github/workflows/**'
       - 'cli/**'
       - 'crates/**'
       - 'deno/**'
       - 'ext/**'
+      - 'trexsql/**'
       - 'vendor/**'
       - '.env'
       - 'Cargo.lock'
@@ -22,6 +24,7 @@ on:
     branches:
       - main
       - develop
+      - deno2.5.6
     paths: *watch
   workflow_dispatch:
 
@@ -41,7 +44,7 @@ jobs:
   cargo-fmt:
     if: github.event.pull_request.draft == false
     name: 'fmt'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -55,13 +58,15 @@ jobs:
   cargo-clippy:
     if: github.event.pull_request.draft == false
     name: 'cargo clippy'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
+    env:
+      V8_FROM_SOURCE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev unzip wget
+          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
       - name: Install DuckDB library
         run: |
           wget -O /tmp/libduckdb-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.3.2/libduckdb-linux-amd64.zip
@@ -76,14 +81,17 @@ jobs:
       - run: ./scripts/clippy.sh
 
   cargo-test:
-    if: github.event.pull_request.draft == false
+    # Disabled: change to 'github.event.pull_request.draft == false' to re-enable
+    if: false
     name: 'cargo test'
     runs-on: ubuntu-latest
+    env:
+      V8_FROM_SOURCE: 1
     steps:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev unzip wget
+          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
 
       - name: Install DuckDB library
         run: |

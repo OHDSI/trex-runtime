@@ -139,13 +139,12 @@ mod tests {
   // ok, testing
   #[allow(clippy::disallowed_types)]
   use sys_traits::impls::RealSys;
-  use test_util::TempDir;
 
   use super::*;
 
   #[test]
   fn test_set_get_cache_file() {
-    let temp_dir = TempDir::new();
+    let temp_dir = tempfile::TempDir::new().unwrap();
     let sub_dir = temp_dir.path().join("sub_dir");
     let cache = DiskCache::new(RealSys, sub_dir.to_path_buf());
     let path = PathBuf::from("foo/bar.txt");

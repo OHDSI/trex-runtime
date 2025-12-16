@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use crate::DenoOptions;
 use crate::args::CliLockfile;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
@@ -11,14 +13,11 @@ use crate::cache::FetchCacher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
-use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::util::fs::canonicalize_path;
-use sys_traits::impls::RealSys;
 
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::bail;
@@ -45,14 +44,12 @@ use deno_graph::source::ResolveError;
 use deno_path_util::url_to_file_path;
 use deno_permissions::CheckedPath;
 use deno_permissions::PermissionsContainer;
-use deno_resolver::workspace::SloppyImportsResolutionReason;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use node_resolver::InNpmPackageChecker;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::error::Error;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -97,9 +94,7 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(anyhow::anyhow!(format_deno_graph_error(
-        err.as_ref().deref()
-      )));
+      return Err(anyhow::anyhow!(format_deno_graph_error(err.as_ref())));
     }
     Ok(())
   }
@@ -583,6 +578,7 @@ impl ModuleGraphBuilder {
       .await
   }
 
+  #[allow(clippy::too_many_arguments)]
   async fn build_graph_with_npm_resolution_and_build_options<'a, MA>(
     &'a self,
     graph: &mut ModuleGraph,
@@ -738,7 +734,7 @@ impl ModuleGraphBuilder {
     let parser = self.parsed_source_cache.as_capturing_parser();
     let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver
+    let _graph_npm_resolver = cli_resolver
       .create_graph_npm_resolver(self.options.default_npm_caching_strategy());
 
     graph.build_fast_check_type_graph(
@@ -853,8 +849,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 }
 
 fn enhanced_sloppy_imports_error_message(
-  fs: &Arc<dyn FileSystem>,
-  error: &ModuleError,
+  _fs: &Arc<dyn FileSystem>,
+  _error: &ModuleError,
 ) -> Option<String> {
   // This function has been removed in newer Deno versions
   // Sloppy imports handling is now integrated into the workspace resolver
@@ -1126,9 +1122,7 @@ impl<'a> sys_traits::BaseFsReadDir for DenoGraphFsAdapter<'a> {
     let entries = self
       .0
       .read_dir_sync(&CheckedPath::unsafe_new(Cow::Borrowed(path)))
-      .map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-      })?;
+      .map_err(|e| std::io::Error::other(e.to_string()))?;
     let iter = entries.into_iter().map(|entry| {
       Ok(sys_traits::boxed::BoxedFsDirEntry::new(FsDirEntryAdapter {
         name: std::ffi::OsString::from(entry.name),

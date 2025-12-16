@@ -11,7 +11,6 @@
 
 use deno_ast::ParseDiagnostic;
 use deno_core::error::AnyError;
-use deno_graph::ModuleError;
 use deno_graph::ModuleErrorKind;
 use deno_graph::ModuleGraphError;
 use deno_graph::ModuleLoadError;
