@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <errno.h>
 
 #ifdef CIRCE_EMBEDDED_NATIVE_LIB
 #include <unistd.h>
@@ -42,6 +43,9 @@ static graal_create_isolate_fn graal_create_isolate_ptr = NULL;
 static graal_attach_thread_fn graal_attach_thread_ptr = NULL;
 static graal_detach_thread_fn graal_detach_thread_ptr = NULL;
 
+static pthread_once_t circe_init_once = PTHREAD_ONCE_INIT;
+static int circe_init_success = 0;
+
 typedef enum {
     CIRCE_OP_BUILD_SQL,
     CIRCE_OP_SQL_RENDER,
@@ -58,6 +62,24 @@ typedef struct {
     char* result;
 } circe_work_t;
 
+static char* circe_execute_op(graal_isolatethread_t* thread, circe_work_t* work) {
+    switch (work->op) {
+        case CIRCE_OP_BUILD_SQL:
+            return circe_convert(thread, work->arg1, work->arg2);
+        case CIRCE_OP_SQL_RENDER:
+            return circe_sql_render(thread, work->arg1, work->arg2);
+        case CIRCE_OP_SQL_TRANSLATE:
+            return circe_sql_translate(thread, work->arg1, work->arg2);
+        case CIRCE_OP_SQL_RENDER_TRANSLATE:
+            return circe_sql_render_translate(thread, work->arg1, work->arg2, work->arg3);
+        case CIRCE_OP_CHECK_COHORT:
+            return circe_check_cohort(thread, work->arg1);
+        default:
+            fprintf(stderr, "circe: unknown operation type %d\n", work->op);
+            return NULL;
+    }
+}
+
 static void* circe_worker_thread(void* arg) {
     circe_work_t* work = (circe_work_t*)arg;
 
@@ -67,25 +89,10 @@ static void* circe_worker_thread(void* arg) {
         return NULL;
     }
 
-    switch (work->op) {
-        case CIRCE_OP_BUILD_SQL:
-            work->result = circe_convert(thread, work->arg1, work->arg2);
-            break;
-        case CIRCE_OP_SQL_RENDER:
-            work->result = circe_sql_render(thread, work->arg1, work->arg2);
-            break;
-        case CIRCE_OP_SQL_TRANSLATE:
-            work->result = circe_sql_translate(thread, work->arg1, work->arg2);
-            break;
-        case CIRCE_OP_SQL_RENDER_TRANSLATE:
-            work->result = circe_sql_render_translate(thread, work->arg1, work->arg2, work->arg3);
-            break;
-        case CIRCE_OP_CHECK_COHORT:
-            work->result = circe_check_cohort(thread, work->arg1);
-            break;
+    work->result = circe_execute_op(thread, work);
+    if (graal_detach_thread_ptr(thread) != 0) {
+        fprintf(stderr, "circe: graal_detach_thread failed\n");
     }
-
-    graal_detach_thread_ptr(thread);
     return NULL;
 }
 
@@ -95,23 +102,22 @@ static char* circe_run_with_large_stack(circe_op_type op, char* arg1, char* arg2
     pthread_attr_t attr;
 
     if (pthread_attr_init(&attr) != 0) {
-        circe_worker_thread(&work);
-        return work.result;
+        return circe_execute_op(circe_thread, &work);
     }
 
     if (pthread_attr_setstacksize(&attr, CIRCE_WORKER_STACK_SIZE) != 0) {
         pthread_attr_destroy(&attr);
-        circe_worker_thread(&work);
-        return work.result;
+        return circe_execute_op(circe_thread, &work);
     }
 
     if (pthread_create(&thread, &attr, circe_worker_thread, &work) != 0) {
         pthread_attr_destroy(&attr);
-        circe_worker_thread(&work);
-        return work.result;
+        return circe_execute_op(circe_thread, &work);
     }
 
-    pthread_join(thread, NULL);
+    int rc;
+    while ((rc = pthread_join(thread, NULL)) == EINTR) {
+    }
     pthread_attr_destroy(&attr);
     return work.result;
 }
@@ -184,16 +190,11 @@ static void *LoadEmbeddedCirceLibrary() {
 }
 #endif
 
-static int EnsureCirceLoaded() {
-    if (circe_convert) return 1; // Already loaded
-    
+static void CirceInitOnce(void) {
 #ifdef CIRCE_EMBEDDED_NATIVE_LIB
     circe_lib_handle = LoadEmbeddedCirceLibrary();
-    if (!circe_lib_handle) {
-        // Fall back to search paths below
-    }
 #endif
-    
+
     if (!circe_lib_handle) {
         const char *candidates[] = {
             "./circe-be/native-libs/libcirce-native-lib.so",
@@ -208,41 +209,45 @@ static int EnsureCirceLoaded() {
             if (circe_lib_handle) break;
         }
     }
-    
-    if (!circe_lib_handle) {
-        return 0; // Failed to load
-    }
-    
+
+    if (!circe_lib_handle) return;
+
     void *sym_build = dlsym(circe_lib_handle, "circe_build_cohort_sql");
-    if (!sym_build) return 0;
+    if (!sym_build) return;
     void *sym_render = dlsym(circe_lib_handle, "circe_sql_render");
-    if (!sym_render) return 0;
+    if (!sym_render) return;
     void *sym_translate = dlsym(circe_lib_handle, "circe_sql_translate");
-    if (!sym_translate) return 0;
+    if (!sym_translate) return;
     void *sym_render_translate = dlsym(circe_lib_handle, "circe_sql_render_translate");
-    if (!sym_render_translate) return 0;
+    if (!sym_render_translate) return;
     void *sym_check = dlsym(circe_lib_handle, "circe_check_cohort");
-    if (!sym_check) return 0;
+    if (!sym_check) return;
     void *sym_create = dlsym(circe_lib_handle, "graal_create_isolate");
-    if (!sym_create) return 0;
+    if (!sym_create) return;
     void *sym_attach = dlsym(circe_lib_handle, "graal_attach_thread");
-    if (!sym_attach) return 0;
+    if (!sym_attach) return;
     void *sym_detach = dlsym(circe_lib_handle, "graal_detach_thread");
-    if (!sym_detach) return 0;
+    if (!sym_detach) return;
+
+    graal_create_isolate_ptr = (graal_create_isolate_fn)sym_create;
+    graal_attach_thread_ptr = (graal_attach_thread_fn)sym_attach;
+    graal_detach_thread_ptr = (graal_detach_thread_fn)sym_detach;
+
+    int rc = graal_create_isolate_ptr(NULL, &circe_isolate, &circe_thread);
+    if (rc != 0 || !circe_thread) return;
 
     circe_convert = (circe_convert_fn)sym_build;
     circe_sql_render = (circe_sql_render_fn)sym_render;
     circe_sql_translate = (circe_sql_translate_fn)sym_translate;
     circe_sql_render_translate = (circe_sql_render_translate_fn)sym_render_translate;
     circe_check_cohort = (circe_check_cohort_fn)sym_check;
-    graal_create_isolate_ptr = (graal_create_isolate_fn)sym_create;
-    graal_attach_thread_ptr = (graal_attach_thread_fn)sym_attach;
-    graal_detach_thread_ptr = (graal_detach_thread_fn)sym_detach;
-    
-    int rc = graal_create_isolate_ptr(NULL, &circe_isolate, &circe_thread);
-    if (rc != 0 || !circe_thread) return 0;
-    
-    return 1; // Success
+
+    circe_init_success = 1;
+}
+
+static int EnsureCirceLoaded() {
+    pthread_once(&circe_init_once, CirceInitOnce);
+    return circe_init_success;
 }
 
 static char* get_string_from_vector(duckdb_vector vector, idx_t row) {
