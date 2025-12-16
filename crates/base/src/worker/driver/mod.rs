@@ -148,7 +148,7 @@ pub(super) trait WorkerDriver: Send {
     error: Error,
   ) -> impl Future<Output = Result<WorkerEvents, Error>> {
     async move {
-      log::error!("{}", format!("{error:#}"));
+      log::error!("{error:#}");
       Ok(WorkerEvents::BootFailure(BootFailureEvent {
         msg: format!("{error:#}"),
       }))

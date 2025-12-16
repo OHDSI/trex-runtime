@@ -273,7 +273,7 @@ impl deno_fs::FileSystem for TmpFs {
     path: &CheckedPath,
     options: deno_fs::OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     Ok(Rc::new(TmpObject {
       fs: self.clone(),
@@ -294,7 +294,7 @@ impl deno_fs::FileSystem for TmpFs {
     path: CheckedPathBuf,
     options: deno_fs::OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     Ok(Rc::new(TmpObject {
       fs: self.clone(),
@@ -314,7 +314,7 @@ impl deno_fs::FileSystem for TmpFs {
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.mkdir_sync(&checked_path, recursive, mode)
   }
@@ -326,7 +326,7 @@ impl deno_fs::FileSystem for TmpFs {
     recursive: bool,
     mode: Option<u32>,
   ) -> FsResult<()> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.mkdir_async(checked_path, recursive, mode).await
   }
@@ -426,7 +426,7 @@ impl deno_fs::FileSystem for TmpFs {
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
   fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()> {
     self.quota.sync.do_opt.raise();
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.remove_sync(&checked_path, recursive)
   }
@@ -438,7 +438,7 @@ impl deno_fs::FileSystem for TmpFs {
     recursive: bool,
   ) -> FsResult<()> {
     self.quota.sync.do_opt.raise();
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.remove_async(checked_path, recursive).await
   }
@@ -453,8 +453,8 @@ impl deno_fs::FileSystem for TmpFs {
       .quota
       .blocking_check(self.stat_sync(oldpath)?.size as usize)?;
 
-    let joined_oldpath = self.root.path().join((&**oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&**newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath =
       CheckedPath::unsafe_new(Cow::Borrowed(&joined_oldpath));
     let checked_newpath =
@@ -473,8 +473,8 @@ impl deno_fs::FileSystem for TmpFs {
       .check(self.stat_async(oldpath.clone()).await?.size as usize)
       .await?;
 
-    let joined_oldpath = self.root.path().join((&*oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&*newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath = CheckedPathBuf::unsafe_new(joined_oldpath);
     let checked_newpath = CheckedPathBuf::unsafe_new(joined_newpath);
     RealFs
@@ -492,8 +492,8 @@ impl deno_fs::FileSystem for TmpFs {
       .quota
       .blocking_check(self.stat_sync(path)?.size as usize)?;
 
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
-    let joined_new_path = self.root.path().join((&**new_path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
+    let joined_new_path = self.root.path().join(new_path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     let checked_new_path =
       CheckedPath::unsafe_new(Cow::Borrowed(&joined_new_path));
@@ -511,8 +511,8 @@ impl deno_fs::FileSystem for TmpFs {
       .check(self.stat_async(path.clone()).await?.size as usize)
       .await?;
 
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
-    let joined_new_path = self.root.path().join((&*new_path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
+    let joined_new_path = self.root.path().join(new_path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     let checked_new_path = CheckedPathBuf::unsafe_new(joined_new_path);
     RealFs.cp_async(checked_path, checked_new_path).await
@@ -520,34 +520,34 @@ impl deno_fs::FileSystem for TmpFs {
 
   #[instrument(level = "trace", skip(self), err(Debug))]
   fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.stat_sync(&checked_path)
   }
 
   #[instrument(level = "trace", skip(self), err(Debug))]
   async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.stat_async(checked_path).await
   }
 
   #[instrument(level = "trace", skip(self), err(Debug))]
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.lstat_sync(&checked_path)
   }
 
   #[instrument(level = "trace", skip(self), err(Debug))]
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.lstat_async(checked_path).await
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
-    let joined_path = match (&**path).try_normalize() {
+    let joined_path = match path.try_normalize() {
       Ok(p) => self.root.path().join(p),
       Err(_) => return false,
     };
@@ -556,28 +556,28 @@ impl deno_fs::FileSystem for TmpFs {
   }
 
   async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.exists_async(checked_path).await
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.realpath_sync(&checked_path)
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.realpath_async(checked_path).await
   }
 
   #[instrument(level = "trace", skip(self), err(Debug))]
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.read_dir_sync(&checked_path).inspect(|it| {
       trace!(len = it.len());
@@ -589,7 +589,7 @@ impl deno_fs::FileSystem for TmpFs {
     &self,
     path: CheckedPathBuf,
   ) -> FsResult<Vec<FsDirEntry>> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.read_dir_async(checked_path).await.inspect(|it| {
       trace!(len = it.len());
@@ -602,8 +602,8 @@ impl deno_fs::FileSystem for TmpFs {
     oldpath: &CheckedPath,
     newpath: &CheckedPath,
   ) -> FsResult<()> {
-    let joined_oldpath = self.root.path().join((&**oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&**newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath =
       CheckedPath::unsafe_new(Cow::Borrowed(&joined_oldpath));
     let checked_newpath =
@@ -617,8 +617,8 @@ impl deno_fs::FileSystem for TmpFs {
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
-    let joined_oldpath = self.root.path().join((&*oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&*newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath = CheckedPathBuf::unsafe_new(joined_oldpath);
     let checked_newpath = CheckedPathBuf::unsafe_new(joined_newpath);
     RealFs.rename_async(checked_oldpath, checked_newpath).await
@@ -630,8 +630,8 @@ impl deno_fs::FileSystem for TmpFs {
     oldpath: &CheckedPath,
     newpath: &CheckedPath,
   ) -> FsResult<()> {
-    let joined_oldpath = self.root.path().join((&**oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&**newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath =
       CheckedPath::unsafe_new(Cow::Borrowed(&joined_oldpath));
     let checked_newpath =
@@ -645,8 +645,8 @@ impl deno_fs::FileSystem for TmpFs {
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
-    let joined_oldpath = self.root.path().join((&*oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&*newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath = CheckedPathBuf::unsafe_new(joined_oldpath);
     let checked_newpath = CheckedPathBuf::unsafe_new(joined_newpath);
     RealFs.link_async(checked_oldpath, checked_newpath).await
@@ -659,8 +659,8 @@ impl deno_fs::FileSystem for TmpFs {
     newpath: &CheckedPath,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    let joined_oldpath = self.root.path().join((&**oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&**newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath =
       CheckedPath::unsafe_new(Cow::Borrowed(&joined_oldpath));
     let checked_newpath =
@@ -675,8 +675,8 @@ impl deno_fs::FileSystem for TmpFs {
     newpath: CheckedPathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    let joined_oldpath = self.root.path().join((&*oldpath).try_normalize()?);
-    let joined_newpath = self.root.path().join((&*newpath).try_normalize()?);
+    let joined_oldpath = self.root.path().join(oldpath.try_normalize()?);
+    let joined_newpath = self.root.path().join(newpath.try_normalize()?);
     let checked_oldpath = CheckedPathBuf::unsafe_new(joined_oldpath);
     let checked_newpath = CheckedPathBuf::unsafe_new(joined_newpath);
     RealFs
@@ -686,14 +686,14 @@ impl deno_fs::FileSystem for TmpFs {
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
   fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.read_link_sync(&checked_path)
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.read_link_async(checked_path).await
   }
@@ -706,7 +706,7 @@ impl deno_fs::FileSystem for TmpFs {
       .quota
       .blocking_try_add_delta((len as i64) - (size as i64))?;
 
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.truncate_sync(&checked_path, len)
   }
@@ -724,7 +724,7 @@ impl deno_fs::FileSystem for TmpFs {
       .try_add_delta((len as i64) - (size as i64))
       .await?;
 
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs.truncate_async(checked_path, len).await
   }
@@ -738,7 +738,7 @@ impl deno_fs::FileSystem for TmpFs {
     mtime_secs: i64,
     mtime_nanos: u32,
   ) -> FsResult<()> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.utime_sync(
       &checked_path,
@@ -758,7 +758,7 @@ impl deno_fs::FileSystem for TmpFs {
     mtime_secs: i64,
     mtime_nanos: u32,
   ) -> FsResult<()> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs
       .utime_async(
@@ -780,7 +780,7 @@ impl deno_fs::FileSystem for TmpFs {
     mtime_secs: i64,
     mtime_nanos: u32,
   ) -> FsResult<()> {
-    let joined_path = self.root.path().join((&**path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
     RealFs.lutime_sync(
       &checked_path,
@@ -800,7 +800,7 @@ impl deno_fs::FileSystem for TmpFs {
     mtime_secs: i64,
     mtime_nanos: u32,
   ) -> FsResult<()> {
-    let joined_path = self.root.path().join((&*path).try_normalize()?);
+    let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
     RealFs
       .lutime_async(
@@ -1079,6 +1079,7 @@ mod test {
     append: true,
     create_new: true,
     mode: None,
+    custom_flags: None,
   });
 
   static DATA: &[u8] = b"meowmeow";

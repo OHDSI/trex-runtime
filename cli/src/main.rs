@@ -212,7 +212,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .cloned()
           .unwrap();
         let myip = ip;
-        if sql.is_some() {
+        if let Some(sql_port) = sql {
           if sql_scram {
             let Some((key_slice, cert_slice)) = sub_matches
               .get_one::<PathBuf>("key")
@@ -226,7 +226,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
               bail!("unable to load the key file or cert file");
             };
             let ip_str = myip.to_string();
-            let sql_port = sql.unwrap();
             tokio::spawn(async move {
               start_sql_server(
                 &ip_str,
@@ -241,7 +240,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
             });
           } else {
             let ip_str = myip.to_string();
-            let sql_port = sql.unwrap();
             tokio::spawn(async move {
               println!("Starting SQL Server Port: {}", sql_port);
               start_sql_server(

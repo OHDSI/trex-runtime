@@ -449,7 +449,7 @@ impl deno_fs::FileSystem for S3Fs {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
     let file_ptr = std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self.open_inner(path, options).await.map(|it| unsafe {
@@ -476,7 +476,7 @@ impl deno_fs::FileSystem for S3Fs {
     path: CheckedPathBuf,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    Ok(self.open_inner((&*path).to_path_buf(), options).await?)
+    Ok(self.open_inner(path.to_path_buf(), options).await?)
   }
 
   fn mkdir_sync(
@@ -486,7 +486,7 @@ impl deno_fs::FileSystem for S3Fs {
     mode: Option<u32>,
   ) -> FsResult<()> {
     std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self
@@ -507,7 +507,7 @@ impl deno_fs::FileSystem for S3Fs {
     _mode: Option<u32>,
   ) -> FsResult<()> {
     let (bucket_name, key) =
-      try_get_bucket_name_and_key((&*path).try_normalize()?)?;
+      try_get_bucket_name_and_key(path.try_normalize()?)?;
 
     if key.is_empty() {
       return Err(FsError::Io(io::Error::from(io::ErrorKind::InvalidInput)));
@@ -583,13 +583,13 @@ impl deno_fs::FileSystem for S3Fs {
           .send()
           .await;
 
-        if let Err(err) = resp {
-          if !matches!(
+        if let Err(err) = resp
+          && !matches!(
             err.as_service_error(),
             Some(HeadObjectError::NotFound(_))
-          ) {
-            return Err(io::Error::other(err));
-          }
+          )
+        {
+          return Err(io::Error::other(err));
         }
 
         client
@@ -707,7 +707,7 @@ impl deno_fs::FileSystem for S3Fs {
 
   fn remove_sync(&self, path: &CheckedPath, recursive: bool) -> FsResult<()> {
     std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self
@@ -728,9 +728,9 @@ impl deno_fs::FileSystem for S3Fs {
   ) -> FsResult<()> {
     self.flush_background_tasks().await;
 
-    let had_slash = (&*path).to_string_lossy().ends_with('/');
+    let had_slash = path.to_string_lossy().ends_with('/');
     let (bucket_name, key) =
-      try_get_bucket_name_and_key((&*path).try_normalize()?)?;
+      try_get_bucket_name_and_key(path.try_normalize()?)?;
 
     if recursive {
       let builder = self.client.list_objects_v2().bucket(&bucket_name).prefix(
@@ -875,7 +875,7 @@ impl deno_fs::FileSystem for S3Fs {
 
   fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self.stat_async(CheckedPathBuf::unsafe_new(path)).await
@@ -890,7 +890,7 @@ impl deno_fs::FileSystem for S3Fs {
   async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
     self.flush_background_tasks().await;
 
-    let normalized = (&*path).try_normalize()?;
+    let normalized = path.try_normalize()?;
     let had_slash = normalized.to_string_lossy().ends_with('/');
     let (bucket_name, key) = try_get_bucket_name_and_key(normalized.clone())?;
     let key_count = if key.is_empty() {
@@ -942,7 +942,7 @@ impl deno_fs::FileSystem for S3Fs {
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
     std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self.lstat_async(CheckedPathBuf::unsafe_new(path)).await
@@ -960,7 +960,7 @@ impl deno_fs::FileSystem for S3Fs {
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
     std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self
@@ -988,7 +988,7 @@ impl deno_fs::FileSystem for S3Fs {
 
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
     std::thread::scope(|s| {
-      let path = (&**path).to_path_buf();
+      let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
           self.read_dir_async(CheckedPathBuf::unsafe_new(path)).await
@@ -1007,7 +1007,7 @@ impl deno_fs::FileSystem for S3Fs {
     self.flush_background_tasks().await;
 
     let (bucket_name, mut key) =
-      try_get_bucket_name_and_key((&*path).try_normalize()?)?;
+      try_get_bucket_name_and_key(path.try_normalize()?)?;
     let is_root = key.is_empty();
 
     debug_assert!(!key.ends_with('/'));
@@ -2195,6 +2195,7 @@ mod test {
   use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
   use deno_fs::FileSystem;
   use deno_fs::OpenOptions;
+  use deno_permissions::CheckedPathBuf;
   use once_cell::sync::Lazy;
 
   static OPEN_CREATE: Lazy<OpenOptions> = Lazy::new(|| OpenOptions {
@@ -2205,6 +2206,7 @@ mod test {
     append: true,
     create_new: true,
     mode: None,
+    custom_flags: None,
   });
 
   fn get_s3_credentials() -> s3::config::SharedCredentialsProvider {

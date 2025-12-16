@@ -80,13 +80,13 @@ pub fn load_npm_vfs(
     }
     // Specifically look for fastify
     for entry in &dir.entries {
-      if entry.name() == "localhost" {
-        if let VfsEntry::Dir(localhost_dir) = entry {
-          for pkg in &localhost_dir.entries {
-            if pkg.name() == "fastify" {
-              log::debug!("=== FASTIFY VFS STRUCTURE ===");
-              log_vfs_tree(pkg, 2);
-            }
+      if entry.name() == "localhost"
+        && let VfsEntry::Dir(localhost_dir) = entry
+      {
+        for pkg in &localhost_dir.entries {
+          if pkg.name() == "fastify" {
+            log::debug!("=== FASTIFY VFS STRUCTURE ===");
+            log_vfs_tree(pkg, 2);
           }
         }
       }

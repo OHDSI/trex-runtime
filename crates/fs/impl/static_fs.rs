@@ -93,8 +93,8 @@ impl deno_fs::FileSystem for StaticFs {
     path: &CheckedPath,
     _options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    if self.vfs.is_path_within(&**path) {
-      Ok(self.vfs.open_file(&**path)?)
+    if self.vfs.is_path_within(path) {
+      Ok(self.vfs.open_file(path)?)
     } else {
       Err(FsError::Io(io::Error::from(io::ErrorKind::NotFound)))
     }
@@ -105,8 +105,8 @@ impl deno_fs::FileSystem for StaticFs {
     path: CheckedPathBuf,
     _options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
-    if self.vfs.is_path_within(&*path) {
-      Ok(self.vfs.open_file(&*path)?)
+    if self.vfs.is_path_within(&path) {
+      Ok(self.vfs.open_file(&path)?)
     } else {
       Err(FsError::Io(io::Error::from(io::ErrorKind::NotFound)))
     }
@@ -251,56 +251,56 @@ impl deno_fs::FileSystem for StaticFs {
   }
 
   fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    if self.vfs.is_path_within(&**path) {
-      Ok(self.vfs.stat(&**path)?)
+    if self.vfs.is_path_within(path) {
+      Ok(self.vfs.stat(path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    if self.vfs.is_path_within(&*path) {
-      Ok(self.vfs.stat(&*path)?)
+    if self.vfs.is_path_within(&path) {
+      Ok(self.vfs.stat(&path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    if self.vfs.is_path_within(&**path) {
-      Ok(self.vfs.lstat(&**path)?)
+    if self.vfs.is_path_within(path) {
+      Ok(self.vfs.lstat(path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    if self.vfs.is_path_within(&*path) {
-      Ok(self.vfs.lstat(&*path)?)
+    if self.vfs.is_path_within(&path) {
+      Ok(self.vfs.lstat(&path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    if self.vfs.is_path_within(&**path) {
-      Ok(self.vfs.canonicalize(&**path)?)
+    if self.vfs.is_path_within(path) {
+      Ok(self.vfs.canonicalize(path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    if self.vfs.is_path_within(&*path) {
-      Ok(self.vfs.canonicalize(&*path)?)
+    if self.vfs.is_path_within(&path) {
+      Ok(self.vfs.canonicalize(&path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
-    if self.vfs.is_path_within(&**path) {
-      Ok(self.vfs.read_dir(&**path)?)
+    if self.vfs.is_path_within(path) {
+      Ok(self.vfs.read_dir(path)?)
     } else {
       Err(FsError::NotSupported)
     }
@@ -310,8 +310,8 @@ impl deno_fs::FileSystem for StaticFs {
     &self,
     path: CheckedPathBuf,
   ) -> FsResult<Vec<FsDirEntry>> {
-    if self.vfs.is_path_within(&*path) {
-      Ok(self.vfs.read_dir(&*path)?)
+    if self.vfs.is_path_within(&path) {
+      Ok(self.vfs.read_dir(&path)?)
     } else {
       Err(FsError::NotSupported)
     }
@@ -368,16 +368,16 @@ impl deno_fs::FileSystem for StaticFs {
   }
 
   fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    if self.vfs.is_path_within(&**path) {
-      Ok(self.vfs.read_link(&**path)?)
+    if self.vfs.is_path_within(path) {
+      Ok(self.vfs.read_link(path)?)
     } else {
       Err(FsError::NotSupported)
     }
   }
 
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    if self.vfs.is_path_within(&*path) {
-      Ok(self.vfs.read_link(&*path)?)
+    if self.vfs.is_path_within(&path) {
+      Ok(self.vfs.read_link(&path)?)
     } else {
       Err(FsError::NotSupported)
     }
@@ -440,11 +440,11 @@ impl deno_fs::FileSystem for StaticFs {
   }
 
   fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
-    let is_npm = self.is_valid_npm_package(&**path);
+    let is_npm = self.is_valid_npm_package(path);
     let is_byonm_path = self
       .byonm_node_modules_path
       .as_ref()
-      .map(|it| (&**path).starts_with(it))
+      .map(|it| path.starts_with(it))
       .unwrap_or_default();
 
     if is_npm || is_byonm_path {
@@ -454,7 +454,7 @@ impl deno_fs::FileSystem for StaticFs {
       Ok(buf)
     } else {
       let eszip = self.vfs.eszip.as_ref();
-      let path_ref = &**path;
+      let path_ref = path;
       let path_buf = if path_ref.is_relative() {
         self.base_dir_path.join(path_ref)
       } else {
@@ -504,10 +504,10 @@ impl deno_fs::FileSystem for StaticFs {
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
-    self.vfs.is_path_within(&**path)
+    self.vfs.is_path_within(path)
   }
 
   async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    Ok(self.vfs.is_path_within(&*path))
+    Ok(self.vfs.is_path_within(&path))
   }
 }

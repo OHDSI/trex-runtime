@@ -687,7 +687,7 @@ impl Server {
         return Ok(ret);
       };
 
-      error!("{}", format!("{err:?}"));
+      error!("{err:?}");
 
       return Ok(ret);
     }

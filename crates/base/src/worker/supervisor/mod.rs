@@ -11,7 +11,6 @@ use deno_core::serde_json;
 use deno_core::v8;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionProxy;
-use deno_core::LocalInspectorSession;
 use enum_as_inner::EnumAsInner;
 use ext_event_worker::events::ShutdownEvent;
 use ext_event_worker::events::WorkerEvents;
@@ -20,7 +19,6 @@ use ext_runtime::PromiseMetrics;
 use ext_workers::context::Timing;
 use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::UserWorkerRuntimeOpts;
-use futures_util::pin_mut;
 use futures_util::task::AtomicWaker;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::{self};
@@ -184,13 +182,14 @@ pub fn create_supervisor(
 
   runtime.js_runtime.add_near_heap_limit_callback({
     let send_fn = send_memory_limit_fn;
+    let low_memory_multiplier = conf.low_memory_multiplier;
     move |current, _| {
       send_fn("v8");
 
       // give an allowance on current limit (until the isolate is
       // terminated) we do this so that oom won't end up killing the
       // edge-runtime process
-      current * (conf.low_memory_multiplier as usize)
+      current * (low_memory_multiplier as usize)
     }
   });
 
@@ -206,7 +205,7 @@ pub fn create_supervisor(
 
       let args = Arguments {
         key,
-        runtime_opts: conf.clone(),
+        runtime_opts: (*conf).clone(),
         cpu_usage_metrics_rx,
         supervisor_policy: policy,
         runtime_state,
@@ -241,7 +240,6 @@ pub fn create_supervisor(
 
       if let Some((session_tx, state)) = maybe_inspector_params {
         use deno_core::futures::channel::mpsc;
-        use deno_core::serde_json::Value;
 
         let termination_request_token = termination_request_token.clone();
 
@@ -262,7 +260,7 @@ pub fn create_supervisor(
                   return;
                 }
 
-                let (outbound_tx, outbound_rx) = mpsc::unbounded();
+                let (outbound_tx, _outbound_rx) = mpsc::unbounded();
                 let (inbound_tx, inbound_rx) = mpsc::unbounded();
 
                 if session_tx

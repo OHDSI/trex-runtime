@@ -14,7 +14,6 @@ use deno::deno_fs::FileSystem;
 use deno::deno_fs::RealFs;
 use deno::deno_graph;
 use deno::deno_npm::NpmSystemInfo;
-use deno::deno_package_json;
 use deno::deno_path_util;
 use deno::deno_path_util::normalize_path;
 use deno::deno_permissions::CheckedPathBuf;
@@ -975,7 +974,7 @@ pub async fn generate_binary_eszip(
     }),
     jsr_pkgs: workspace_resolver
       .jsr_packages()
-      .into_iter()
+      .iter()
       .map(|it| SerializedResolverWorkspaceJsrPackage {
         relative_base: root_dir_url.specifier_key(&it.base).into_owned(),
         name: it.name.clone(),

@@ -257,7 +257,6 @@ impl Worker {
                   if let Err(err) = v.init_main_module().await {
                     break 'scope Err(err);
                   }
-                } else {
                 }
                 Ok(v)
               }
@@ -411,8 +410,9 @@ impl Worker {
 
   /// Start a user worker on a dedicated OS thread.
   /// This eliminates the need for v8::Locker by ensuring the isolate never migrates threads.
+  #[allow(clippy::too_many_arguments)]
   async fn start_on_dedicated_thread(
-    mut self,
+    self,
     eager_module_init: bool,
     booter_signal: oneshot::Sender<
       Result<(MetricSource, CancellationToken), Error>,
