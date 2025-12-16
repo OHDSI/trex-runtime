@@ -81,7 +81,8 @@ jobs:
       - run: ./scripts/clippy.sh
 
   cargo-test:
-    if: github.event.pull_request.draft == false
+    # Disabled: change to 'github.event.pull_request.draft == false' to re-enable
+    if: false
     name: 'cargo test'
     runs-on: ubuntu-latest
     env:

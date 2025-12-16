@@ -104,6 +104,7 @@ unsafe extern "C" fn free(
 }
 
 #[allow(clippy::unnecessary_cast)]
+#[allow(dead_code)]
 unsafe extern "C" fn reallocate(
   allocator: &CustomAllocator,
   prev: *mut c_void,

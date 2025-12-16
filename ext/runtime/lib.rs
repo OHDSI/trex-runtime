@@ -202,21 +202,18 @@ impl RuntimeMetricSource {
     ) {
       let arg = unsafe { Box::<InterruptData>::from_raw(data as *mut _) };
       let v8_stats = isolate.get_heap_statistics();
-      let mut worker_stats = WorkerHeapStatistics::default();
-
-      worker_stats.total_heap_size = v8_stats.total_heap_size();
-      worker_stats.total_heap_size_executable =
-        v8_stats.total_heap_size_executable();
-      worker_stats.total_physical_size = v8_stats.total_physical_size();
-      worker_stats.total_available_size = v8_stats.total_available_size();
-      worker_stats.total_global_handles_size =
-        v8_stats.total_global_handles_size();
-      worker_stats.used_global_handles_size =
-        v8_stats.used_global_handles_size();
-      worker_stats.used_heap_size = v8_stats.used_heap_size();
-      worker_stats.malloced_memory = v8_stats.malloced_memory();
-      worker_stats.external_memory = v8_stats.external_memory();
-      worker_stats.peak_malloced_memory = v8_stats.peak_malloced_memory();
+      let worker_stats = WorkerHeapStatistics {
+        total_heap_size: v8_stats.total_heap_size(),
+        total_heap_size_executable: v8_stats.total_heap_size_executable(),
+        total_physical_size: v8_stats.total_physical_size(),
+        total_available_size: v8_stats.total_available_size(),
+        total_global_handles_size: v8_stats.total_global_handles_size(),
+        used_global_handles_size: v8_stats.used_global_handles_size(),
+        used_heap_size: v8_stats.used_heap_size(),
+        malloced_memory: v8_stats.malloced_memory(),
+        external_memory: v8_stats.external_memory(),
+        peak_malloced_memory: v8_stats.peak_malloced_memory(),
+      };
 
       if let Err(err) = arg.heap_tx.send(worker_stats) {
         error!("failed to send worker heap statistics: {:?}", err);

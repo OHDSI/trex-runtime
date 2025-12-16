@@ -11,8 +11,6 @@ use byonm::CliByonmNpmResolver;
 use byonm::CliByonmNpmResolverCreateOptions;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
-use deno_fs::FileSystem;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use ext_node::NodePermissions;
@@ -22,7 +20,6 @@ use node_resolver::NpmPackageFolderResolver;
 
 use sys_traits::impls::RealSys;
 
-use crate::http_util::DownloadErrorKind;
 use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 use deno_npm_cache::NpmCacheHttpClientBytesResponse;

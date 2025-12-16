@@ -218,7 +218,7 @@ impl DenoOptions {
     // create_resolver is now a static method WorkspaceResolver::from_workspace in Deno 2.5.6
     // CreateResolverOptions now requires sloppy_imports_options and fs_cache_options fields
     Ok(WorkspaceResolver::from_workspace(
-      &self.workspace(),
+      self.workspace(),
       sys_traits::impls::RealSys,
       CreateResolverOptions {
         pkg_json_dep_resolution,
@@ -237,7 +237,7 @@ impl DenoOptions {
 
   pub fn resolve_ts_config_for_emit(
     &self,
-    config_type: TsConfigType,
+    _config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
     // resolve_ts_config_for_emit moved from Workspace to CompilerOptionsResolver in Deno 2.5.6
     // CompilerOptionsResolver needs to be created separately and is not part of Workspace
@@ -326,7 +326,7 @@ impl DenoOptions {
             normalize_path(Cow::Owned(initial_cwd.join(&entrypoint)));
           WorkspaceDirectory::discover(
             &sys_traits::impls::RealSys,
-            WorkspaceDiscoverStart::Paths(&[(&*config_path).to_path_buf()]),
+            WorkspaceDiscoverStart::Paths(&[config_path.to_path_buf()]),
             &workspace_discover_options,
           )?
         }
@@ -334,7 +334,7 @@ impl DenoOptions {
           let config_path = normalize_path(Cow::Owned(initial_cwd.join(path)));
           WorkspaceDirectory::discover(
             &sys_traits::impls::RealSys,
-            WorkspaceDiscoverStart::ConfigFile(&*config_path),
+            WorkspaceDiscoverStart::ConfigFile(&config_path),
             &workspace_discover_options,
           )?
         }

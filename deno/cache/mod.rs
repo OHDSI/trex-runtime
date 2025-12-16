@@ -6,28 +6,20 @@ use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::file_fetcher::FileFetcher;
 use crate::file_fetcher::FileOrRedirect;
-use crate::util::fs::AtomicWriteFileFsAdapter;
-use crate::util::fs::atomic_write_file_with_retries;
-use crate::util::fs::atomic_write_file_with_retries_and_fs;
 
-use deno_ast::MediaType;
 use deno_core::ModuleSpecifier;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_error::JsErrorBox;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadError;
-use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 mod cache_db;
 mod caches;
@@ -79,6 +71,7 @@ pub struct FetchCacher {
   fs: Arc<dyn deno_fs::FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  #[allow(dead_code)]
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   is_deno_publish: bool,

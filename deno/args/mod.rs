@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;

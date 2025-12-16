@@ -249,6 +249,28 @@ impl DisplayTreeNode {
 mod tests {
   use super::*;
 
+  fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+      if c == '\x1b' {
+        // Skip ANSI escape sequence
+        if chars.peek() == Some(&'[') {
+          chars.next();
+          while let Some(&next) = chars.peek() {
+            chars.next();
+            if next.is_ascii_alphabetic() {
+              break;
+            }
+          }
+        }
+      } else {
+        result.push(c);
+      }
+    }
+    result
+  }
+
   #[test]
   fn test_diff() {
     run_test(
@@ -297,7 +319,7 @@ mod tests {
 
   fn run_test(diff_text1: &str, diff_text2: &str, expected_output: &str) {
     assert_eq!(
-      test_util::strip_ansi_codes(&diff(diff_text1, diff_text2,)),
+      strip_ansi_codes(&diff(diff_text1, diff_text2)),
       expected_output,
     );
   }

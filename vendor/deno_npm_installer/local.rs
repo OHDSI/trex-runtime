@@ -1451,13 +1451,11 @@ fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
 
 #[cfg(test)]
 mod test {
-  use test_util::TempDir;
-
   use super::*;
 
   #[test]
   fn test_setup_cache() {
-    let temp_dir = TempDir::new();
+    let temp_dir = tempfile::TempDir::new().unwrap();
     let cache_bin_path = temp_dir.path().join("cache.bin").to_path_buf();
     let sys = sys_traits::impls::RealSys;
     let mut cache = LocalSetupCache::load(sys.clone(), cache_bin_path.clone());

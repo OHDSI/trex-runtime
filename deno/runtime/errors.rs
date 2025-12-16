@@ -1029,8 +1029,8 @@ fn get_http_error(error: &HttpError) -> &'static str {
     HttpError::NoResponseHeaders => "Http",
     HttpError::ResponseAlreadyCompleted => "Http",
     HttpError::UpgradeBodyUsed => "Http",
-    HttpError::Resource(e) => "Error",
-    HttpError::Other(e) => "Error",
+    HttpError::Resource(_e) => "Error",
+    HttpError::Other(_e) => "Error",
   }
 }
 
@@ -1041,7 +1041,7 @@ fn get_http_next_error(error: &HttpNextError) -> &'static str {
     HttpNextError::JoinError(_) => "Error",
     HttpNextError::Canceled(_) => "Interrupted",
     HttpNextError::UpgradeUnavailable(_) => "Error",
-    HttpNextError::Resource(e) => "Error",
+    HttpNextError::Resource(_e) => "Error",
     HttpNextError::Other(_) => "Error",
     HttpNextError::InvalidHttpStatusLine => "Http",
     HttpNextError::RawUpgradeFailed => "Error",
@@ -1072,7 +1072,6 @@ fn get_fs_error(e: &FsError) -> &'static str {
 }
 
 mod node {
-  use super::get_error_class_name;
   use super::get_io_error_class;
   use super::get_permission_check_error_class;
   use super::get_serde_json_error_class;

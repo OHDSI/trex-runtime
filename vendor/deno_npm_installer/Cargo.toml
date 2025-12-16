@@ -60,4 +60,5 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }
+tempfile.workspace = true
 # test_util.workspace = true  # Commented out - not available in workspace

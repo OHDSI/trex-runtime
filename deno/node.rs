@@ -165,7 +165,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<Cow<'a, str>>,
-    esm_analysis_mode: EsmAnalysisMode,
+    _esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,

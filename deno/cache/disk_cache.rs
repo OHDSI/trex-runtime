@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::collapsible_if)]
+
 use super::CACHE_PERM;
 use crate::util::fs::atomic_write_file_with_retries;
 

@@ -115,6 +115,7 @@ pub enum JsTensorType {
   Bfloat16,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize)]
 struct JsTensorTypeSerdeHelper(
   #[serde(with = "JsTensorType")] TensorElementType,

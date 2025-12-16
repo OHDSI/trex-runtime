@@ -17,10 +17,10 @@ pub fn get_upgrade_type(headers: &HeaderMap) -> Option<String> {
     })
     .unwrap_or(false);
 
-  if connection_header_exists {
-    if let Some(upgrade) = headers.get(header::UPGRADE) {
-      return upgrade.to_str().ok().map(str::to_owned);
-    }
+  if connection_header_exists
+    && let Some(upgrade) = headers.get(header::UPGRADE)
+  {
+    return upgrade.to_str().ok().map(str::to_owned);
   }
 
   None

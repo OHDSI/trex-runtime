@@ -186,13 +186,11 @@ impl EmitFileSerializer {
 
 #[cfg(test)]
 mod test {
-  use test_util::TempDir;
-
   use super::*;
 
   #[test]
   pub fn emit_cache_general_use() {
-    let temp_dir = TempDir::new();
+    let temp_dir = tempfile::TempDir::new().unwrap();
     let disk_cache =
       DiskCache::new(sys_traits::impls::RealSys, temp_dir.path().to_path_buf());
     let cache = EmitCache {

@@ -44,8 +44,7 @@ fn init_onnx_env() {
           None => "unknown error",
         },
       };
-      let _ = guard1.insert(Arc::new(ort::Error::wrap(std::io::Error::new(
-        std::io::ErrorKind::Other,
+      let _ = guard1.insert(Arc::new(ort::Error::wrap(std::io::Error::other(
         err.to_owned(),
       ))));
     }
