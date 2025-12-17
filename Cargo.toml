@@ -22,16 +22,7 @@ members = [
   "ext/workers",
   "vendor/deno_console",
   "vendor/deno_os",
-  "trexsql/trexas",
-]
-exclude = [
-  "trexsql/hana",
-  "trexsql/circe",
-  "trexsql/chdb",
-  "trexsql/llama",
-  "trexsql/pgwire",
-  "trexsql/pgt",
-  "trexsql/tpm",
+  "ext/trexas",
 ]
 
 [workspace.package]

@@ -103,24 +103,6 @@ fn get_start_command() -> Command {
         .value_parser(value_parser!(u16)),
     )
     .arg(
-      arg!(-s --sql <PORT>)
-        .help("SQL port to listen on")
-        .value_parser(value_parser!(u16)),
-    )
-    .arg(
-      arg!(--"sql-scram")
-        .help("Enables SQL SCRAM Auth")
-        .default_value("false")
-        .requires("key")
-        .requires("cert"),
-    )
-    .arg(
-      arg!(--"sql-password" <PASSWORD>)
-        .help("SQL password")
-        .env("TREX_SQL_PASSWORD")
-        .default_value("pencil"),
-    )
-    .arg(
       arg!(--tls[PORT])
         .env("EDGE_RUNTIME_TLS")
         .num_args(0..=1)

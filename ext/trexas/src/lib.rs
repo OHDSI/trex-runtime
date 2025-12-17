@@ -45,10 +45,6 @@ mod trex_server;
 
 use trex_server::{TrexServerConfig, TREX_MANAGER};
 
-// Helper function to normalize a path to a file:// URL
-// If the path already starts with file://, return it as-is
-// Otherwise, convert the absolute path to a file:// URL
-// If the path is a directory, append /index.ts as the default entrypoint
 fn normalize_path_to_file_url(path: &str) -> String {
   if path.starts_with("file://") {
     return path.to_string();
@@ -64,7 +60,6 @@ fn normalize_path_to_file_url(path: &str) -> String {
       .unwrap_or_else(|| path_obj.to_path_buf())
   };
 
-  // If it's a directory, append index.ts as the default entrypoint
   let final_path = if abs_path.is_dir() {
     abs_path.join("index.ts")
   } else {
@@ -144,7 +139,6 @@ impl VScalar for StartTrexServerScalar {
       .parse()
       .unwrap_or_else(|_| "127.0.0.1:8000".parse().unwrap());
 
-    // Normalize paths to file:// URLs for proper Deno module resolution
     let main_service_path_normalized =
       normalize_path_to_file_url(&main_service_path);
 

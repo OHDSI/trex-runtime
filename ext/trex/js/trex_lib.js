@@ -93,14 +93,7 @@ export class DatabaseManager {
 		const dbc = JSON.parse(op_get_dbc());
 		op_set_dbc(JSON.stringify({credentials: credentials, publications: dbc.publications}));
 		try {
-			//const servers = JSON.parse(op_execute_query("memory", "SELECT * FROM pgwire_server_status()", []));
-			//for (const server of servers) {
-			//try {
 			op_execute_query("memory", `SELECT update_db_credentials('${btoa(JSON.stringify(credentials))}')`, []);
-			//} catch (e) {
-			//	console.error(`Failed to update credentials for all servers`, e);
-			//}
-			//}
 		} catch (e) {
 			console.error("Failed to update database credentials:", e);
 		}
@@ -117,7 +110,6 @@ export class DatabaseManager {
 		return JSON.parse(op_execute_query("memory", sql, nparams));
 	}
 
-	 // This is temporary workaround to enable communication with Postgres since cohort tables are only populated in postgres and not in duckdb yet. Once we enable the write mode on duckdb for cohort tables, then this can be removed.
 	#add_postgres(
 		name, credentials
     ) {
@@ -150,9 +142,6 @@ export class DatabaseManager {
 
 
   add_cdw_config_duckdb_connection() {
-    /*
-		Connects to duckdb file in built in duckdb file in /usr/src/cdw_data/built_in
-		*/
     const duckdb_file_path = `${CDW_BUILT_IN_DIR}/${CDW_DUCKDB_FILE_DATABASE_CODE}_${CDW_DUCKDB_FILE_SCHEMA_NAME}`;
     op_execute_query(
       "memory",
@@ -292,7 +281,6 @@ export class TrexDB {
 		return new Promise((resolve, reject) => {
 			try {
 				const nparams = map_params(params);
-				//console.log(nparams);
 				console.log(`DB: ${this.__database} SQL: ${sql}`);
 				resolve(JSON.parse(op_execute_query(this.__database, sql, nparams)));
 			} catch(e) {

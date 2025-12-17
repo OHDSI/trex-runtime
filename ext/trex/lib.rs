@@ -1,6 +1,4 @@
-pub mod clients;
 pub mod connection;
-pub mod sql;
 
 use base64::{engine::general_purpose, Engine as _};
 use deno_core::op2;
@@ -30,17 +28,11 @@ use duckdb::arrow::record_batch::RecordBatch;
 use duckdb::{
   params_from_iter, types::ToSqlOutput, types::Value, Config, Connection, ToSql,
 };
-use pgwire::tokio::process_socket;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
-pub use sql::{
-  auth::AuthType,
-  duckdb::{TrexDuckDB, TrexDuckDBFactory},
-};
 use std::cell::RefCell;
 use std::env;
 use std::sync::{Arc, LazyLock, Mutex};
-use tokio::net::TcpListener;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -89,26 +81,6 @@ static PENDING_REQUESTS: LazyLock<PendingRequestsMap> =
 
 fn get_active_connection() -> Arc<Mutex<Connection>> {
   connection::get_connection().unwrap_or_else(|| TREX_DB.clone())
-}
-
-pub async fn start_sql_server(ip: &str, port: u16, auth_type: AuthType) {
-  let conn = get_active_connection();
-  let factory = Arc::new(TrexDuckDBFactory {
-    handler: Arc::new(TrexDuckDB::new(&conn)),
-    auth_type,
-  });
-  let _server_addr = format!("{ip}:{port}");
-  let server_addr = _server_addr.as_str();
-  let listener = TcpListener::bind(server_addr).await.unwrap();
-  warn!("TREX SQL Server Listening to {}", server_addr);
-  loop {
-    let incoming_socket = listener.accept().await.unwrap();
-    let factory_ref = factory.clone();
-
-    tokio::spawn(async move {
-      process_socket(incoming_socket.0, None, factory_ref).await
-    });
-  }
 }
 
 #[op2]
@@ -314,8 +286,6 @@ fn op_install_plugin(#[string] name: String, #[string] dir: String) {
   }
 }
 
-// op_exit removed - now provided by deno_os extension
-
 #[derive(Serialize, Deserialize)]
 enum TrexType {
   Integer(i64),
@@ -422,8 +392,7 @@ fn field_value_to_json(
     DataType::Date32 => {
       let arr = array.as_any().downcast_ref::<Date32Array>().unwrap();
       let days = arr.value(row);
-      // Convert to ISO 8601 date string (YYYY-MM-DD)
-      let timestamp = days as i64 * 86400; // seconds in a day
+      let timestamp = days as i64 * 86400;
       let datetime = chrono::DateTime::from_timestamp(timestamp, 0)
         .unwrap_or(chrono::DateTime::UNIX_EPOCH);
       JsonValue::String(datetime.format("%Y-%m-%d").to_string())
@@ -758,7 +727,6 @@ deno_core::extension!(
     ops = [
         op_install_plugin,
         op_execute_query,
-        // op_exit removed - now provided by deno_os extension
         op_get_dbc,
         op_set_dbc,
         op_execute_query_stream,

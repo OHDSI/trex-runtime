@@ -15,16 +15,11 @@ pub use trex_cli::{
 
 static LOG_INIT: AtomicBool = AtomicBool::new(false);
 
-// Define a type alias for the complex type to improve readability
 type ServerThreads = Arc<Mutex<HashMap<String, thread::JoinHandle<()>>>>;
 
 static SERVER_THREADS: LazyLock<ServerThreads> =
   LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-// Helper function to normalize a path to a file:// URL
-// If the path already starts with file://, return it as-is
-// Otherwise, convert the absolute path to a file:// URL
-// If the path is a directory, append /index.ts as the default entrypoint
 fn normalize_path_to_file_url(path: &str) -> String {
   if path.starts_with("file://") {
     return path.to_string();
@@ -50,11 +45,6 @@ fn normalize_path_to_file_url(path: &str) -> String {
   format!("file://{}", final_path.display())
 }
 
-// Helper function to parse inspector option from a string
-// Expected formats:
-//   - "inspect:127.0.0.1:9229"
-//   - "inspect-brk:127.0.0.1:9229"
-//   - "inspect-wait:127.0.0.1:9229"
 fn parse_inspector_option(s: &str) -> Result<InspectorOption> {
   let parts: Vec<&str> = s.split(':').collect();
   if parts.len() < 3 {
@@ -192,7 +182,6 @@ impl TrexServerManagerWrapper {
             use std::io::Write;
             let _ = std::io::stdout().flush();
 
-            // Signal that server is built and ready
             let _ = result_tx.send(Ok("Server starting".to_string()));
 
             eprintln!("[TREX-EXT] Server listening on {}", config_clone.addr);
@@ -291,7 +280,6 @@ impl TrexServerManagerWrapper {
   }
 }
 
-// Create a global manager instance
 pub static TREX_MANAGER: LazyLock<TrexServerManagerWrapper> =
   LazyLock::new(|| {
     init_logging();
@@ -392,7 +380,6 @@ impl TrexServerConfig {
       .parse()
       .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
 
-    // Normalize paths to file:// URLs for proper Deno module resolution
     let main_service_path_normalized =
       normalize_path_to_file_url(&self.main_service_path);
 
@@ -405,22 +392,17 @@ impl TrexServerConfig {
         }
       });
 
-    // Parse inspector option from string if provided
     let inspector_option = if let Some(ref inspector_str) = self.inspector {
       Some(parse_inspector_option(inspector_str)?)
     } else {
       None
     };
 
-    // Note: user_worker_policy is a complex type that doesn't support
-    // JSON deserialization directly. For now, it is not supported via JSON config.
-    // Users can use the direct function call if needed.
-
     Ok(ServerConfig {
       addr,
       main_service_path: main_service_path_normalized,
       event_worker_path: event_worker_path_normalized,
-      user_worker_policy: None, // Complex type, not supported in JSON config
+      user_worker_policy: None,
       tls_cert_path: self.tls_cert_path,
       tls_key_path: self.tls_key_path,
       tls_port: self.tls_port,
