@@ -739,7 +739,9 @@ pub async fn generate_binary_eszip(
             workspace
               .root_pkg_json()
               .and_then(|it| it.main.as_deref())
-              .map(|it| CreateGraphArgs::File(workspace.root_dir_path().join(it)))
+              .map(|it| {
+                CreateGraphArgs::File(workspace.root_dir_path().join(it))
+              })
           })
           .flatten()
       }

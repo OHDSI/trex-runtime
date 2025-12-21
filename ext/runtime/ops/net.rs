@@ -6,8 +6,8 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use base_rt::DuplexStreamEntry;
 use base_rt::DenoRuntimeDropToken;
+use base_rt::DuplexStreamEntry;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::CancelHandle;
@@ -183,10 +183,14 @@ pub async fn op_net_accept(
         .try_borrow::<DenoRuntimeDropToken>()
         .cloned()
         .ok_or_else(|| {
-          crate::RuntimeError::Runtime("runtime drop token not available".into())
+          crate::RuntimeError::Runtime(
+            "runtime drop token not available".into(),
+          )
         })?;
 
-      if let Some(rx) = op_state.try_take::<mpsc::UnboundedReceiver<DuplexStreamEntry>>() {
+      if let Some(rx) =
+        op_state.try_take::<mpsc::UnboundedReceiver<DuplexStreamEntry>>()
+      {
         break (rx, runtime_token);
       }
 
@@ -244,20 +248,32 @@ pub async fn op_net_accept(
       }
     }));
 
-    if let Some(map) = op_state.try_borrow_mut::<HashMap<usize, CancellationToken>>() {
+    if let Some(map) =
+      op_state.try_borrow_mut::<HashMap<usize, CancellationToken>>()
+    {
       map.insert(id, token);
     }
   }
 
   Ok((
     rid,
-    IpAddr { hostname: "0.0.0.0".into(), port: 9999 },
-    IpAddr { hostname: "0.0.0.0".into(), port: 8888 },
+    IpAddr {
+      hostname: "0.0.0.0".into(),
+      port: 9999,
+    },
+    IpAddr {
+      hostname: "0.0.0.0".into(),
+      port: 8888,
+    },
     None,
   ))
 }
 
 #[op2(fast)]
-pub fn op_net_unsupported(_state: &mut OpState) -> Result<(), crate::RuntimeError> {
-  Err(crate::RuntimeError::Runtime("Operation not supported".into()))
+pub fn op_net_unsupported(
+  _state: &mut OpState,
+) -> Result<(), crate::RuntimeError> {
+  Err(crate::RuntimeError::Runtime(
+    "Operation not supported".into(),
+  ))
 }

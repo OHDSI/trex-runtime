@@ -449,7 +449,8 @@ impl Worker {
     // what Deno uses for its worker threads.
     const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024; // 8MB
 
-    let boot_service_path = event_metadata.as_ref().and_then(|m| m.service_path.clone());
+    let boot_service_path =
+      event_metadata.as_ref().and_then(|m| m.service_path.clone());
     let thread_result = std::thread::Builder::new()
       .name(format!("user-worker-{}", worker_name))
       .stack_size(WORKER_STACK_SIZE)

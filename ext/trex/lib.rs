@@ -496,7 +496,9 @@ fn execute_query(
   if sql.trim().is_empty() {
     return Ok("[]".to_string());
   }
-  let tmpstmt = conn.prepare(&sql).inspect_err(|e| warn!("prepare error: {e:?}"));
+  let tmpstmt = conn
+    .prepare(&sql)
+    .inspect_err(|e| warn!("prepare error: {e:?}"));
   match tmpstmt {
     Ok(mut stmt) => match stmt.query_arrow(params_from_iter(params.iter())) {
       Ok(iter) => {

@@ -84,11 +84,11 @@ use ext_workers::context::WorkerContextInitOpts;
 use ext_workers::context::WorkerKind;
 use ext_workers::context::WorkerRuntimeOpts;
 use fs::deno_compile_fs::DenoCompileFileSystem;
-use fs::VfsSys;
 use fs::prefix_fs::PrefixFs;
 use fs::s3_fs::S3Fs;
 use fs::static_fs::StaticFs;
 use fs::tmp_fs::TmpFs;
+use fs::VfsSys;
 use futures_util::future::poll_fn;
 use futures_util::task::AtomicWaker;
 use futures_util::FutureExt;
@@ -1438,10 +1438,9 @@ where
         v.raise();
       });
 
-    let _init_guard =
-      scopeguard::guard(self.runtime_state.init.clone(), |v| {
-        v.lower();
-      });
+    let _init_guard = scopeguard::guard(self.runtime_state.init.clone(), |v| {
+      v.lower();
+    });
     self.runtime_state.init.raise();
 
     let mut accumulated_cpu_time_ns = 0i64;

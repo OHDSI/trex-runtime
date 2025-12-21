@@ -605,7 +605,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
               break 'scope code;
             }
 
-            source_map_store::store_source_map(original_specifier.as_str(), &source_map);
+            source_map_store::store_source_map(
+              original_specifier.as_str(),
+              &source_map,
+            );
 
             let mut src = code.to_string();
 

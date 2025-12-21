@@ -12,7 +12,8 @@ static LOCATION_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(file://[^:]+):(\d+):(\d+)").unwrap());
 
 pub fn store_source_map(specifier: &str, source_map_bytes: &[u8]) {
-  let result = std::panic::catch_unwind(|| SourceMap::from_slice(source_map_bytes));
+  let result =
+    std::panic::catch_unwind(|| SourceMap::from_slice(source_map_bytes));
 
   if let Ok(Ok(sm)) = result {
     if let Some(mut maps) = SOURCE_MAPS.try_write() {
@@ -21,12 +22,21 @@ pub fn store_source_map(specifier: &str, source_map_bytes: &[u8]) {
   }
 }
 
-pub fn translate_location(specifier: &str, line: u32, column: u32) -> Option<(String, u32, u32)> {
+pub fn translate_location(
+  specifier: &str,
+  line: u32,
+  column: u32,
+) -> Option<(String, u32, u32)> {
   let maps = SOURCE_MAPS.try_read()?;
   let sm = maps.get(specifier)?;
-  let token = sm.lookup_token(line.saturating_sub(1), column.saturating_sub(1))?;
+  let token =
+    sm.lookup_token(line.saturating_sub(1), column.saturating_sub(1))?;
   let src = token.get_source()?;
-  Some((src.to_string(), token.get_src_line() + 1, token.get_src_col() + 1))
+  Some((
+    src.to_string(),
+    token.get_src_line() + 1,
+    token.get_src_col() + 1,
+  ))
 }
 
 pub fn translate_error_locations(error_msg: &str) -> String {
@@ -36,7 +46,9 @@ pub fn translate_error_locations(error_msg: &str) -> String {
       let line: u32 = caps[2].parse().unwrap_or(0);
       let col: u32 = caps[3].parse().unwrap_or(0);
 
-      if let Some((src_file, src_line, src_col)) = translate_location(full_path, line, col) {
+      if let Some((src_file, src_line, src_col)) =
+        translate_location(full_path, line, col)
+      {
         format!("{}:{}:{}", src_file, src_line, src_col)
       } else {
         format!("{}:{}:{}", full_path, line, col)

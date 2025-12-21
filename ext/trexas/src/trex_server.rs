@@ -142,11 +142,16 @@ impl TrexServerManagerWrapper {
           (&config_clone.tls_cert_path, &config_clone.tls_key_path)
         {
           let tls_port = config_clone.tls_port.unwrap_or(443);
-          eprintln!("[TREX-EXT] Configuring TLS on port {} with cert: {} key: {}",
-                    tls_port, cert_path, key_path);
+          eprintln!(
+            "[TREX-EXT] Configuring TLS on port {} with cert: {} key: {}",
+            tls_port, cert_path, key_path
+          );
           match Self::create_tls_config_static(cert_path, key_path, tls_port) {
             Ok(tls) => {
-              eprintln!("[TREX-EXT] TLS configured successfully for port {}", tls_port);
+              eprintln!(
+                "[TREX-EXT] TLS configured successfully for port {}",
+                tls_port
+              );
               builder.tls(tls);
             }
             Err(e) => {
@@ -154,8 +159,10 @@ impl TrexServerManagerWrapper {
             }
           }
         } else {
-          eprintln!("[TREX-EXT] TLS not configured: cert_path={:?}, key_path={:?}",
-                    config_clone.tls_cert_path, config_clone.tls_key_path);
+          eprintln!(
+            "[TREX-EXT] TLS not configured: cert_path={:?}, key_path={:?}",
+            config_clone.tls_cert_path, config_clone.tls_key_path
+          );
         }
 
         if let Some(event_worker_path) = &config_clone.event_worker_path {

@@ -21,7 +21,11 @@ pub fn get_default_permissions(kind: WorkerKind) -> PermissionsOptions {
       allow_read: Some(vec![]),
       allow_write: Some(vec![]),
       allow_import: Some(vec![]),
-      allow_sys: Some(vec!["hostname".to_string(), "userInfo".to_string(), "cpus".to_string()]),
+      allow_sys: Some(vec![
+        "hostname".to_string(),
+        "userInfo".to_string(),
+        "cpus".to_string(),
+      ]),
       ..Default::default()
     },
   }

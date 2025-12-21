@@ -28,12 +28,17 @@ pub fn apply_source_maps(error_msg: &str) -> String {
   source_map_store::translate_error_locations(error_msg)
 }
 
-pub fn translate_vfs_paths(error_msg: &str, service_path: Option<&str>) -> String {
+pub fn translate_vfs_paths(
+  error_msg: &str,
+  service_path: Option<&str>,
+) -> String {
   let Some(path) = service_path else {
     return error_msg.to_string();
   };
   let replacement = format!("file://{}/", path.trim_end_matches('/'));
-  VFS_PATH_REGEX.replace_all(error_msg, replacement.as_str()).to_string()
+  VFS_PATH_REGEX
+    .replace_all(error_msg, replacement.as_str())
+    .to_string()
 }
 
 pub fn get_event_metadata(conf: &WorkerRuntimeOpts) -> EventMetadata {
