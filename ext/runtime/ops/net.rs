@@ -177,21 +177,25 @@ pub async fn op_net_accept(
   let (rx, runtime_token) = {
     let mut retry_count = 0;
     loop {
-      let mut op_state = state.borrow_mut();
+      let result = {
+        let mut op_state = state.borrow_mut();
 
-      let runtime_token = op_state
-        .try_borrow::<DenoRuntimeDropToken>()
-        .cloned()
-        .ok_or_else(|| {
-          crate::RuntimeError::Runtime(
-            "runtime drop token not available".into(),
-          )
-        })?;
+        let runtime_token = op_state
+          .try_borrow::<DenoRuntimeDropToken>()
+          .cloned()
+          .ok_or_else(|| {
+            crate::RuntimeError::Runtime(
+              "runtime drop token not available".into(),
+            )
+          })?;
 
-      if let Some(rx) =
-        op_state.try_take::<mpsc::UnboundedReceiver<DuplexStreamEntry>>()
-      {
-        break (rx, runtime_token);
+        op_state
+          .try_take::<mpsc::UnboundedReceiver<DuplexStreamEntry>>()
+          .map(|rx| (rx, runtime_token))
+      };
+
+      if let Some(pair) = result {
+        break pair;
       }
 
       retry_count += 1;
@@ -201,7 +205,6 @@ pub async fn op_net_accept(
         ));
       }
 
-      drop(op_state);
       tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
   };

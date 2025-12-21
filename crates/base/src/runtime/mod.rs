@@ -99,7 +99,6 @@ use permissions::get_default_permissions;
 use scopeguard::ScopeGuard;
 use serde::Serialize;
 use strum::IntoStaticStr;
-use sys_traits;
 use tokio::sync::mpsc;
 use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
