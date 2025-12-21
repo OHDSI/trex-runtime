@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::source_map_store;
+
 use anyhow::Context;
 use anyhow::anyhow;
 use base64::Engine;
@@ -589,9 +591,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
         } else {
           let source_map = module.inner.source_map().await;
           let maybe_code_with_source_map = 'scope: {
-            if !include_source_map
-              || !matches!(module.inner.kind, ModuleKind::JavaScript)
-            {
+            if !include_source_map {
+              break 'scope code;
+            }
+            if !matches!(module.inner.kind, ModuleKind::JavaScript) {
               break 'scope code;
             }
 
@@ -601,6 +604,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             if source_map.is_empty() {
               break 'scope code;
             }
+
+            source_map_store::store_source_map(original_specifier.as_str(), &source_map);
 
             let mut src = code.to_string();
 

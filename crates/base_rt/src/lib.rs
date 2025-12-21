@@ -12,13 +12,19 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::task::AtomicWaker;
 use once_cell::sync::Lazy;
+use tokio::io;
 use tokio::runtime::Handle;
+use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tokio_util::sync::WaitForCancellationFutureOwned;
 use tracing::Instrument;
 use tracing::debug;
 use tracing::debug_span;
+
+pub type DuplexStreamEntry = (io::DuplexStream, Option<CancellationToken>);
+pub type DuplexStreamReceiver = mpsc::UnboundedReceiver<DuplexStreamEntry>;
+pub type DuplexStreamSender = mpsc::UnboundedSender<DuplexStreamEntry>;
 
 mod runtime_state;
 

@@ -349,7 +349,21 @@ export function userInfo(
     uid = -1;
     gid = -1;
   }
-  let { username, homedir, shell } = op_node_os_user_info(uid);
+
+  let username: string | Buffer = "unknown";
+  let homedir: string | Buffer | null = null;
+  let shell: string | Buffer | null = null;
+
+  try {
+    const info = op_node_os_user_info(uid);
+    username = info.username;
+    homedir = info.homedir;
+    shell = info.shell;
+  } catch {
+    username = Deno.env.get("USER") || Deno.env.get("USERNAME") || "unknown";
+    homedir = Deno.env.get("HOME") || Deno.env.get("USERPROFILE") || null;
+    shell = Deno.env.get("SHELL") || null;
+  }
 
   if (options?.encoding === "buffer") {
     homedir = homedir ? Buffer.from(homedir) : homedir;

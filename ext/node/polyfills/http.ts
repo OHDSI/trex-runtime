@@ -68,7 +68,8 @@ import {
   ERR_UNESCAPED_CHARACTERS,
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
-import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
+import { serve } from "ext:runtime/http.js";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { Response } from "ext:deno_fetch/23_response.js";
 import {

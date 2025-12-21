@@ -7,6 +7,9 @@ use crate::runtime::RunOptionsBuilder;
 use crate::runtime::WillTerminateReason;
 use crate::worker::supervisor::v8_handle_beforeunload;
 use crate::worker::supervisor::{self};
+use crate::worker::utils::apply_source_maps;
+use crate::worker::utils::enrich_error_with_source;
+use crate::worker::utils::translate_vfs_paths;
 use crate::worker::DuplexStreamEntry;
 use crate::worker::WorkerCx;
 use anyhow::Error;
@@ -91,8 +94,15 @@ impl WorkerDriver for Managed {
               err
             );
 
+            // Apply source maps to translate bundled line numbers to original
+            let exception = apply_source_maps(&err_string);
+            let exception = enrich_error_with_source(&exception, 5);
+            let exception = translate_vfs_paths(
+              &exception,
+              inner.event_metadata.service_path.as_deref(),
+            );
             Ok(WorkerEvents::UncaughtException(UncaughtExceptionEvent {
-              exception: err_string,
+              exception,
               cpu_time_used: cpu_usage_ms as usize,
             }))
           }

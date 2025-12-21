@@ -1438,6 +1438,12 @@ where
         v.raise();
       });
 
+    let _init_guard =
+      scopeguard::guard(self.runtime_state.init.clone(), |v| {
+        v.lower();
+      });
+    self.runtime_state.init.raise();
+
     let mut accumulated_cpu_time_ns = 0i64;
 
     macro_rules! get_accumulated_cpu_time_ms {

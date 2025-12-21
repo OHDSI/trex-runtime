@@ -36,6 +36,7 @@ deno = { path = "./deno" }
 
 deno_ast = { version = "=0.50.3", features = ["transpiling"] }
 deno_core = "0.363.0"
+sourcemap = "9.3"
 deno_error = "=0.7.0"
 temporal_capi = { package = "ry_temporal_capi", version = "=0.0.11-ry.1", features = ["compiled_data"] }
 # Pin timezone_provider to v0.0.14 to fix temporal_rs macro invocation error

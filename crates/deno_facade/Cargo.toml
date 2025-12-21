@@ -36,7 +36,9 @@ indexmap.workspace = true
 log.workspace = true
 monch.workspace = true
 once_cell.workspace = true
+parking_lot.workspace = true
 regex.workspace = true
+sourcemap.workspace = true
 rkyv = { workspace = true, features = ["validation"] }
 scopeguard.workspace = true
 serde.workspace = true

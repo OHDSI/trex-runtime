@@ -243,11 +243,18 @@ impl Loader for FetchCacher {
               return Err(LoadError::Other(Arc::new(JsErrorBox::generic(err.to_string()))));
             }
           }
+          // Handle cached-only errors when cache setting is Only
+          let err_str = err.to_string();
+          if options.cache_setting == LoaderCacheSetting::Only
+            && err_str.contains("--cached-only")
+          {
+            return Ok(None);
+          }
           let error_class_name = get_error_class_name(&err);
           match error_class_name {
             "NotFound" => Ok(None),
             "NotCached" if options.cache_setting == LoaderCacheSetting::Only => Ok(None),
-            _ => Err(LoadError::Other(Arc::new(JsErrorBox::generic(err.to_string())))),
+            _ => Err(LoadError::Other(Arc::new(JsErrorBox::generic(err_str)))),
           }
         })
     }

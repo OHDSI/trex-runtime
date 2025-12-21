@@ -60,6 +60,7 @@ notify.workspace = true
 num-traits.workspace = true
 once_cell.workspace = true
 pin-project.workspace = true
+regex.workspace = true
 reqwest_v011.workspace = true
 rustls-pemfile.workspace = true
 scopeguard.workspace = true

@@ -247,11 +247,10 @@ impl DenoOptions {
     // 2. Calling for_specifier() to get compiler options data
     // 3. Extracting transpile_options() or emit_options() as needed
 
-    // Default TypeScript compiler options that match Deno 2.5.6 defaults
     let default_compiler_options = serde_json::json!({
       "checkJs": false,
-      "experimentalDecorators": false,
-      "emitDecoratorMetadata": false,
+      "experimentalDecorators": true,
+      "emitDecoratorMetadata": true,
       "importsNotUsedAsValues": "remove",
       "inlineSourceMap": true,
       "inlineSources": true,

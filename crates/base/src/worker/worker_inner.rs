@@ -36,15 +36,18 @@ use uuid::Uuid;
 use crate::inspector_server::Inspector;
 use crate::runtime::DenoRuntime;
 use crate::server::ServerFlags;
+use crate::worker::utils::apply_source_maps;
+use crate::worker::utils::enrich_error_with_source;
 use crate::worker::utils::get_event_metadata;
 use crate::worker::utils::send_event_if_event_worker_available;
+use crate::worker::utils::translate_vfs_paths;
 
 use super::driver::WorkerDriver;
 use super::driver::WorkerDriverImpl;
 use super::pool::SupervisorPolicy;
 use super::termination_token::TerminationToken;
 
-pub type DuplexStreamEntry = (io::DuplexStream, Option<CancellationToken>);
+pub use base_rt::DuplexStreamEntry;
 
 pub struct WorkerCx {
   pub flags: Arc<ServerFlags>,
@@ -247,6 +250,7 @@ impl Worker {
     }
 
     let rt = imp.runtime_handle();
+    let boot_service_path = event_metadata.service_path.clone();
     let worker_fut = async move {
       Some(
         rt.spawn_pinned(move || async move {
@@ -268,7 +272,10 @@ impl Worker {
           let mut new_runtime = match new_runtime {
             Ok(v) => v,
             Err(err) => {
-              let err = CloneableError::from(err.context("worker boot error"));
+              let err_msg = apply_source_maps(&err.to_string());
+              let err_msg = enrich_error_with_source(&err_msg, 5);
+              let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
+              let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
               let _ = booter_signal.send(Err(err.clone().into()));
 
               return imp.on_boot_error(err.into()).await;
@@ -331,14 +338,22 @@ impl Worker {
             }
           });
 
+          let service_path = new_runtime.conf.as_user_worker()
+            .and_then(|u| u.service_path.clone());
+
           async move {
             let result = imp.on_created(&mut new_runtime).await;
             let maybe_uncaught_exception_event = match result.as_ref() {
               Ok(WorkerEvents::UncaughtException(ev)) => Some(ev.clone()),
-              Err(err) => Some(UncaughtExceptionEvent {
-                cpu_time_used: 0,
-                exception: err.to_string(),
-              }),
+              Err(err) => {
+                let exception = apply_source_maps(&err.to_string());
+                let exception = enrich_error_with_source(&exception, 5);
+                let exception = translate_vfs_paths(&exception, service_path.as_deref());
+                Some(UncaughtExceptionEvent {
+                  cpu_time_used: 0,
+                  exception,
+                })
+              },
 
               _ => None,
             };
@@ -438,6 +453,7 @@ impl Worker {
     // what Deno uses for its worker threads.
     const WORKER_STACK_SIZE: usize = 8 * 1024 * 1024; // 8MB
 
+    let boot_service_path = event_metadata.as_ref().and_then(|m| m.service_path.clone());
     let thread_result = std::thread::Builder::new()
       .name(format!("user-worker-{}", worker_name))
       .stack_size(WORKER_STACK_SIZE)
@@ -465,7 +481,10 @@ impl Worker {
           let mut new_runtime = match new_runtime_result {
             Ok(v) => v,
             Err(err) => {
-              let err = CloneableError::from(err.context("worker boot error"));
+              let err_msg = apply_source_maps(&err.to_string());
+              let err_msg = enrich_error_with_source(&err_msg, 5);
+              let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
+              let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
               let _ = booter_signal.send(Err(err.clone().into()));
               return Err(err.into());
             }
@@ -509,14 +528,22 @@ impl Worker {
             }
           });
 
+          let service_path = new_runtime.conf.as_user_worker()
+            .and_then(|u| u.service_path.clone());
+
           let worker_poll_fut = async move {
             let result = imp_for_supervise.on_created(&mut new_runtime).await;
             let maybe_uncaught_exception_event = match result.as_ref() {
               Ok(WorkerEvents::UncaughtException(ev)) => Some(ev.clone()),
-              Err(err) => Some(UncaughtExceptionEvent {
-                cpu_time_used: 0,
-                exception: err.to_string(),
-              }),
+              Err(err) => {
+                let exception = apply_source_maps(&err.to_string());
+                let exception = enrich_error_with_source(&exception, 5);
+                let exception = translate_vfs_paths(&exception, service_path.as_deref());
+                Some(UncaughtExceptionEvent {
+                  cpu_time_used: 0,
+                  exception,
+                })
+              },
               _ => None,
             };
 

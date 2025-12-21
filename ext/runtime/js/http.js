@@ -122,9 +122,6 @@ function serve(args1, args2) {
     transport: "tcp",
   };
 
-  const listener = Deno.listen(options);
-  const snapshot = currentSnapshot();
-
   if (typeof args1 === "function") {
     options["handler"] = args1;
   } else if (typeof args2 === "function") {
@@ -138,6 +135,12 @@ function serve(args1, args2) {
   }
 
   if (typeof args1 === "object") {
+    if (args1["port"] !== undefined) {
+      options["port"] = args1["port"];
+    }
+    if (args1["hostname"] !== undefined) {
+      options["hostname"] = args1["hostname"];
+    }
     if (typeof args1["onListen"] === "function") {
       options["onListen"] = args1["onListen"];
     }
@@ -145,6 +148,9 @@ function serve(args1, args2) {
       options["onError"] = args1["onError"];
     }
   }
+
+  const listener = Deno.listen(options);
+  const snapshot = currentSnapshot();
 
   const handleHttp = async (conn) => {
     const currentHttpConn = serveHttp(conn);

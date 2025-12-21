@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use std::cell::RefCell;
 use std::env;
+use std::error::Error as StdError;
 use std::sync::{Arc, LazyLock, Mutex};
 use tracing::warn;
 use uuid::Uuid;
@@ -495,7 +496,7 @@ fn execute_query(
   if sql.trim().is_empty() {
     return Ok("[]".to_string());
   }
-  let tmpstmt = conn.prepare(&sql).inspect_err(|e| warn!("{e}"));
+  let tmpstmt = conn.prepare(&sql).inspect_err(|e| warn!("prepare error: {e:?}"));
   match tmpstmt {
     Ok(mut stmt) => match stmt.query_arrow(params_from_iter(params.iter())) {
       Ok(iter) => {
@@ -504,7 +505,17 @@ fn execute_query(
       }
       Err(e) => Err(TrexError::Generic(format!("Query execution failed: {e}"))),
     },
-    Err(e) => Err(TrexError::Generic(format!("Query preparation failed: {e}"))),
+    Err(e) => {
+      // Extract root cause from error chain
+      let err: &dyn StdError = &e;
+      let mut msg = format!("{err}");
+      let mut source = err.source();
+      while let Some(s) = source {
+        msg = format!("{s}");
+        source = s.source();
+      }
+      Err(TrexError::Generic(format!("Query failed: {msg}")))
+    }
   }
 }
 
