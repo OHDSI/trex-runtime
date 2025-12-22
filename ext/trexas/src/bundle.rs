@@ -25,9 +25,7 @@ pub struct BundleOptions {
 }
 
 impl BundleOptions {
-  pub fn get_checksum(
-    &self,
-  ) -> Result<Option<deno_facade::Checksum>> {
+  pub fn get_checksum(&self) -> Result<Option<deno_facade::Checksum>> {
     use deno_facade::Checksum;
     match self.checksum.as_deref() {
       None | Some("none") | Some("") => Ok(None),

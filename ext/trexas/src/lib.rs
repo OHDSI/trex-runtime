@@ -506,7 +506,8 @@ impl VScalar for TrexCreateBundleScalar {
       None
     };
 
-    let response = match create_bundle_sync(&entrypoint, &output_path, options) {
+    let response = match create_bundle_sync(&entrypoint, &output_path, options)
+    {
       Ok(msg) => msg,
       Err(err) => format!("Error: {}", err),
     };
