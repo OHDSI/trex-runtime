@@ -87,6 +87,7 @@ pub fn create_bundle_sync(
       let deno_options = DenoOptionsBuilder::new()
         .entrypoint(entrypoint_path)
         .build()
+        .await
         .context("Failed to build DenoOptions")?;
 
       emitter_factory.set_deno_options(deno_options);
