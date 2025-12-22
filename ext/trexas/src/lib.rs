@@ -41,8 +41,10 @@ pub fn get_shared_connection() -> Option<Arc<Mutex<Connection>>> {
   SHARED_CONNECTION.get().cloned()
 }
 
+mod bundle;
 mod trex_server;
 
+use bundle::{create_bundle_sync, BundleOptions};
 use trex_server::{TrexServerConfig, TREX_MANAGER};
 
 fn normalize_path_to_file_url(path: &str) -> String {
@@ -448,6 +450,93 @@ impl VTab for TrexServersTable {
   }
 }
 
+struct TrexCreateBundleScalar;
+
+impl VScalar for TrexCreateBundleScalar {
+  type State = ();
+
+  unsafe fn invoke(
+    _state: &Self::State,
+    input: &mut DataChunkHandle,
+    output: &mut dyn WritableVector,
+  ) -> Result<(), Box<dyn std::error::Error>> {
+    if input.is_empty() {
+      return Err("No input provided".into());
+    }
+
+    let entrypoint_vector = input.flat_vector(0);
+    let output_path_vector = input.flat_vector(1);
+
+    let entrypoint_slice = entrypoint_vector
+      .as_slice_with_len::<libduckdb_sys::duckdb_string_t>(input.len());
+    let output_slice = output_path_vector
+      .as_slice_with_len::<libduckdb_sys::duckdb_string_t>(input.len());
+
+    let entrypoint =
+      duckdb::types::DuckString::new(&mut { entrypoint_slice[0] })
+        .as_str()
+        .to_string();
+    let output_path = duckdb::types::DuckString::new(&mut { output_slice[0] })
+      .as_str()
+      .to_string();
+
+    let options = if input.num_columns() >= 3 {
+      let options_vector = input.flat_vector(2);
+      let options_slice = options_vector
+        .as_slice_with_len::<libduckdb_sys::duckdb_string_t>(input.len());
+      let options_json =
+        duckdb::types::DuckString::new(&mut { options_slice[0] })
+          .as_str()
+          .to_string();
+
+      if options_json.is_empty() {
+        None
+      } else {
+        match serde_json::from_str::<BundleOptions>(&options_json) {
+          Ok(opts) => Some(opts),
+          Err(e) => {
+            let error_msg = format!("Failed to parse options JSON: {}", e);
+            let flat_vector = output.flat_vector();
+            flat_vector.insert(0, &error_msg);
+            return Ok(());
+          }
+        }
+      }
+    } else {
+      None
+    };
+
+    let response = match create_bundle_sync(&entrypoint, &output_path, options)
+    {
+      Ok(msg) => msg,
+      Err(err) => format!("Error: {}", err),
+    };
+
+    let flat_vector = output.flat_vector();
+    flat_vector.insert(0, &response);
+    Ok(())
+  }
+
+  fn signatures() -> Vec<ScalarFunctionSignature> {
+    vec![
+      // 2-argument version: trex_create_bundle(entrypoint, output)
+      ScalarFunctionSignature::exact(
+        vec![LogicalTypeId::Varchar.into(), LogicalTypeId::Varchar.into()],
+        LogicalTypeId::Varchar.into(),
+      ),
+      // 3-argument version: trex_create_bundle(entrypoint, output, options_json)
+      ScalarFunctionSignature::exact(
+        vec![
+          LogicalTypeId::Varchar.into(),
+          LogicalTypeId::Varchar.into(),
+          LogicalTypeId::Varchar.into(),
+        ],
+        LogicalTypeId::Varchar.into(),
+      ),
+    ]
+  }
+}
+
 #[duckdb_entrypoint_c_api(ext_name = "trexas")]
 /// # Safety
 /// This function is called by DuckDB's extension loading mechanism and must be marked
@@ -490,6 +579,10 @@ pub unsafe fn extension_entrypoint(
       "trex_stop_all_servers",
     )
     .expect("Failed to register trex_stop_all_servers function");
+
+  con
+    .register_scalar_function::<TrexCreateBundleScalar>("trex_create_bundle")
+    .expect("Failed to register trex_create_bundle function");
 
   con
     .register_table_function::<TrexServersTable>("trex_list_servers")
