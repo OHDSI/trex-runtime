@@ -18,13 +18,12 @@
     "test": "bash ./scripts/trextest.sh",
     "testdb": "docker compose -f docker-compose-test.yml up"
   },
-  "bin": {
-    "tbuild": "./scripts/build_plugin.sh",
-    "trex_build": "./scripts/build_plugin.sh"
-  },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "@trex/cli": "^0.5.0"
+  },
   "devDependencies": {
     "@data2evidence/cli": "https://github.com/OHDSI/d2e/releases/download/latest/data2evidence-cli.tgz",
     "nodemon": "^3.1.4"
