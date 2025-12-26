@@ -10,5 +10,4 @@ export $(grep -v '^#' $SCRIPTPATH/../.env | xargs)
 cargo build --features cli/tracing && \
 RUST_BACKTRACE=full ./target/debug/trex "$@" start \
     --main-service ./examples/main \
-    --event-worker ./examples/event-manager \
-    --sql 5432
+    --event-worker ./examples/event-manager
