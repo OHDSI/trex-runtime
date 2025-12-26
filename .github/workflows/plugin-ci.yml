@@ -138,7 +138,7 @@ jobs:
         run: |
           echo "$SIGNING_KEY" > /tmp/signing_key.pem
           chmod 600 /tmp/signing_key.pem
-          find ${{ matrix.DESTPATH || matrix.PKGPATH }} -name "*.duckdb_extension" -type f | while read ext; do
+          find ${{ matrix.DESTPATH || matrix.PKGPATH }} \( -name "*.duckdb_extension" -o -name "*.trex" \) -type f | while read ext; do
             echo "Signing: $ext"
             $GITHUB_WORKSPACE/ext/trexas/extension-ci-tools/extension_signing/trexsql-sign.sh sign -k /tmp/signing_key.pem "$ext"
           done
