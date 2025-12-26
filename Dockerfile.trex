@@ -96,7 +96,7 @@ COPY --from=duckdb_circe /extensions/circe.duckdb_extension /root/.duckdb/extens
 
 WORKDIR /usr/src
 
-COPY package.json /usr/src
+COPY package.json .npmrc /usr/src
 COPY deno.json /usr/src
 
 RUN npm install

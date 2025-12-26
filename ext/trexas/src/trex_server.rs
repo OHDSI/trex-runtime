@@ -20,10 +20,8 @@ type ServerThreads = Arc<Mutex<HashMap<String, thread::JoinHandle<()>>>>;
 static SERVER_THREADS: LazyLock<ServerThreads> =
   LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
-fn normalize_path_to_file_url(path: &str) -> String {
-  if path.starts_with("file://") {
-    return path.to_string();
-  }
+fn normalize_path(path: &str) -> String {
+  let path = path.strip_prefix("file://").unwrap_or(path);
 
   let path_obj = Path::new(path);
   let abs_path = if path_obj.is_absolute() {
@@ -42,7 +40,7 @@ fn normalize_path_to_file_url(path: &str) -> String {
     abs_path
   };
 
-  format!("file://{}", final_path.display())
+  final_path.display().to_string()
 }
 
 fn parse_inspector_option(s: &str) -> Result<InspectorOption> {
@@ -396,15 +394,14 @@ impl TrexServerConfig {
       .parse()
       .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
 
-    let main_service_path_normalized =
-      normalize_path_to_file_url(&self.main_service_path);
+    let main_service_path_normalized = normalize_path(&self.main_service_path);
 
     let event_worker_path_normalized =
       self.event_worker_path.and_then(|path| {
         if path.is_empty() {
           None
         } else {
-          Some(normalize_path_to_file_url(&path))
+          Some(normalize_path(&path))
         }
       });
 
