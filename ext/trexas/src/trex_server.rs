@@ -185,9 +185,6 @@ impl TrexServerManagerWrapper {
         flags.no_module_cache = true;
         *builder.flags_mut() = flags;
 
-        let entrypoints = config_clone.to_worker_entrypoints();
-        *builder.entrypoints_mut() = entrypoints;
-
         get_global_server_manager()
           .register_server(server_id_clone.clone(), config_clone.clone())?;
 
@@ -395,13 +392,18 @@ impl TrexServerConfig {
       .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
 
     let main_service_path_normalized = normalize_path(&self.main_service_path);
+    let main_exists = std::path::Path::new(&main_service_path_normalized).exists();
+    eprintln!("[TREX-EXT] main_service_path: {} -> {} (exists: {})", self.main_service_path, main_service_path_normalized, main_exists);
 
     let event_worker_path_normalized =
       self.event_worker_path.and_then(|path| {
         if path.is_empty() {
           None
         } else {
-          Some(normalize_path(&path))
+          let normalized = normalize_path(&path);
+          let exists = std::path::Path::new(&normalized).exists();
+          eprintln!("[TREX-EXT] event_worker_path: {} -> {} (exists: {})", path, normalized, exists);
+          Some(normalized)
         }
       });
 
