@@ -216,9 +216,8 @@ fn op_install_plugin(#[string] name: String, #[string] dir: String) {
   let escaped_name = name.replace("'", "''");
   let escaped_dir = install_dir.replace("'", "''");
 
-  // Execute tpm_install_with_deps
   let sql = format!(
-    "SELECT install_results FROM tpm_install_with_deps('{}', '{}')",
+    "SELECT install_results FROM tpm_install('{}', '{}')",
     escaped_name, escaped_dir
   );
 
