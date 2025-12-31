@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use base::server::RequestIdleTimeout;
+use base::worker::pool::{SupervisorPolicy, WorkerPoolPolicy};
 use base::InspectorOption;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -316,8 +317,12 @@ pub struct TrexServerConfig {
   pub tls_port: Option<u16>,
   #[serde(default)]
   pub static_patterns: Vec<String>,
+  /// Worker policy: "per_worker", "per_request", or "oneshot"
   #[serde(default)]
   pub user_worker_policy: Option<String>,
+  /// Maximum number of workers per service path (1-9999)
+  #[serde(default)]
+  pub max_parallelism: Option<usize>,
   #[serde(default)]
   pub inspector: Option<String>,
   #[serde(default)]
@@ -352,8 +357,6 @@ pub struct TrexServerConfig {
   pub jsx_specifier: Option<String>,
   #[serde(default)]
   pub jsx_module: Option<String>,
-  #[serde(default)]
-  pub worker_pool_max_size: Option<usize>,
   #[serde(default)]
   pub worker_memory_limit_mb: Option<usize>,
   #[serde(default)]
@@ -403,11 +406,58 @@ impl TrexServerConfig {
       None
     };
 
+    let supervisor_policy = self.user_worker_policy.as_ref().map(|s| {
+      s.parse::<SupervisorPolicy>()
+        .unwrap_or(SupervisorPolicy::PerWorker)
+    });
+
+    let server_flags = base::server::ServerFlags {
+      otel: None,
+      otel_console: None,
+      no_module_cache: self.no_module_cache,
+      allow_main_inspector: self.allow_main_inspector,
+      tcp_nodelay: self.tcp_nodelay,
+      graceful_exit_deadline_sec: self.graceful_exit_deadline_sec,
+      graceful_exit_keepalive_deadline_ms: self
+        .graceful_exit_keepalive_deadline_ms,
+      event_worker_exit_deadline_sec: self.event_worker_exit_deadline_sec,
+      request_wait_timeout_ms: self.request_wait_timeout_ms,
+      request_idle_timeout: RequestIdleTimeout::from_millis(
+        self.request_idle_timeout_ms,
+        self.request_idle_timeout_ms,
+      ),
+      request_read_timeout_ms: self.request_read_timeout_ms,
+      request_buffer_size: self.request_buffer_size.map(|s| s as u64),
+      beforeunload_wall_clock_pct: self
+        .beforeunload_wall_clock_pct
+        .map(|p| p as u8),
+      beforeunload_cpu_pct: self.beforeunload_cpu_pct.map(|p| p as u8),
+      beforeunload_memory_pct: self.beforeunload_memory_pct.map(|p| p as u8),
+    };
+
+    let user_worker_policy =
+      if supervisor_policy.is_some() || self.max_parallelism.is_some() {
+        // For oneshot policy, force max_parallelism to 1
+        let max_parallelism =
+          if supervisor_policy.as_ref().is_some_and(|p| p.is_oneshot()) {
+            Some(1)
+          } else {
+            self.max_parallelism
+          };
+        Some(WorkerPoolPolicy::new(
+          supervisor_policy,
+          max_parallelism,
+          server_flags,
+        ))
+      } else {
+        None
+      };
+
     Ok(ServerConfig {
       addr,
       main_service_path: main_service_path_normalized,
       event_worker_path: event_worker_path_normalized,
-      user_worker_policy: None,
+      user_worker_policy,
       tls_cert_path: self.tls_cert_path,
       tls_key_path: self.tls_key_path,
       tls_port: self.tls_port,
@@ -435,7 +485,7 @@ impl TrexServerConfig {
       import_map_path: self.import_map_path,
       jsx_specifier: self.jsx_specifier,
       jsx_module: self.jsx_module,
-      worker_pool_max_size: self.worker_pool_max_size,
+      worker_pool_max_size: self.max_parallelism,
       worker_memory_limit_mb: self.worker_memory_limit_mb,
       decorator: self.decorator,
     })

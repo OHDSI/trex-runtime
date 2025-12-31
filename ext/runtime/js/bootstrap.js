@@ -609,24 +609,25 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
     })),
   });
 
-  if (inspector) {
-    ObjectDefineProperties(globalThis, {
-      console: nonEnumerable(v8Console),
-    });
-  }
-
-  if (kind === "user" && !inspector) {
-    // override console
+  if (kind === "user") {
     ObjectDefineProperties(globalThis, {
       console: nonEnumerable(
         new console.Console((msg, level) => {
           try {
-            return ops.op_user_worker_log(msg, level);
+            ops.op_user_worker_log(msg, level);
           } catch (error) {
-            return;
+            // ignore
+          }
+          if (inspector) {
+            const method = level === 0 ? "debug" : level === 1 ? "log" : level === 2 ? "warn" : "error";
+            v8Console[method](msg.trimEnd());
           }
         }),
       ),
+    });
+  } else if (inspector) {
+    ObjectDefineProperties(globalThis, {
+      console: nonEnumerable(v8Console),
     });
   }
 

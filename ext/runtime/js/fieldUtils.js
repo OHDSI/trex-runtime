@@ -46,7 +46,7 @@ function formatException(error) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
-      console.inspectArgs([console.quoteString(error)], {
+      console.inspectArgs([console.quoteString(error, console.getDefaultInspectOptions())], {
         colors: false,
       })
     }`;

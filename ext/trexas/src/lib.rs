@@ -186,7 +186,7 @@ impl VScalar for StartTrexServerScalar {
 
     let response = match TREX_MANAGER.start_server_sync(config) {
       Ok(server_id) => format!("Trex server started: {}", server_id),
-      Err(err) => format!("Error: {}", err),
+      Err(err) => format!("Error: {:#}", err),
     };
 
     let flat_vector = output.flat_vector();
@@ -512,7 +512,7 @@ impl VScalar for TrexCreateBundleScalar {
     let response = match create_bundle_sync(&entrypoint, &output_path, options)
     {
       Ok(msg) => msg,
-      Err(err) => format!("Error: {}", err),
+      Err(err) => format!("Error: {:#}", err),
     };
 
     let flat_vector = output.flat_vector();
