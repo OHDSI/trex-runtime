@@ -131,18 +131,6 @@ jobs:
           #$(grep -m1 '^FROM ' $GITHUB_WORKSPACE/services/trex/Dockerfile | sed -E 's/.*@(sha256:[a-f0-9]+).*/\1/')
           echo "Using TREX_DOCKER_TAG=$TREX_DOCKER_TAG"
           npm run build
-      - name: Sign extensions
-        env:
-          SIGNING_KEY: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY }}
-        if: ${{ env.SIGNING_KEY != '' }}
-        run: |
-          echo "$SIGNING_KEY" > /tmp/signing_key.pem
-          chmod 600 /tmp/signing_key.pem
-          find ${{ matrix.DESTPATH || matrix.PKGPATH }} \( -name "*.duckdb_extension" -o -name "*.trex" \) -type f | while read ext; do
-            echo "Signing: $ext"
-            $GITHUB_WORKSPACE/ext/trexas/extension-ci-tools/extension_signing/trexsql-sign.sh sign -k /tmp/signing_key.pem "$ext"
-          done
-          rm -f /tmp/signing_key.pem
       - name: Use Node.js - OSS Develop
         uses: actions/setup-node@v4
         if: env.NPM_ARTIFACT_TYPE == 'OSS-develop'
@@ -169,6 +157,7 @@ jobs:
           CI: ${{ matrix.NPM != 'yarn' }}
           SHOULD_PUBLISH: ${{ github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || github.event_name == 'workflow_dispatch' }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PROJECT_TOKEN }}
+          DUCKDB_EXTENSION_SIGNING_KEY: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY }}
         run: |
           cd ${{ matrix.DESTPATH || matrix.PKGPATH }}
           if [[ $SHOULD_PUBLISH == true ]]; then
