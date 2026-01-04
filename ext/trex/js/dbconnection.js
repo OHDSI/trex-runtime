@@ -102,8 +102,8 @@ export class TrexConnection  {
 
             const options = `{"cdmSchema":"${cdmSchema}","resultSchema":"${resultSchema}","targetTable":"cohort","cohortId":"${cohortId}","generateStats":true}`;
 
-            // Use circe_sql_translate wrapping circe_json_to_sql to translate to DuckDB dialect
-            const sql = `SELECT circe_sql_translate(circe_json_to_sql('${atlasB64}', '${options}'), 'duckdb') AS sql`;
+            // Use circe_sql_render_translate to get properly rendered and translated SQL for DuckDB dialect
+            const sql = `SELECT circe_sql_render_translate(circe_json_to_sql('${atlasB64}', '${options}'), 'duckdb') AS sql`;
             const result = await this.connection.execute(sql, []);
 
             // Extract the generated SQL from the result and return in same format as old atlas_query
