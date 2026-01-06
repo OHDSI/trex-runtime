@@ -289,12 +289,8 @@ windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media
 [patch.crates-io]
 # Deno 2.5.6 upgrade - using p-hoffmann forks with upgraded dependencies
 deno_core = { git = "https://github.com/p-hoffmann/deno_core", branch = "supabase-v0.363.0" }
-# Using p-hoffmann eszip fork with Section method visibility fixes
 eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.104.0-edge-runtime" }
-# Using p-hoffmann rusty_v8 fork with Locker API for V8 140.2.0
 v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v140.2.0" }
-# Patch timezone_provider to use v0.0.14 which has iana_normalizer_singleton!() without args
-# (temporal_rs 0.0.11 calls the macro without args, but timezone_provider 0.0.16 requires an arg)
 timezone_provider = { git = "https://github.com/boa-dev/temporal", tag = "v0.0.14" }
 
 deno_unsync = { path = "./vendor/deno_unsync" }

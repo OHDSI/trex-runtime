@@ -24,10 +24,8 @@ export CARGO_TARGET_DIR := $(PROJ_DIR)target
 export CARGO_FEATURES :=
 CARGO_OVERRIDE_DUCKDB_RS_FLAG :=
 
-# V8 build configuration for shared library compatibility
 export V8_FROM_SOURCE := 1
-# global-dynamic TLS required for JNI compatibility
-export EXTRA_GN_ARGS := v8_monolithic=true v8_monolithic_for_shared_library=true extra_cflags=["-ftls-model=global-dynamic"] 
+export EXTRA_GN_ARGS := v8_monolithic=true v8_monolithic_for_shared_library=true 
 
 all: configure debug
 

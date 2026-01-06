@@ -1,7 +1,7 @@
 [env]
 RUSTY_V8_MIRROR = "https://github.com/supabase/rusty_v8/releases/download"
 V8_FROM_SOURCE = "1"
-EXTRA_GN_ARGS = "v8_monolithic=true v8_monolithic_for_shared_library=true extra_cflags=[\"-ftls-model=global-dynamic\"]"
+EXTRA_GN_ARGS = "v8_monolithic=true v8_monolithic_for_shared_library=true"
 # https://supabase.com/docs/guides/functions/limits
 SUPABASE_RESOURCE_LIMIT_MEM_MB = "256"
 SUPABASE_RESOURCE_LIMIT_LOW_MEM_MULTIPLIER = "5"

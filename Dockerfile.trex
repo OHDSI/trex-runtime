@@ -12,7 +12,9 @@ ENV DUCKDB_STATIC_BUILD=1
 ENV LLAMA_CUBLAS=1
 ENV duckdb_version=1.3.2
 ENV V8_FROM_SOURCE=1
-ENV EXTRA_GN_ARGS="v8_monolithic=true v8_monolithic_for_shared_library=true extra_cflags=[\"-ftls-model=global-dynamic\"]"
+ENV EXTRA_GN_ARGS="v8_monolithic=true v8_monolithic_for_shared_library=true"
+ENV CFLAGS="-ftls-model=global-dynamic"
+ENV CXXFLAGS="-ftls-model=global-dynamic"
 
 RUN echo "Platform: $TARGETPLATFORM"
 
