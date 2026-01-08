@@ -606,14 +606,11 @@ where
             }
           }
           if is_some_entry_point {
-            let entrypoint_str = maybe_entrypoint.clone().unwrap();
-            main_module_url = Some(if entrypoint_str.starts_with("http://")
-              || entrypoint_str.starts_with("https://")
-              || entrypoint_str.starts_with("file://")
-            {
-              Url::parse(&entrypoint_str)?
+            let entrypoint_str = maybe_entrypoint.as_ref().unwrap();
+            main_module_url = Some(if Url::parse(entrypoint_str).is_ok() {
+              Url::parse(entrypoint_str)?
             } else {
-              let entrypoint_path = base_dir_path.join(&entrypoint_str);
+              let entrypoint_path = base_dir_path.join(entrypoint_str);
               Url::from_file_path(&entrypoint_path).map_err(|_| {
                 anyhow::anyhow!(
                   "failed to convert entrypoint to file URL: {}",
@@ -2519,11 +2516,14 @@ mod test {
 
   use crate::runtime::DenoRuntime;
   use crate::runtime::JsRuntimeLockerGuard;
+  use crate::server::ServerFlags;
   use crate::worker::DuplexStreamEntry;
   use crate::worker::WorkerBuilder;
 
   use super::GetRuntimeContext;
   use super::RunOptionsBuilder;
+
+  use url::Url;
 
   impl<RuntimeContext> DenoRuntime<RuntimeContext> {
     #[allow(dead_code)]
@@ -3622,5 +3622,178 @@ mod test {
       .await
       .0
       .unwrap();
+  }
+
+  #[tokio::test]
+  #[serial]
+  async fn test_entrypoint_resolution() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let temp_dir = TempDir::new().unwrap();
+    let base_path = temp_dir.path();
+
+    // Create a nested directory structure
+    let worker_dir = base_path.join("worker");
+    fs::create_dir_all(&worker_dir).unwrap();
+
+    // Create test files
+    let index_file = worker_dir.join("index.ts");
+    let utils_file = worker_dir.join("utils.ts");
+    fs::write(&index_file, "import { helper } from './utils';\nconsole.log(helper());").unwrap();
+    fs::write(&utils_file, "export function helper() { return 'test'; }").unwrap();
+
+    let (worker_pool_tx, _) = mpsc::unbounded_channel::<UserWorkerMsgs>();
+
+    // Test 1: Relative path entrypoint
+    {
+      let runtime = DenoRuntime::<()>::new(
+        WorkerBuilder::new(
+          WorkerContextInitOpts {
+            service_path: base_path.to_path_buf(),
+            maybe_entrypoint: Some("worker/index.ts".to_string()),
+            no_module_cache: false,
+            no_npm: None,
+            env_vars: Default::default(),
+            timing: None,
+            maybe_eszip: None,
+            maybe_module_code: None,
+            static_patterns: vec![],
+            maybe_s3_fs_config: None,
+            maybe_tmp_fs_config: None,
+            maybe_otel_config: None,
+            conf: WorkerRuntimeOpts::UserWorker(Box::new(
+              UserWorkerRuntimeOpts {
+                pool_msg_tx: Some(worker_pool_tx.clone()),
+                ..Default::default()
+              },
+            )),
+          },
+          Arc::new(ServerFlags::default()),
+        )
+        .build()
+        .unwrap(),
+      )
+      .await
+      .unwrap();
+
+      let url = &runtime.main_module_url;
+      assert!(url.scheme() == "file");
+      assert!(url.path().ends_with("worker/index.ts"));
+    }
+
+    // Test 2: Path with .. traversal
+    {
+      let nested_dir = worker_dir.join("nested");
+      fs::create_dir_all(&nested_dir).unwrap();
+      let nested_file = nested_dir.join("test.ts");
+      fs::write(&nested_file, "console.log('nested');").unwrap();
+
+      let runtime = DenoRuntime::<()>::new(
+        WorkerBuilder::new(
+          WorkerContextInitOpts {
+            service_path: base_path.to_path_buf(),
+            maybe_entrypoint: Some("worker/nested/../index.ts".to_string()),
+            no_module_cache: false,
+            no_npm: None,
+            env_vars: Default::default(),
+            timing: None,
+            maybe_eszip: None,
+            maybe_module_code: None,
+            static_patterns: vec![],
+            maybe_s3_fs_config: None,
+            maybe_tmp_fs_config: None,
+            maybe_otel_config: None,
+            conf: WorkerRuntimeOpts::UserWorker(Box::new(
+              UserWorkerRuntimeOpts {
+                pool_msg_tx: Some(worker_pool_tx.clone()),
+                ..Default::default()
+              },
+            )),
+          },
+          Arc::new(ServerFlags::default()),
+        )
+        .build()
+        .unwrap(),
+      )
+      .await
+      .unwrap();
+
+      let url = &runtime.main_module_url;
+      assert!(url.scheme() == "file");
+      assert!(url.path().ends_with("worker/index.ts"));
+    }
+
+    // Test 3: file:// URL entrypoint
+    {
+      let file_url = Url::from_file_path(&index_file).unwrap();
+      let runtime = DenoRuntime::<()>::new(
+        WorkerBuilder::new(
+          WorkerContextInitOpts {
+            service_path: base_path.to_path_buf(),
+            maybe_entrypoint: Some(file_url.to_string()),
+            no_module_cache: false,
+            no_npm: None,
+            env_vars: Default::default(),
+            timing: None,
+            maybe_eszip: None,
+            maybe_module_code: None,
+            static_patterns: vec![],
+            maybe_s3_fs_config: None,
+            maybe_tmp_fs_config: None,
+            maybe_otel_config: None,
+            conf: WorkerRuntimeOpts::UserWorker(Box::new(
+              UserWorkerRuntimeOpts {
+                pool_msg_tx: Some(worker_pool_tx.clone()),
+                ..Default::default()
+              },
+            )),
+          },
+          Arc::new(ServerFlags::default()),
+        )
+        .build()
+        .unwrap(),
+      )
+      .await
+      .unwrap();
+
+      assert_eq!(runtime.main_module_url, file_url);
+    }
+
+    // Test 4: HTTP URL entrypoint (should be preserved as-is)
+    {
+      let http_url = "https://example.com/worker.ts";
+      let runtime = DenoRuntime::<()>::new(
+        WorkerBuilder::new(
+          WorkerContextInitOpts {
+            service_path: base_path.to_path_buf(),
+            maybe_entrypoint: Some(http_url.to_string()),
+            no_module_cache: false,
+            no_npm: None,
+            env_vars: Default::default(),
+            timing: None,
+            maybe_eszip: None,
+            maybe_module_code: None,
+            static_patterns: vec![],
+            maybe_s3_fs_config: None,
+            maybe_tmp_fs_config: None,
+            maybe_otel_config: None,
+            conf: WorkerRuntimeOpts::UserWorker(Box::new(
+              UserWorkerRuntimeOpts {
+                pool_msg_tx: Some(worker_pool_tx.clone()),
+                ..Default::default()
+              },
+            )),
+          },
+          Arc::new(ServerFlags::default()),
+        )
+        .build()
+        .unwrap(),
+      )
+      .await
+      .unwrap();
+
+      assert_eq!(runtime.main_module_url.as_str(), http_url);
+    }
   }
 }
