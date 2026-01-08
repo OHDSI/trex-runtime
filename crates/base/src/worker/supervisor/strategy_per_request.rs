@@ -16,13 +16,11 @@ use crate::runtime::WillTerminateReason;
 use crate::worker::supervisor::create_wall_clock_beforeunload_alert;
 use crate::worker::supervisor::v8_handle_beforeunload;
 use crate::worker::supervisor::v8_handle_early_retire;
-use crate::worker::supervisor::v8_handle_termination;
 use crate::worker::supervisor::wait_cpu_alarm;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::CPUUsageMetrics;
 use crate::worker::supervisor::Tokens;
 use crate::worker::supervisor::V8HandleBeforeunloadData;
-use crate::worker::supervisor::V8HandleTerminationData;
 
 use super::Arguments;
 

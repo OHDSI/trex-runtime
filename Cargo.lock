@@ -10798,7 +10798,7 @@ dependencies = [
 [[package]]
 name = "v8"
 version = "140.2.0"
-source = "git+https://github.com/p-hoffmann/rusty_v8?branch=supabase-v140.2.0#2cf9e9cbba65e7919409f296f3df6dff899d8372"
+source = "git+https://github.com/p-hoffmann/rusty_v8?branch=supabase-v140.2.0#af834f08889c4250b682404eeeb955418d679924"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.10.0",

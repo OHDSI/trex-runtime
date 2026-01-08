@@ -31,10 +31,8 @@ use crate::worker::supervisor::Tokens;
 use crate::worker::supervisor::V8HandleBeforeunloadData;
 use crate::worker::supervisor::V8HandleEarlyDropData;
 
-use super::v8_handle_termination;
 use super::Arguments;
 use super::CPUUsageMetrics;
-use super::V8HandleTerminationData;
 
 #[derive(Debug, Default)]
 struct State {
