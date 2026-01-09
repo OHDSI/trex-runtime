@@ -414,7 +414,7 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
     }
   }
 
-  fn resolve(
+  pub fn resolve(
     &self,
     specifier: &Url,
     referrer: &Url,

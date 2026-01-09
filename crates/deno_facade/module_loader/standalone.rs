@@ -53,9 +53,7 @@ use deno::npm::CreateInNpmPkgCheckerOptions;
 use deno::npm::byonm::CliByonmNpmResolverCreateOptions;
 use deno::npm::create_cli_npm_resolver;
 use deno::npm::create_in_npm_pkg_checker;
-// CliSloppyImportsResolver disabled in Deno 2.5.6 - API changed
-// use deno::resolver::CliSloppyImportsResolver;
-// SloppyImportsCachedFs removed in Deno 2.5.6 - sloppy imports resolver disabled
+use deno::resolver::CliSloppyImportsResolver;
 use deno::resolver::GenericNpmModuleLoader;
 use deno::standalone::binary;
 use deno::util::text_encoding::from_utf8_lossy_cow;
@@ -186,9 +184,8 @@ pub struct SharedModuleLoaderState {
   pub(crate) npm_resolver: Arc<dyn CliNpmResolver>,
   pub(crate) node_resolver: Arc<VfsNodeResolver>,
   pub(crate) vfs: Arc<FileBackedVfs>,
-  // Sloppy imports resolver disabled - API changed in Deno 2.5.6
   #[allow(dead_code)]
-  pub(crate) sloppy_imports_resolver: Option<()>,
+  pub(crate) sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
 }
 
 #[derive(Clone)]
@@ -401,9 +398,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
           .node_resolver
           .handle_if_in_node_modules(&specifier)
           .unwrap_or_else(|| specifier.clone());
-
-        // Sloppy imports resolution disabled in Deno 2.5.6
-        // (SloppyImportsResolver::resolve() is now private)
 
         Ok(final_specifier)
       }
@@ -903,10 +897,12 @@ pub async fn create_module_loader_for_eszip(
     if use_real_fs {
       // Development mode: use real filesystem for npm packages
       // Create a minimal VFS for non-npm modules from eszip, but allow FS fallback
+      let eszip_specifiers = eszip.specifiers();
       let vfs = load_npm_vfs(
         Arc::new(eszip.clone()),
-        root_node_modules_path.clone(),
-        None, // No virtual_dir - will create empty VFS
+        root_path.clone(), // Use root_path, not root_node_modules_path, for eszip modules
+        None,              // No virtual_dir - will create empty VFS
+        eszip_specifiers,
       )
       .context("Failed to load npm vfs.")?;
 
@@ -919,10 +915,12 @@ pub async fn create_module_loader_for_eszip(
       )
     } else {
       // Compiled binary mode: use VFS with embedded npm packages
+      let eszip_specifiers = eszip.specifiers();
       let vfs = load_npm_vfs(
         Arc::new(eszip.clone()),
-        root_node_modules_path.clone(),
+        root_path.clone(), // Use root_path, not root_node_modules_path, for eszip modules
         metadata.virtual_dir.take(),
+        eszip_specifiers,
       )
       .context("Failed to load npm vfs.")?;
 
@@ -1196,7 +1194,7 @@ pub async fn create_module_loader_for_eszip(
             .collect::<Result<_, _>>()?,
           pkg_jsons,
           serialized_workspace_resolver.pkg_json_resolution,
-          Default::default(), // sloppy_imports_options
+          deno::deno_resolver::workspace::SloppyImportsOptions::Enabled, // sloppy_imports_options
           Default::default(), // fs_cache_options
           vfs_sys.clone(),    // sys
         )

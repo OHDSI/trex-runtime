@@ -22,6 +22,7 @@ pub fn load_npm_vfs(
   eszip: Arc<dyn AsyncEszipDataRead + 'static>,
   root_dir_path: PathBuf,
   maybe_virtual_dir: Option<VirtualDirectory>,
+  eszip_specifiers: Vec<String>,
 ) -> Result<FileBackedVfs, AnyError> {
   let fs_root: VfsRoot = if let Some(mut dir) = maybe_virtual_dir {
     // align the name of the directory with the root dir
@@ -31,86 +32,102 @@ pub fn load_npm_vfs(
       .to_string_lossy()
       .to_string();
 
-    // Debug logging to trace VFS contents (recursive)
-    fn log_vfs_tree(entry: &VfsEntry, indent: usize) {
-      let prefix = "  ".repeat(indent);
-      match entry {
-        VfsEntry::Dir(dir) => {
-          log::debug!(
-            "{}DIR: {} ({} entries)",
-            prefix,
-            dir.name,
-            dir.entries.len()
-          );
-          for e in &dir.entries {
-            log_vfs_tree(e, indent + 1);
-          }
-        }
-        VfsEntry::File(f) => {
-          log::debug!(
-            "{}FILE: {} (offset={}, len={})",
-            prefix,
-            f.name,
-            f.offset,
-            f.len
-          );
-        }
-        VfsEntry::Symlink(s) => {
-          log::debug!(
-            "{}LINK: {} -> {}",
-            prefix,
-            s.name,
-            s.dest_parts.join("/")
-          );
-        }
-      }
-    }
-
-    log::debug!(
-      "load_npm_vfs: root_path={}, dir.name={}, num_entries={}",
-      root_dir_path.display(),
-      dir.name,
-      dir.entries.len()
-    );
-    // Log first few entries to understand VFS structure
-    for (i, entry) in dir.entries.iter().enumerate() {
-      if i < 3 {
-        log_vfs_tree(entry, 1);
-      }
-    }
-    // Specifically look for fastify
-    for entry in &dir.entries {
-      if entry.name() == "localhost"
-        && let VfsEntry::Dir(localhost_dir) = entry
-      {
-        for pkg in &localhost_dir.entries {
-          if pkg.name() == "fastify" {
-            log::debug!("=== FASTIFY VFS STRUCTURE ===");
-            log_vfs_tree(pkg, 2);
-          }
-        }
-      }
-    }
-
     VfsRoot {
       dir,
-      root_path: root_dir_path,
+      root_path: root_dir_path.clone(),
     }
   } else {
-    log::debug!(
-      "load_npm_vfs: root_path={}, NO virtual_dir (empty VFS)",
-      root_dir_path.display()
-    );
     VfsRoot {
       dir: VirtualDirectory {
         name: "".to_string(),
         entries: vec![],
       },
-      root_path: root_dir_path,
+      root_path: root_dir_path.clone(),
     }
   };
 
+  let fs_root = add_eszip_modules_to_vfs(fs_root, &eszip_specifiers)?;
+
   Ok(FileBackedVfs::new(eszip, fs_root))
+}
+
+fn add_eszip_modules_to_vfs(
+  mut fs_root: VfsRoot,
+  eszip_modules: &[String],
+) -> Result<VfsRoot, AnyError> {
+  for module_spec in eszip_modules {
+    if module_spec.starts_with("---") || module_spec.starts_with("static:") {
+      continue;
+    }
+
+    if module_spec.starts_with("http://")
+      || module_spec.starts_with("https://")
+      || module_spec.starts_with("jsr:")
+      || module_spec.starts_with("npm:")
+    {
+      continue;
+    }
+
+    let path_parts: Vec<&str> = module_spec.split('/').collect();
+    if path_parts.is_empty() {
+      continue;
+    }
+
+    add_module_to_dir_tree(&mut fs_root.dir, &path_parts, 0)?;
+  }
+
+  Ok(fs_root)
+}
+
+fn add_module_to_dir_tree(
+  current_dir: &mut VirtualDirectory,
+  path_parts: &[&str],
+  depth: usize,
+) -> Result<(), AnyError> {
+  if depth >= path_parts.len() {
+    return Ok(());
+  }
+
+  let part = path_parts[depth];
+  let is_last = depth == path_parts.len() - 1;
+
+  if is_last {
+    if !current_dir.entries.iter().any(|e| e.name() == part) {
+      let key = path_parts.join("/");
+      current_dir
+        .entries
+        .push(VfsEntry::File(fs::virtual_fs::VirtualFile {
+          key,
+          name: part.to_string(),
+          offset: 0,
+          len: 0,
+        }));
+    }
+  } else {
+    let dir_entry = current_dir
+      .entries
+      .iter_mut()
+      .find(|e| e.name() == part && matches!(e, VfsEntry::Dir(_)));
+
+    let target_dir = if let Some(VfsEntry::Dir(dir)) = dir_entry {
+      dir
+    } else {
+      current_dir.entries.push(VfsEntry::Dir(VirtualDirectory {
+        name: part.to_string(),
+        entries: vec![],
+      }));
+
+      if let Some(VfsEntry::Dir(dir)) = current_dir.entries.last_mut() {
+        dir
+      } else {
+        unreachable!()
+      }
+    };
+
+    add_module_to_dir_tree(target_dir, path_parts, depth + 1)?;
+  }
+
+  Ok(())
 }
 
 pub fn build_npm_vfs<'scope, F>(

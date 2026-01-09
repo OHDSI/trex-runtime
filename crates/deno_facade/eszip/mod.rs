@@ -714,14 +714,15 @@ pub async fn generate_binary_eszip(
   let deno_options = emitter_factory.deno_options()?.clone();
   let args = if let Some(path) = deno_options.entrypoint() {
     if path.is_file() {
-      Some(CreateGraphArgs::File(if !path.is_absolute() {
+      let resolved_path = if !path.is_absolute() {
         let initial_cwd =
           std::env::current_dir().with_context(|| "failed getting cwd")?;
         normalize_path(std::borrow::Cow::Borrowed(&initial_cwd.join(path)))
           .into_owned()
       } else {
         path.to_path_buf()
-      }))
+      };
+      Some(CreateGraphArgs::File(resolved_path))
     } else if path.is_dir() {
       // First check for index.ts or index.js in the directory
       let index_ts = path.join("index.ts");

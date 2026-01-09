@@ -563,8 +563,9 @@ where
     let bootstrap_fn = || {
       async {
         // TODO(Nyannyacha): Make sure `service_path` is an absolute path first.
-        let base_dir_path =
-          std::env::current_dir().map(|p| p.join(&service_path))?;
+        let base_dir_path = std::env::current_dir()
+          .map(|p| p.join(&service_path))
+          .and_then(|p| p.canonicalize())?;
 
         let maybe_import_map_path = context
           .get("importMapPath")
