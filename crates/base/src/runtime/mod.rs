@@ -562,11 +562,13 @@ where
 
     let bootstrap_fn = || {
       async {
-        let base_dir_path = if service_path.is_absolute() {
-          service_path.to_path_buf()
-        } else {
-          let joined = std::env::current_dir()?.join(&service_path);
-          joined.canonicalize().unwrap_or(joined)
+        let base_dir_path = {
+          let path = if service_path.is_absolute() {
+            service_path.to_path_buf()
+          } else {
+            std::env::current_dir()?.join(&service_path)
+          };
+          path.canonicalize().unwrap_or(path)
         };
 
         let maybe_import_map_path = context
