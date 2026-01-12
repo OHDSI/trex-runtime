@@ -897,12 +897,10 @@ pub async fn create_module_loader_for_eszip(
     if use_real_fs {
       // Development mode: use real filesystem for npm packages
       // Create a minimal VFS for non-npm modules from eszip, but allow FS fallback
-      let eszip_specifiers = eszip.specifiers();
       let vfs = load_npm_vfs(
         Arc::new(eszip.clone()),
         root_node_modules_path.clone(),
         None, // No virtual_dir - will create empty VFS
-        eszip_specifiers,
       )
       .context("Failed to load npm vfs.")?;
 
@@ -919,12 +917,10 @@ pub async fn create_module_loader_for_eszip(
       // directory itself. This ensures path resolution works correctly:
       // - npm paths like /root/node_modules/localhost/pkg/... get root stripped to localhost/pkg/...
       // - VFS root dir (node_modules) contains localhost as an entry, so lookup succeeds
-      let eszip_specifiers = eszip.specifiers();
       let vfs = load_npm_vfs(
         Arc::new(eszip.clone()),
         root_node_modules_path.clone(),
         metadata.virtual_dir.take(),
-        eszip_specifiers,
       )
       .context("Failed to load npm vfs.")?;
 
