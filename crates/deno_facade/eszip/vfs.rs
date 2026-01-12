@@ -24,14 +24,7 @@ pub fn load_npm_vfs(
   maybe_virtual_dir: Option<VirtualDirectory>,
   eszip_specifiers: Vec<String>,
 ) -> Result<FileBackedVfs, AnyError> {
-  let fs_root: VfsRoot = if let Some(mut dir) = maybe_virtual_dir {
-    // align the name of the directory with the root dir
-    dir.name = root_dir_path
-      .file_name()
-      .unwrap()
-      .to_string_lossy()
-      .to_string();
-
+  let fs_root: VfsRoot = if let Some(dir) = maybe_virtual_dir {
     VfsRoot {
       dir,
       root_path: root_dir_path.clone(),

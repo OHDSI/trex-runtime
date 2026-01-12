@@ -915,10 +915,14 @@ pub async fn create_module_loader_for_eszip(
       )
     } else {
       // Compiled binary mode: use VFS with embedded npm packages
+      // Use root_node_modules_path as VFS root because the virtual_dir is the node_modules
+      // directory itself. This ensures path resolution works correctly:
+      // - npm paths like /root/node_modules/localhost/pkg/... get root stripped to localhost/pkg/...
+      // - VFS root dir (node_modules) contains localhost as an entry, so lookup succeeds
       let eszip_specifiers = eszip.specifiers();
       let vfs = load_npm_vfs(
         Arc::new(eszip.clone()),
-        root_path.clone(), // Use root_path, not root_node_modules_path, for eszip modules
+        root_node_modules_path.clone(),
         metadata.virtual_dir.take(),
         eszip_specifiers,
       )
