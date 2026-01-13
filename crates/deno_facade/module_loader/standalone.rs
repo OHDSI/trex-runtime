@@ -1228,8 +1228,8 @@ pub async fn create_module_loader_for_eszip(
             .iter()
             .map(|it| {
               let base = root_dir_url
-                  .join(&it.relative_base)
-                  .with_context(|| "failed to parse base url")?;
+                .join(&it.relative_base)
+                .with_context(|| "failed to parse base url")?;
               log::debug!("JSR pkg joined base: {}", base);
               Ok::<_, AnyError>(ResolverWorkspaceJsrPackage {
                 is_link: false,
