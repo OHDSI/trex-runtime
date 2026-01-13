@@ -21,7 +21,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 static VFS_PATH_REGEX: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"file:///var/tmp/sb-compile-trex/[^/]+/").unwrap());
+  Lazy::new(|| Regex::new(r"file:///var/tmp/sb-compile-trex/").unwrap());
 
 /// Apply source map translation to error messages
 pub fn apply_source_maps(error_msg: &str) -> String {
@@ -30,12 +30,20 @@ pub fn apply_source_maps(error_msg: &str) -> String {
 
 pub fn translate_vfs_paths(
   error_msg: &str,
-  service_path: Option<&str>,
+  _service_path: Option<&str>,
 ) -> String {
-  let Some(path) = service_path else {
-    return error_msg.to_string();
+  let replacement = match std::env::current_dir() {
+    Ok(cwd) => format!(
+      "file:///{}/",
+      cwd
+        .canonicalize()
+        .unwrap_or(cwd)
+        .to_string_lossy()
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+    ),
+    Err(_) => return error_msg.to_string(),
   };
-  let replacement = format!("file://{}/", path.trim_end_matches('/'));
   VFS_PATH_REGEX
     .replace_all(error_msg, replacement.as_str())
     .to_string()

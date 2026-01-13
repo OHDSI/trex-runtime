@@ -28,8 +28,6 @@ use deno::deno_resolver::cjs::IsCjsResolutionMode;
 use deno::deno_resolver::npm::DenoInNpmPackageChecker;
 use deno::deno_resolver::npm::NpmReqResolver;
 use deno::deno_resolver::npm::NpmReqResolverOptions;
-// Sloppy imports disabled in Deno 2.5.6 - API changed
-// use deno::deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno::deno_resolver::workspace::MappedResolution;
 use deno::deno_resolver::workspace::WorkspaceResolver;
 use deno::deno_semver::npm::NpmPackageReqReference;
@@ -106,22 +104,66 @@ pub struct WorkspaceEszip {
   pub root_dir_url: Arc<Url>,
 }
 
+const SLOPPY_IMPORT_EXTENSIONS: &[&str] =
+  &[".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+
+const SLOPPY_INDEX_FILES: &[&str] = &[
+  "/index.ts",
+  "/index.tsx",
+  "/index.mts",
+  "/index.cts",
+  "/index.js",
+  "/index.jsx",
+  "/index.mjs",
+  "/index.cjs",
+];
+
 impl WorkspaceEszip {
   pub fn get_module(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<WorkspaceEszipModule> {
     if specifier.scheme() == "file" {
-      let specifier_key = EszipRelativeFileBaseUrl::new(&self.root_dir_url)
-        .specifier_key(specifier);
+      let base_url = EszipRelativeFileBaseUrl::new(&self.root_dir_url);
+      let specifier_key = base_url.specifier_key(specifier);
 
-      let module = self.eszip.ensure_module(&specifier_key)?;
-      let specifier = self.root_dir_url.join(&module.specifier).unwrap();
+      if let Some(module) = self.eszip.ensure_module(&specifier_key) {
+        let specifier = self.root_dir_url.join(&module.specifier).unwrap();
+        return Some(WorkspaceEszipModule {
+          specifier,
+          inner: module,
+        });
+      }
 
-      Some(WorkspaceEszipModule {
-        specifier,
-        inner: module,
-      })
+      let has_extension = SLOPPY_IMPORT_EXTENSIONS
+        .iter()
+        .any(|ext| specifier_key.ends_with(ext));
+
+      if !has_extension {
+        for ext in SLOPPY_IMPORT_EXTENSIONS {
+          let key_with_ext = format!("{}{}", specifier_key, ext);
+          if let Some(module) = self.eszip.ensure_module(&key_with_ext) {
+            let specifier = self.root_dir_url.join(&module.specifier).unwrap();
+            return Some(WorkspaceEszipModule {
+              specifier,
+              inner: module,
+            });
+          }
+        }
+
+        for index in SLOPPY_INDEX_FILES {
+          let key_with_index = format!("{}{}", specifier_key, index);
+          if let Some(module) = self.eszip.ensure_module(&key_with_index) {
+            let specifier = self.root_dir_url.join(&module.specifier).unwrap();
+            return Some(WorkspaceEszipModule {
+              specifier,
+              inner: module,
+            });
+          }
+        }
+      }
+
+      None
     } else {
       let module = self.eszip.ensure_module(specifier.as_str())?;
 
@@ -1174,6 +1216,10 @@ pub async fn create_module_loader_for_eszip(
             Ok::<_, AnyError>(Arc::new(pkg_json))
           })
           .collect::<Result<_, _>>()?;
+        log::debug!("WorkspaceResolver root_dir_url: {}", root_dir_url);
+        for jsr_pkg in &serialized_workspace_resolver.jsr_pkgs {
+          log::debug!("JSR pkg relative_base: {}", jsr_pkg.relative_base);
+        }
         WorkspaceResolver::new_raw(
           root_dir_url.clone(),
           import_map,
@@ -1181,11 +1227,13 @@ pub async fn create_module_loader_for_eszip(
             .jsr_pkgs
             .iter()
             .map(|it| {
+              let base = root_dir_url
+                  .join(&it.relative_base)
+                  .with_context(|| "failed to parse base url")?;
+              log::debug!("JSR pkg joined base: {}", base);
               Ok::<_, AnyError>(ResolverWorkspaceJsrPackage {
                 is_link: false,
-                base: root_dir_url
-                  .join(&it.relative_base)
-                  .with_context(|| "failed to parse base url")?,
+                base,
                 name: it.name.clone(),
                 version: it.version.clone(),
                 exports: it.exports.clone(),
@@ -1210,8 +1258,6 @@ pub async fn create_module_loader_for_eszip(
       npm_resolver: npm_resolver.clone(),
       node_resolver: node_resolver.clone(),
       vfs: vfs.clone(),
-      // Sloppy imports resolver disabled - API changed in Deno 2.5.6
-      // (SloppyImportsResolver::new now requires 3 args and resolve() is private)
       sloppy_imports_resolver: None,
     }),
   };
