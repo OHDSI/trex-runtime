@@ -2599,10 +2599,15 @@ impl GcMetricData {
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
-    // SAFETY: Isolate is valid during callback
+    if isolate.is_null() {
+      return;
+    }
+    // SAFETY: We've verified the pointer is non-null
     let isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
-    let this = isolate.get_slot::<Self>().unwrap();
+    let Some(this) = isolate.get_slot::<Self>() else {
+      return;
+    };
     this.0.borrow_mut().start = Instant::now();
   }
 
@@ -2612,10 +2617,15 @@ impl GcMetricData {
     _flags: v8::GCCallbackFlags,
     _data: *mut c_void,
   ) {
-    // SAFETY: Isolate is valid during callback
+    if isolate.is_null() {
+      return;
+    }
+    // SAFETY: We've verified the pointer is non-null
     let isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate) };
-    let this = isolate.get_slot::<Self>().unwrap();
+    let Some(this) = isolate.get_slot::<Self>() else {
+      return;
+    };
     let this = this.0.borrow_mut();
 
     let elapsed = this.start.elapsed();

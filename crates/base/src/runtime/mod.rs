@@ -1649,12 +1649,19 @@ where
       let this = &mut *self;
 
       if woked {
-        extern "C" fn dummy(_: &mut v8::Isolate, _: *mut std::ffi::c_void) {}
+        extern "C" fn dummy(_: *mut v8::Isolate, _: *mut std::ffi::c_void) {}
+        // SAFETY: *mut T and &mut T have identical ABI representation.
+        let callback = unsafe {
+          std::mem::transmute::<
+            extern "C" fn(*mut v8::Isolate, *mut std::ffi::c_void),
+            extern "C" fn(&mut v8::Isolate, *mut std::ffi::c_void),
+          >(dummy)
+        };
         this
           .js_runtime
           .v8_isolate()
           .thread_safe_handle()
-          .request_interrupt(dummy, std::ptr::null_mut());
+          .request_interrupt(callback, std::ptr::null_mut());
       }
 
       let op_state = this.js_runtime.op_state();
@@ -2415,17 +2422,30 @@ fn terminate_execution_if_cancelled(
   isolate: &mut v8::Isolate,
   token: CancellationToken,
 ) -> TerminateExecutionIfCancelledReturnType {
-  extern "C" fn interrupt_fn(
-    isolate: &mut v8::Isolate,
+  // Raw pointer version to handle null isolate during disposal
+  extern "C" fn interrupt_fn_raw(
+    isolate_ptr: *mut v8::Isolate,
     _: *mut std::ffi::c_void,
   ) {
+    if isolate_ptr.is_null() {
+      return;
+    }
+    // SAFETY: We've verified the pointer is non-null
+    let isolate = unsafe { &mut *isolate_ptr };
     let _ = isolate.terminate_execution();
   }
 
   let handle = isolate.thread_safe_handle();
   let cancel_task_token = CancellationToken::new();
   let request_interrupt_fn = move || {
-    let _ = handle.request_interrupt(interrupt_fn, std::ptr::null_mut());
+    // SAFETY: *mut T and &mut T have identical ABI representation.
+    let callback = unsafe {
+      std::mem::transmute::<
+        extern "C" fn(*mut v8::Isolate, *mut std::ffi::c_void),
+        extern "C" fn(&mut v8::Isolate, *mut std::ffi::c_void),
+      >(interrupt_fn_raw)
+    };
+    let _ = handle.request_interrupt(callback, std::ptr::null_mut());
   };
 
   drop(base_rt::SUPERVISOR_RT.spawn({
@@ -2478,7 +2498,11 @@ unsafe extern "C" fn mem_check_gc_prologue_callback_fn(
   _flags: GCCallbackFlags,
   data: *mut c_void,
 ) {
-  // Convert UnsafeRawIsolatePtr to &mut Isolate
+  // Check for null isolate pointer to avoid UB
+  if isolate.is_null() || data.is_null() {
+    return;
+  }
+  // SAFETY: We've verified both pointers are non-null
   let mut isolate_ref = v8::Isolate::from_raw_isolate_ptr_unchecked(isolate);
   (*(data as *mut MemCheck)).check(&mut isolate_ref);
 }

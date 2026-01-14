@@ -5,7 +5,8 @@ use std::time::Duration;
 use crate::runtime::DenoRuntime;
 use crate::runtime::RunOptionsBuilder;
 use crate::runtime::WillTerminateReason;
-use crate::worker::supervisor::v8_handle_beforeunload;
+use crate::worker::supervisor::as_interrupt_callback;
+use crate::worker::supervisor::v8_handle_beforeunload_raw;
 use crate::worker::supervisor::{self};
 use crate::worker::utils::apply_source_maps;
 use crate::worker::utils::translate_vfs_paths;
@@ -157,9 +158,10 @@ impl WorkerDriver for Managed {
           reason: WillTerminateReason::Termination,
         }));
 
-      if thread_safe_handle
-        .request_interrupt(v8_handle_beforeunload, data_ptr_mut as *mut _)
-      {
+      if thread_safe_handle.request_interrupt(
+        as_interrupt_callback(v8_handle_beforeunload_raw),
+        data_ptr_mut as *mut _,
+      ) {
         waker.wake();
       } else {
         drop(unsafe { Box::from_raw(data_ptr_mut) });

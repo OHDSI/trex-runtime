@@ -20,11 +20,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
 use crate::runtime::WillTerminateReason;
+use crate::worker::supervisor::as_interrupt_callback;
 use crate::worker::supervisor::create_wall_clock_beforeunload_alert;
-use crate::worker::supervisor::v8_handle_beforeunload;
-use crate::worker::supervisor::v8_handle_drain;
-use crate::worker::supervisor::v8_handle_early_drop_beforeunload;
-use crate::worker::supervisor::v8_handle_early_retire;
+use crate::worker::supervisor::v8_handle_beforeunload_raw;
+use crate::worker::supervisor::v8_handle_drain_raw;
+use crate::worker::supervisor::v8_handle_early_drop_beforeunload_raw;
+use crate::worker::supervisor::v8_handle_early_retire_raw;
 use crate::worker::supervisor::wait_cpu_alarm;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::Tokens;
@@ -210,9 +211,10 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
       // are unlikely to get enough wall clock time or cpu time
       is_retired.raise();
 
-      if thread_safe_handle
-        .request_interrupt(v8_handle_early_retire, std::ptr::null_mut())
-      {
+      if thread_safe_handle.request_interrupt(
+        as_interrupt_callback(v8_handle_early_retire_raw),
+        std::ptr::null_mut(),
+      ) {
         waker.wake();
       }
     }
@@ -228,7 +230,7 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
         Box::into_raw(Box::new(V8HandleEarlyDropData { token }));
 
       if thread_safe_handle.request_interrupt(
-        v8_handle_early_drop_beforeunload,
+        as_interrupt_callback(v8_handle_early_drop_beforeunload_raw),
         data_ptr_mut as *mut std::ffi::c_void,
       ) {
         waker.wake();
@@ -239,9 +241,10 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
   });
 
   let mut dispatch_drain_fn = Some(|| {
-    if thread_safe_handle
-      .request_interrupt(v8_handle_drain, std::ptr::null_mut())
-    {
+    if thread_safe_handle.request_interrupt(
+      as_interrupt_callback(v8_handle_drain_raw),
+      std::ptr::null_mut(),
+    ) {
       waker.wake();
     }
   });
@@ -442,10 +445,10 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
           reason: WillTerminateReason::WallClock
         }));
 
-        if
-          thread_safe_handle
-            .request_interrupt(v8_handle_beforeunload, data_ptr_mut as *mut _)
-        {
+        if thread_safe_handle.request_interrupt(
+          as_interrupt_callback(v8_handle_beforeunload_raw),
+          data_ptr_mut as *mut _,
+        ) {
           waker.wake();
         } else {
           drop(unsafe { Box::from_raw(data_ptr_mut) });

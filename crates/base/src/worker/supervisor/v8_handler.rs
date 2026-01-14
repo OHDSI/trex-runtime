@@ -1,10 +1,7 @@
-//! # Warning
+//! V8 interrupt callback handlers.
 //!
-//! Do not directly call v8 functions that are likely to execute deno ops within the interrupted
-//! context. This may cause a panic due to the reentrancy check.
-//!
-//! If you need to call a v8 function that has side effects that might be calling the deno ops, you
-//! can safely call it through [`V8TaskSpawner`].
+//! Callbacks use raw pointers to handle null isolates during disposal.
+//! Use [`V8TaskSpawner`] for ops that may trigger reentrancy.
 
 use deno_core::v8;
 use deno_core::JsRuntime;
@@ -19,22 +16,37 @@ use crate::runtime::WillTerminateReason;
 
 use super::IsolateMemoryStats;
 
+pub type RawInterruptCallback =
+  extern "C" fn(isolate: *mut v8::Isolate, data: *mut std::ffi::c_void);
+
+pub type RefInterruptCallback =
+  extern "C" fn(isolate: &mut v8::Isolate, data: *mut std::ffi::c_void);
+
+#[inline]
+pub fn as_interrupt_callback(f: RawInterruptCallback) -> RefInterruptCallback {
+  // SAFETY: *mut T and &mut T have identical ABI representation.
+  unsafe { std::mem::transmute(f) }
+}
+
 #[repr(C)]
 pub struct V8HandleTerminationData {
   pub should_terminate: bool,
   pub isolate_memory_usage_tx: Option<oneshot::Sender<IsolateMemoryStats>>,
 }
 
-pub extern "C" fn v8_handle_termination(
-  isolate: &mut v8::Isolate,
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn v8_handle_termination_raw(
+  isolate_ptr: *mut v8::Isolate,
   data: *mut std::ffi::c_void,
 ) {
   let mut data = unsafe { Box::from_raw(data as *mut V8HandleTerminationData) };
 
-  if std::hint::black_box(isolate as *const v8::Isolate).is_null() {
+  if isolate_ptr.is_null() {
     drop(data.isolate_memory_usage_tx.take());
     return;
   }
+
+  let isolate = unsafe { &mut *isolate_ptr };
 
   if data.should_terminate {
     isolate.terminate_execution();
@@ -48,15 +60,18 @@ pub struct V8HandleBeforeunloadData {
   pub reason: WillTerminateReason,
 }
 
-pub extern "C" fn v8_handle_beforeunload(
-  isolate: &mut v8::Isolate,
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn v8_handle_beforeunload_raw(
+  isolate_ptr: *mut v8::Isolate,
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleBeforeunloadData) };
 
-  if std::hint::black_box(isolate as *const v8::Isolate).is_null() {
+  if isolate_ptr.is_null() {
     return;
   }
+
+  let isolate = unsafe { &mut *isolate_ptr };
 
   JsRuntime::op_state_from(isolate)
     .borrow()
@@ -65,10 +80,7 @@ pub extern "C" fn v8_handle_beforeunload(
       if let Err(err) = MaybeDenoRuntime::<()>::Isolate(scope)
         .dispatch_beforeunload_event(data.reason)
       {
-        log::error!(
-          "found an error while dispatching the beforeunload event: {}",
-          err
-        );
+        log::error!("beforeunload event error: {}", err);
       }
     });
 }
@@ -78,8 +90,8 @@ pub struct V8HandleEarlyDropData {
   pub token: CancellationToken,
 }
 
-pub extern "C" fn v8_handle_early_drop_beforeunload(
-  _isolate: &mut v8::Isolate,
+pub extern "C" fn v8_handle_early_drop_beforeunload_raw(
+  _isolate_ptr: *mut v8::Isolate,
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleEarlyDropData) };
@@ -87,21 +99,24 @@ pub extern "C" fn v8_handle_early_drop_beforeunload(
 }
 
 #[instrument(level = "debug", skip_all)]
-pub extern "C" fn v8_handle_early_retire(
-  _isolate: &mut v8::Isolate,
+pub extern "C" fn v8_handle_early_retire_raw(
+  _isolate_ptr: *mut v8::Isolate,
   _data: *mut std::ffi::c_void,
 ) {
   debug!("early retire signal received");
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[instrument(level = "debug", skip_all)]
-pub extern "C" fn v8_handle_drain(
-  isolate: &mut v8::Isolate,
+pub extern "C" fn v8_handle_drain_raw(
+  isolate_ptr: *mut v8::Isolate,
   _data: *mut std::ffi::c_void,
 ) {
-  if std::hint::black_box(isolate as *const v8::Isolate).is_null() {
+  if isolate_ptr.is_null() {
     return;
   }
+
+  let isolate = unsafe { &mut *isolate_ptr };
 
   JsRuntime::op_state_from(isolate)
     .borrow()
@@ -110,10 +125,7 @@ pub extern "C" fn v8_handle_drain(
       if let Err(err) =
         MaybeDenoRuntime::<()>::Isolate(scope).dispatch_drain_event()
       {
-        log::error!(
-          "found an error while dispatching the drain event: {}",
-          err
-        );
+        log::error!("drain event error: {}", err);
       }
     });
 }

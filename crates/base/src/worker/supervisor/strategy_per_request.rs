@@ -13,9 +13,10 @@ use tokio::time::Instant;
 use tracing::Instrument;
 
 use crate::runtime::WillTerminateReason;
+use crate::worker::supervisor::as_interrupt_callback;
 use crate::worker::supervisor::create_wall_clock_beforeunload_alert;
-use crate::worker::supervisor::v8_handle_beforeunload;
-use crate::worker::supervisor::v8_handle_early_retire;
+use crate::worker::supervisor::v8_handle_beforeunload_raw;
+use crate::worker::supervisor::v8_handle_early_retire_raw;
 use crate::worker::supervisor::wait_cpu_alarm;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::CPUUsageMetrics;
@@ -55,9 +56,10 @@ pub async fn supervise(
   let _guard = scopeguard::guard(is_retired, |v| {
     v.raise();
 
-    if thread_safe_handle
-      .request_interrupt(v8_handle_early_retire, std::ptr::null_mut())
-    {
+    if thread_safe_handle.request_interrupt(
+      as_interrupt_callback(v8_handle_early_retire_raw),
+      std::ptr::null_mut(),
+    ) {
       waker.wake();
     }
   });
@@ -217,9 +219,10 @@ pub async fn supervise(
             reason: WillTerminateReason::WallClock
         }));
 
-        if thread_safe_handle
-          .request_interrupt(v8_handle_beforeunload, data_ptr_mut as *mut _)
-        {
+        if thread_safe_handle.request_interrupt(
+          as_interrupt_callback(v8_handle_beforeunload_raw),
+          data_ptr_mut as *mut _,
+        ) {
           waker.wake();
         } else {
           drop(unsafe { Box::from_raw(data_ptr_mut)});
