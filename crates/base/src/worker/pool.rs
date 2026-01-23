@@ -37,7 +37,6 @@ use tokio::sync::oneshot::Sender;
 use tokio::sync::Notify;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
-use tokio::sync::TryAcquireError;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -87,20 +86,19 @@ impl SupervisorPolicy {
 #[derive(Clone)]
 pub struct WorkerPoolPolicy {
   supervisor_policy: SupervisorPolicy,
+  /// Per-service-path parallelism limit
   max_parallelism: usize,
+  /// Global parallelism limit across all service paths (None = unlimited)
+  global_max_parallelism: Option<usize>,
   request_wait_timeout_ms: u64,
 }
 
 impl Default for WorkerPoolPolicy {
   fn default() -> Self {
-    let available_parallelism = std::thread::available_parallelism()
-      .ok()
-      .map(|it| it.get())
-      .unwrap_or(1);
-
     Self {
       supervisor_policy: SupervisorPolicy::default(),
-      max_parallelism: available_parallelism,
+      max_parallelism: 4,
+      global_max_parallelism: Some(16),
       request_wait_timeout_ms: 10000,
     }
   }
@@ -119,10 +117,16 @@ impl WorkerPoolPolicy {
       max_parallelism: max_parallelism
         .into()
         .unwrap_or(default.max_parallelism),
+      global_max_parallelism: None,
       request_wait_timeout_ms: server_flags
         .request_wait_timeout_ms
         .unwrap_or(default.request_wait_timeout_ms),
     }
+  }
+
+  pub fn with_global_limit(mut self, limit: impl Into<Option<usize>>) -> Self {
+    self.global_max_parallelism = limit.into();
+    self
   }
 }
 
@@ -238,6 +242,8 @@ pub struct WorkerPool {
   pub active_workers: HashMap<String, ActiveWorkerRegistry>,
   pub worker_pool_msgs_tx: mpsc::UnboundedSender<UserWorkerMsgs>,
   pub maybe_inspector: Option<Inspector>,
+  /// Global semaphore limiting total workers across all service paths
+  pub global_sem: Option<Arc<Semaphore>>,
 
   // TODO: refactor this out of worker pool
   pub worker_event_sender:
@@ -253,6 +259,10 @@ impl WorkerPool {
     worker_pool_msgs_tx: mpsc::UnboundedSender<UserWorkerMsgs>,
     inspector: Option<Inspector>,
   ) -> Self {
+    let global_sem = policy
+      .global_max_parallelism
+      .map(|limit| Arc::new(Semaphore::const_new(limit)));
+
     Self {
       flags,
       policy,
@@ -262,6 +272,7 @@ impl WorkerPool {
       active_workers: HashMap::new(),
       maybe_inspector: inspector,
       worker_pool_msgs_tx,
+      global_sem,
     }
   }
 
@@ -303,7 +314,8 @@ impl WorkerPool {
       Stop,
       Resend(Sender<Result<CreateUserWorkerResult, Error>>),
       Create(
-        Option<OwnedSemaphorePermit>,
+        Option<OwnedSemaphorePermit>, // per-path permit
+        Option<OwnedSemaphorePermit>, // global permit
         Sender<Result<CreateUserWorkerResult, Error>>,
       ),
     }
@@ -317,6 +329,7 @@ impl WorkerPool {
         });
 
       let sem = registry.sem.clone();
+      let global_sem = self.global_sem.clone();
       let (_, notify_rx) = registry.notify_pair.clone();
       let wait_timeout = tokio::time::sleep(Duration::from_millis(
         self.policy.request_wait_timeout_ms,
@@ -325,16 +338,33 @@ impl WorkerPool {
       async move {
         use FlowAfterFence::*;
 
-        match sem.clone().try_acquire_owned() {
-          Ok(permit) => return Create(Some(permit), tx),
-          Err(TryAcquireError::NoPermits) if force_create => {
-            // NOTE(Nyannyacha): Do we need to consider counting the permit
-            // count (that means it affects maximum parallelism) if in the force
-            // creation mode?
-            return Create(None, tx);
-          }
+        // Helper to try acquiring both permits
+        let try_acquire_permits =
+          |sem: &Arc<Semaphore>, global_sem: &Option<Arc<Semaphore>>| {
+            let path_permit = sem.clone().try_acquire_owned().ok();
+            if path_permit.is_none() {
+              return (None, None);
+            }
+            let global_permit = match global_sem {
+              Some(gs) => gs.clone().try_acquire_owned().ok(),
+              None => None, // No global limit, so no permit needed
+            };
+            // If global limit exists but we couldn't get permit, release path permit
+            if global_sem.is_some() && global_permit.is_none() {
+              return (None, None);
+            }
+            (path_permit, global_permit)
+          };
 
-          _ => {}
+        let (path_permit, global_permit) =
+          try_acquire_permits(&sem, &global_sem);
+
+        if path_permit.is_some() {
+          return Create(path_permit, global_permit, tx);
+        }
+
+        if force_create {
+          return Create(None, None, tx);
         }
 
         tokio::pin!(wait_timeout);
@@ -357,8 +387,10 @@ impl WorkerPool {
 
                 Ok(Some(_)) => return Resend(tx),
                 Ok(None) => {
-                  if let Ok(permit) = sem.clone().try_acquire_owned() {
-                    return Create(Some(permit), tx);
+                  let (path_permit, global_permit) =
+                    try_acquire_permits(&sem, &global_sem);
+                  if path_permit.is_some() {
+                    return Create(path_permit, global_permit, tx);
                   }
                 }
               }
@@ -385,7 +417,7 @@ impl WorkerPool {
     let supervisor_policy = self.policy.supervisor_policy;
 
     drop(tokio::spawn(async move {
-      let (permit, tx) = match wait_fence_fut.await {
+      let (path_permit, global_permit, tx) = match wait_fence_fut.await {
         FlowAfterFence::Stop => return,
         FlowAfterFence::Resend(tx) => {
           let WorkerContextInitOpts {
@@ -432,7 +464,9 @@ impl WorkerPool {
           return;
         }
 
-        FlowAfterFence::Create(permit, tx) => (permit, tx),
+        FlowAfterFence::Create(path_permit, global_permit, tx) => {
+          (path_permit, global_permit, tx)
+        }
       };
 
       let Ok(mut user_worker_rt_opts) = worker_options.conf.into_user_worker()
@@ -498,7 +532,8 @@ impl WorkerPool {
             early_drop_tx,
             timing_tx_pair: (req_start_timing_tx, req_end_timing_tx),
             service_path,
-            permit: permit.map(Arc::new),
+            permit: path_permit.map(Arc::new),
+            global_permit: global_permit.map(Arc::new),
             status: status.clone(),
             exit: surface.exit,
             cancel,
@@ -735,7 +770,9 @@ impl WorkerPool {
         .get_mut(&profile.service_path)
         .expect("registry must be initialized at this point");
 
+      // Release both permits to make room for new workers
       let _ = profile.permit.take();
+      let _ = profile.global_permit.take();
       let (notify_tx, _) = registry.notify_pair.clone();
 
       for _ in 0..notify_tx.receiver_count() {

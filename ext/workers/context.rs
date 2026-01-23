@@ -147,7 +147,10 @@ pub struct UserWorkerProfile {
     mpsc::UnboundedSender<()>,
   ),
   pub service_path: String,
+  /// Per-service-path semaphore permit
   pub permit: Option<Arc<OwnedSemaphorePermit>>,
+  /// Global semaphore permit (if global limit is configured)
+  pub global_permit: Option<Arc<OwnedSemaphorePermit>>,
   pub cancel: CancellationToken,
   pub status: TimingStatus,
   pub exit: WorkerExit,
