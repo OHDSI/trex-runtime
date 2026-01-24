@@ -58,8 +58,6 @@ jobs:
     if: github.event.pull_request.draft == false
     name: 'cargo clippy'
     runs-on: ubuntu-latest
-    env:
-      V8_FROM_SOURCE: 1
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
@@ -84,8 +82,6 @@ jobs:
     if: false
     name: 'cargo test'
     runs-on: ubuntu-latest
-    env:
-      V8_FROM_SOURCE: 1
     steps:
       - name: Install deps
         run: |

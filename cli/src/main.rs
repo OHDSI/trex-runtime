@@ -181,6 +181,9 @@ fn main() -> Result<ExitCode, anyhow::Error> {
 
         let maybe_max_parallelism =
           sub_matches.get_one::<usize>("max-parallelism").cloned();
+        let maybe_global_max_parallelism = sub_matches
+          .get_one::<usize>("global-max-parallelism")
+          .cloned();
         let maybe_request_wait_timeout =
           sub_matches.get_one::<u64>("request-wait-timeout").cloned();
         let maybe_main_worker_request_idle_timeout = sub_matches
@@ -270,30 +273,33 @@ fn main() -> Result<ExitCode, anyhow::Error> {
 
         let mut builder = Builder::new(addr, &main_service_path);
 
-        builder.user_worker_policy(WorkerPoolPolicy::new(
-          maybe_supervisor_policy,
-          if let Some(true) = maybe_supervisor_policy
-            .as_ref()
-            .map(SupervisorPolicy::is_oneshot)
-          {
-            if let Some(parallelism) = maybe_max_parallelism {
-              if parallelism == 0 || parallelism > 1 {
-                warn!(
-                  "{}",
-                  concat!(
-                    "if `oneshot` policy is enabled, the maximum ",
-                    "parallelism is fixed to `1` as forcibly ^^"
-                  )
-                );
+        builder.user_worker_policy(
+          WorkerPoolPolicy::new(
+            maybe_supervisor_policy,
+            if let Some(true) = maybe_supervisor_policy
+              .as_ref()
+              .map(SupervisorPolicy::is_oneshot)
+            {
+              if let Some(parallelism) = maybe_max_parallelism {
+                if parallelism == 0 || parallelism > 1 {
+                  warn!(
+                    "{}",
+                    concat!(
+                      "if `oneshot` policy is enabled, the maximum ",
+                      "parallelism is fixed to `1` as forcibly ^^"
+                    )
+                  );
+                }
               }
-            }
 
-            Some(1)
-          } else {
-            maybe_max_parallelism
-          },
-          flags,
-        ));
+              Some(1)
+            } else {
+              maybe_max_parallelism
+            },
+            flags,
+          )
+          .with_global_limit(maybe_global_max_parallelism),
+        );
 
         if let Some(tls) = maybe_tls {
           builder.tls(tls);

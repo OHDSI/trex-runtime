@@ -4,6 +4,7 @@ import { core } from "ext:core/mod.js";
 const knownErrors = {
   Interrupted: core.Interrupted,
   BadResource: core.BadResource,
+  NotCapable: core.NotCapable,
 };
 
 const buildErrorClass = (name) => {

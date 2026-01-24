@@ -345,6 +345,9 @@ pub struct TrexServerConfig {
   /// Maximum number of workers per service path (1-9999)
   #[serde(default)]
   pub max_parallelism: Option<usize>,
+  /// Maximum total number of workers across all service paths (global limit)
+  #[serde(default)]
+  pub global_max_parallelism: Option<usize>,
   #[serde(default)]
   pub inspector: Option<String>,
   #[serde(default)]
@@ -457,23 +460,24 @@ impl TrexServerConfig {
       beforeunload_memory_pct: self.beforeunload_memory_pct.map(|p| p as u8),
     };
 
-    let user_worker_policy =
-      if supervisor_policy.is_some() || self.max_parallelism.is_some() {
-        // For oneshot policy, force max_parallelism to 1
-        let max_parallelism =
-          if supervisor_policy.as_ref().is_some_and(|p| p.is_oneshot()) {
-            Some(1)
-          } else {
-            self.max_parallelism
-          };
-        Some(WorkerPoolPolicy::new(
-          supervisor_policy,
-          max_parallelism,
-          server_flags,
-        ))
-      } else {
-        None
-      };
+    let user_worker_policy = if supervisor_policy.is_some()
+      || self.max_parallelism.is_some()
+      || self.global_max_parallelism.is_some()
+    {
+      // For oneshot policy, force max_parallelism to 1
+      let max_parallelism =
+        if supervisor_policy.as_ref().is_some_and(|p| p.is_oneshot()) {
+          Some(1)
+        } else {
+          self.max_parallelism
+        };
+      Some(
+        WorkerPoolPolicy::new(supervisor_policy, max_parallelism, server_flags)
+          .with_global_limit(self.global_max_parallelism),
+      )
+    } else {
+      None
+    };
 
     Ok(ServerConfig {
       addr,

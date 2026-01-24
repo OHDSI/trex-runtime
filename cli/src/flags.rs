@@ -188,11 +188,23 @@ fn get_start_command() -> Command {
     .arg(
       arg!(--"max-parallelism" <COUNT>)
         .help(concat!(
-          "Maximum count of workers that can exist in the worker pool ",
-          "simultaneously"
+          "Maximum count of workers per service path that can exist ",
+          "in the worker pool simultaneously"
         ))
         .value_parser(
           // NOTE: Acceptable bounds were chosen arbitrarily.
+          value_parser!(u32)
+            .range(1..9999)
+            .map(|it| -> usize { it as usize }),
+        ),
+    )
+    .arg(
+      arg!(--"global-max-parallelism" <COUNT>)
+        .help(concat!(
+          "Maximum total count of workers across all service paths ",
+          "(global limit)"
+        ))
+        .value_parser(
           value_parser!(u32)
             .range(1..9999)
             .map(|it| -> usize { it as usize }),

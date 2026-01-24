@@ -24,8 +24,8 @@ export CARGO_TARGET_DIR := $(PROJ_DIR)target
 export CARGO_FEATURES :=
 CARGO_OVERRIDE_DUCKDB_RS_FLAG :=
 
-export V8_FROM_SOURCE := 1
-export EXTRA_GN_ARGS := v8_monolithic=true v8_monolithic_for_shared_library=true 
+# export V8_FROM_SOURCE := 1
+# export EXTRA_GN_ARGS := v8_monolithic=true v8_monolithic_for_shared_library=true
 
 all: configure debug
 
