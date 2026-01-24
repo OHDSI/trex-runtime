@@ -98,7 +98,7 @@ impl Default for WorkerPoolPolicy {
     Self {
       supervisor_policy: SupervisorPolicy::default(),
       max_parallelism: 4,
-      global_max_parallelism: Some(16),
+      global_max_parallelism: Some(32),
       request_wait_timeout_ms: 10000,
     }
   }
