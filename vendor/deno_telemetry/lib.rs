@@ -100,6 +100,7 @@ deno_core::extension!(
   ops = [
     op_otel_collect_isolate_metrics,
     op_otel_enable_isolate_metrics,
+    op_otel_disable_isolate_metrics,
     op_otel_log,
     op_otel_log_foreign,
     op_otel_span_attribute1,
@@ -2748,6 +2749,45 @@ fn op_otel_enable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
     available_size,
     physical_size,
   });
+}
+
+/// Removes the telemetry GC callbacks from the isolate.
+/// This should be called before the isolate is disposed to prevent callbacks
+/// from firing on a partially disposed isolate, which can cause crashes in
+/// v8__Isolate__GetData.
+///
+/// This function is safe to call even if the callbacks were never added.
+pub fn remove_telemetry_gc_callbacks(isolate: &mut v8::Isolate) {
+  isolate.remove_gc_prologue_callback(
+    GcMetricData::prologue_callback,
+    std::ptr::null_mut(),
+  );
+
+  isolate.remove_gc_epilogue_callback(
+    GcMetricData::epilogue_callback,
+    std::ptr::null_mut(),
+  );
+}
+
+/// Removes the telemetry GC callbacks. This should be called before the
+/// isolate is disposed to prevent callbacks from firing on a partially
+/// disposed isolate, which can cause crashes in v8__Isolate__GetData.
+#[op2(fast)]
+pub fn op_otel_disable_isolate_metrics(scope: &mut v8::PinScope<'_, '_>) {
+  // Only remove if the callbacks were previously added
+  if scope.get_slot::<GcMetricData>().is_none() {
+    return;
+  }
+
+  scope.remove_gc_prologue_callback(
+    GcMetricData::prologue_callback,
+    std::ptr::null_mut(),
+  );
+
+  scope.remove_gc_epilogue_callback(
+    GcMetricData::epilogue_callback,
+    std::ptr::null_mut(),
+  );
 }
 
 #[op2(fast)]
