@@ -442,6 +442,10 @@ impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
       );
     }
 
+    // Remove telemetry GC callbacks before disposal to prevent them from
+    // firing on a partially disposed isolate (null isolate crash fix)
+    deno_telemetry::remove_telemetry_gc_callbacks(self.js_runtime.v8_isolate());
+
     cleanup_js_runtime(&mut self.js_runtime);
 
     unsafe {
