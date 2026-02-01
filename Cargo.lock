@@ -1269,6 +1269,7 @@ dependencies = [
  "pin-project",
  "regex",
  "reqwest 0.11.27",
+ "rustls 0.23.28",
  "rustls-pemfile 2.2.0",
  "scopeguard",
  "serde",

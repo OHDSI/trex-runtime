@@ -78,8 +78,7 @@ jobs:
       - run: ./scripts/clippy.sh
 
   cargo-test:
-    # Disabled: change to 'github.event.pull_request.draft == false' to re-enable
-    if: false
+    if: github.event.pull_request.draft == false
     name: 'cargo test'
     runs-on: ubuntu-latest
     steps:
@@ -173,7 +172,11 @@ jobs:
       - name: Generate code coverage
         id: coverage
         run: |
-          cargo llvm-cov test --workspace --no-fail-fast --lcov -j 1 --output-path lcov.info
+          LIBRARY_PATH=/usr/local/lib cargo llvm-cov test --workspace --lib --no-fail-fast --lcov -j 1 --output-path lcov.info \
+            --exclude deno_resolver --exclude deno_io --exclude deno_fs --exclude deno_net --exclude deno_npm_installer --exclude deno_telemetry --exclude deno_unsync
+        env:
+          LD_LIBRARY_PATH: /usr/local/lib
+          ORT_DYLIB_PATH: /tmp/onnxruntime/lib/libonnxruntime.so
       - name: Coveralls upload
         uses: coverallsapp/github-action@v2
         with:

@@ -2,8 +2,7 @@
   "workspace": [
     "./examples",
     "./crates/base/test_cases",
-    "./test",
-    "./trexsql/bao"
+    "./test"
   ],
   "nodeModulesDir": "auto",
   "fmt": {
