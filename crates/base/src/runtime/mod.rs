@@ -2889,7 +2889,8 @@ mod test {
     .await
     .unwrap();
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = runtime
       .run(
@@ -2901,7 +2902,11 @@ mod test {
       )
       .await;
 
-    assert!(result.is_ok(), "eszip source file test failed: {:?}", result);
+    assert!(
+      result.is_ok(),
+      "eszip source file test failed: {:?}",
+      result
+    );
   }
 
   #[tokio::test]
@@ -2971,7 +2976,8 @@ mod test {
     .await
     .unwrap();
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = runtime
       .run(
@@ -2996,7 +3002,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = runtime
       .run(
@@ -3008,7 +3015,11 @@ mod test {
       )
       .await;
 
-    assert!(result.is_ok(), "mainRuntimeCreation test failed: {:?}", result);
+    assert!(
+      result.is_ok(),
+      "mainRuntimeCreation test failed: {:?}",
+      result
+    );
   }
 
   // User Runtime can access EdgeRuntime, but only with specific APIs (waitUntil)
@@ -3022,7 +3033,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = runtime
       .run(
@@ -3034,7 +3046,11 @@ mod test {
       )
       .await;
 
-    assert!(result.is_ok(), "userRuntimeCreation test failed: {:?}", result);
+    assert!(
+      result.is_ok(),
+      "userRuntimeCreation test failed: {:?}",
+      result
+    );
   }
 
   #[tokio::test]
@@ -3049,7 +3065,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     // The test case (test_read_file_sync.ts) reads the file and throws if content doesn't match
     let (result, _) = main_rt
@@ -3078,7 +3095,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = main_rt
       .run(
@@ -3131,7 +3149,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = user_rt
       .run(
@@ -3157,7 +3176,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = user_rt
       .run(
@@ -3185,7 +3205,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = main_rt
       .run(
@@ -3216,7 +3237,8 @@ mod test {
       .build()
       .await;
 
-    let (_tx, duplex_stream_rx) = mpsc::unbounded_channel::<DuplexStreamEntry>();
+    let (_tx, duplex_stream_rx) =
+      mpsc::unbounded_channel::<DuplexStreamEntry>();
 
     let (result, _) = user_rt
       .run(
