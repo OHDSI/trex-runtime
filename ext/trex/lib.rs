@@ -56,7 +56,9 @@ static TREX_DB: LazyLock<Arc<Mutex<Connection>>> = LazyLock::new(|| {
     .expect("failed to open DuckDB in-memory");
 
   if let Ok(path) = std::env::var("DUCKDB_CIRCE_EXTENSION") {
-    if let Err(e) = conn.execute(&format!("LOAD '{}'", path.replace('\'', "''")), []) {
+    if let Err(e) =
+      conn.execute(&format!("LOAD '{}'", path.replace('\'', "''")), [])
+    {
       warn!(path, error = %e, "failed to load circe extension");
     }
   } else {
@@ -195,7 +197,7 @@ fn op_set_dbc(#[string] dbc: String) {
 
 #[op2(fast)]
 fn op_install_plugin(#[string] name: String, #[string] dir: String) {
-  use tracing::{info, error};
+  use tracing::{error, info};
 
   let use_node_modules = env::var("TPM_USE_NODE_MODULES")
     .map(|v| v.to_lowercase() != "false")
@@ -216,33 +218,49 @@ fn op_install_plugin(#[string] name: String, #[string] dir: String) {
   );
 
   match execute_query("memory".to_string(), sql, vec![]) {
-    Ok(json_str) => match serde_json::from_str::<Vec<serde_json::Value>>(&json_str) {
-      Ok(rows) if rows.is_empty() => {
-        warn!(package = %name, "no packages installed");
-      }
-      Ok(rows) => {
-        let (mut ok, mut err) = (0usize, 0usize);
-        for row in rows {
-          if let Some(result) = row.get("install_results")
-            .and_then(|v| serde_json::from_value::<String>(v.clone()).ok())
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-          {
-            let pkg = result.get("package").and_then(|v| v.as_str()).unwrap_or("unknown");
-            let ver = result.get("version").and_then(|v| v.as_str()).unwrap_or("unknown");
-            if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
-              info!(package = pkg, version = ver, "installed");
-              ok += 1;
-            } else {
-              let e = result.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
-              error!(package = pkg, error = e, "install failed");
-              err += 1;
+    Ok(json_str) => {
+      match serde_json::from_str::<Vec<serde_json::Value>>(&json_str) {
+        Ok(rows) if rows.is_empty() => {
+          warn!(package = %name, "no packages installed");
+        }
+        Ok(rows) => {
+          let (mut ok, mut err) = (0usize, 0usize);
+          for row in rows {
+            if let Some(result) = row
+              .get("install_results")
+              .and_then(|v| serde_json::from_value::<String>(v.clone()).ok())
+              .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            {
+              let pkg = result
+                .get("package")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+              let ver = result
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+              if result
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+              {
+                info!(package = pkg, version = ver, "installed");
+                ok += 1;
+              } else {
+                let e = result
+                  .get("error")
+                  .and_then(|v| v.as_str())
+                  .unwrap_or("unknown");
+                error!(package = pkg, error = e, "install failed");
+                err += 1;
+              }
             }
           }
+          info!(succeeded = ok, failed = err, "plugin install complete");
         }
-        info!(succeeded = ok, failed = err, "plugin install complete");
+        Err(e) => warn!(error = %e, "failed to parse install results"),
       }
-      Err(e) => warn!(error = %e, "failed to parse install results"),
-    },
+    }
     Err(e) => warn!(package = %name, error = %e, "plugin install failed"),
   }
 }
@@ -454,7 +472,9 @@ fn execute_query(
 
     match executor.submit(database, sql, params_json).blocking_recv() {
       Ok(query_executor::QueryResult::Success(json)) => Ok(json),
-      Ok(query_executor::QueryResult::Error(msg)) => Err(TrexError::Generic(msg)),
+      Ok(query_executor::QueryResult::Error(msg)) => {
+        Err(TrexError::Generic(msg))
+      }
       Err(_) => Err(TrexError::Generic("executor channel closed".into())),
     }
   } else {
@@ -671,7 +691,11 @@ fn op_execute_query_stream(
       // DuckDB handles concurrency internally via MVCC.
       let conn = match conn_arc.lock().unwrap().try_clone() {
         Ok(c) => c,
-        Err(_) => return,
+        Err(e) => {
+          let _ = sender
+            .blocking_send(format!("{{\"error\":\"connection clone: {e}\"}}"));
+          return;
+        }
       };
       if conn.execute(&format!("USE {database}"), []).is_err() {
         return;

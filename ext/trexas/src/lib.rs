@@ -24,7 +24,9 @@ use tracing::warn;
 
 static SHARED_CONNECTION: OnceCell<Arc<Mutex<Connection>>> = OnceCell::new();
 
-fn store_shared_connection(connection: &Connection) -> Result<(), Box<dyn Error>> {
+fn store_shared_connection(
+  connection: &Connection,
+) -> Result<(), Box<dyn Error>> {
   if let Err(e) = trex_core::connection::init_query_executor(connection) {
     warn!(error = %e, "query executor init failed (may already exist)");
   }
@@ -543,8 +545,13 @@ impl VScalar for TrexCreateBundleScalar {
   }
 }
 
+/// # Safety
+///
+/// Called by DuckDB via `duckdb_entrypoint_c_api`. The connection must be valid.
 #[duckdb_entrypoint_c_api(ext_name = "trexas")]
-pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
+pub unsafe fn extension_entrypoint(
+  con: Connection,
+) -> Result<(), Box<dyn Error>> {
   store_shared_connection(&con)?;
 
   if let Some(shared_conn) = get_shared_connection() {
@@ -555,10 +562,15 @@ pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>
 
   con.register_scalar_function::<TrexVersionScalar>("trex_version")?;
   con.register_scalar_function::<StartTrexServerScalar>("trex_start_server")?;
-  con.register_scalar_function::<StartTrexServerWithConfigScalar>("trex_start_server_with_config")?;
+  con.register_scalar_function::<StartTrexServerWithConfigScalar>(
+    "trex_start_server_with_config",
+  )?;
   con.register_scalar_function::<StopTrexServerScalar>("trex_stop_server")?;
-  con.register_scalar_function::<StopAllTrexServersScalar>("trex_stop_all_servers")?;
-  con.register_scalar_function::<TrexCreateBundleScalar>("trex_create_bundle")?;
+  con.register_scalar_function::<StopAllTrexServersScalar>(
+    "trex_stop_all_servers",
+  )?;
+  con
+    .register_scalar_function::<TrexCreateBundleScalar>("trex_create_bundle")?;
   con.register_table_function::<TrexServersTable>("trex_list_servers")?;
 
   Ok(())

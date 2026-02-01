@@ -32,7 +32,10 @@ pub struct QueryExecutor {
 
 impl QueryExecutor {
   /// Creates executor pool. Must be called from the connection's origin thread.
-  pub fn new(connection: &Connection, pool_size: usize) -> Result<Self, String> {
+  pub fn new(
+    connection: &Connection,
+    pool_size: usize,
+  ) -> Result<Self, String> {
     let mut connections = Vec::with_capacity(pool_size);
     for i in 0..pool_size {
       connections.push(
@@ -83,7 +86,8 @@ impl QueryExecutor {
 
 fn worker_loop(conn: Connection, receiver: Receiver<QueryRequest>) {
   while let Ok(req) = receiver.recv() {
-    let result = execute_query(&conn, &req.database, &req.sql, &req.params_json);
+    let result =
+      execute_query(&conn, &req.database, &req.sql, &req.params_json);
     let _ = req.response_tx.send(result);
   }
 }

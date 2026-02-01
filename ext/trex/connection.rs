@@ -5,7 +5,8 @@ use duckdb::Connection;
 use std::sync::{Arc, Mutex, OnceLock};
 
 static QUERY_EXECUTOR: OnceLock<Arc<QueryExecutor>> = OnceLock::new();
-static CONNECTION_PROVIDER: OnceLock<Arc<dyn ConnectionProvider>> = OnceLock::new();
+static CONNECTION_PROVIDER: OnceLock<Arc<dyn ConnectionProvider>> =
+  OnceLock::new();
 
 pub fn init_query_executor(connection: &Connection) -> Result<(), String> {
   let executor = QueryExecutor::new(connection, EXECUTOR_POOL_SIZE)?;
@@ -70,10 +71,14 @@ pub fn get_connection() -> Option<Arc<Mutex<Connection>>> {
   get_connection_provider().map(|p| p.get_connection())
 }
 
-pub fn init_owned_connection(conn: Arc<Mutex<Connection>>) -> Result<(), String> {
+pub fn init_owned_connection(
+  conn: Arc<Mutex<Connection>>,
+) -> Result<(), String> {
   set_connection_provider(Arc::new(OwnedConnectionProvider::new(conn)))
 }
 
-pub fn init_shared_connection(conn: Arc<Mutex<Connection>>) -> Result<(), String> {
+pub fn init_shared_connection(
+  conn: Arc<Mutex<Connection>>,
+) -> Result<(), String> {
   set_connection_provider(Arc::new(SharedConnectionProvider::new(conn)))
 }
