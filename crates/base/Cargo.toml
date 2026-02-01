@@ -88,6 +88,7 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 
 [dev-dependencies]
 eszip_trait.workspace = true
+rustls = { version = "0.23", features = ["ring"] }
 serial_test.workspace = true
 tokio-util = { workspace = true, features = ["rt", "compat"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "tracing-log"] }

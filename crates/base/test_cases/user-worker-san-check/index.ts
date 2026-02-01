@@ -48,10 +48,10 @@ function checkWhitelisted(list: string[]) {
   }
 }
 
-const blocklist: string[] = Deno.readTextFileSync(".blocklisted")
+const blocklist: string[] = Deno.readTextFileSync("./test_cases/user-worker-san-check/.blocklisted")
   .trim()
   .split("\n");
-const whitelisted: string[] = Deno.readTextFileSync(".whitelisted")
+const whitelisted: string[] = Deno.readTextFileSync("./test_cases/user-worker-san-check/.whitelisted")
   .trim()
   .split("\n");
 
