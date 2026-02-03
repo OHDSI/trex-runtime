@@ -113,7 +113,6 @@ const TLS_LOCALHOST_KEY: &[u8] =
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_custom_readable_stream_response() {
   integration_test!(
     "./test_cases/main",
@@ -134,7 +133,6 @@ async fn test_custom_readable_stream_response() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_import_map_inlined() {
   integration_test!(
     "./test_cases/with-import-map",
@@ -156,7 +154,6 @@ async fn test_import_map_inlined() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_import_map_file_path() {
   integration_test!(
     "./test_cases/with-import-map-2",
@@ -272,7 +269,6 @@ async fn test_not_trigger_pku_sigsegv_due_to_jit_compilation_non_cli() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_main_worker_options_request() {
   let client = Client::new();
   let req = client
@@ -314,7 +310,6 @@ async fn test_main_worker_options_request() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_main_worker_post_request() {
   let body_chunk = "{ \"name\": \"bar\"}";
 
@@ -413,7 +408,6 @@ async fn test_main_worker_boot_error() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_main_worker_abort_request() {
   let body_chunk = "{ \"name\": \"bar\"}";
 
@@ -638,7 +632,6 @@ async fn test_null_body_with_204_status() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_null_body_with_204_status_post() {
   let client = Client::new();
   let req = client
@@ -794,7 +787,6 @@ async fn test_file_upload_size_exceed() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_node_server() {
   integration_test!(
     "./test_cases/node-server",
@@ -826,7 +818,6 @@ async fn test_node_server() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_tls_throw_invalid_data() {
   integration_test!(
     "./test_cases/tls_invalid_data",
@@ -848,7 +839,6 @@ async fn test_tls_throw_invalid_data() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_user_worker_json_imports() {
   integration_test!(
     "./test_cases/json_import",
@@ -870,7 +860,6 @@ async fn test_user_worker_json_imports() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_user_imports_npm() {
   integration_test!(
     "./test_cases/npm",
@@ -924,7 +913,6 @@ async fn test_worker_boot_invalid_imports() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_worker_boot_with_0_byte_eszip() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/meow".into(),
@@ -953,7 +941,6 @@ async fn test_worker_boot_with_0_byte_eszip() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_worker_boot_with_invalid_entrypoint() {
   let opts = WorkerContextInitOpts {
     service_path: "./test_cases/meow".into(),
