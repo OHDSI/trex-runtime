@@ -485,6 +485,17 @@ fn record_batches_to_json(batches: &[RecordBatch]) -> String {
   serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Extract a human-readable message from a panic payload
+fn extract_panic_message(panic_err: Box<dyn std::any::Any + Send>) -> String {
+  if let Some(s) = panic_err.downcast_ref::<&str>() {
+    s.to_string()
+  } else if let Some(s) = panic_err.downcast_ref::<String>() {
+    s.clone()
+  } else {
+    "Unknown panic".to_string()
+  }
+}
+
 fn execute_query(
   database: String,
   sql: String,
@@ -499,13 +510,7 @@ fn execute_query(
   match result {
     Ok(inner_result) => inner_result,
     Err(panic_err) => {
-      let panic_msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
-        s.to_string()
-      } else if let Some(s) = panic_err.downcast_ref::<String>() {
-        s.clone()
-      } else {
-        "Unknown panic occurred during query execution".to_string()
-      };
+      let panic_msg = extract_panic_message(panic_err);
       Err(TrexError::Generic(format!(
         "Query execution panicked: {panic_msg}"
       )))
@@ -729,7 +734,10 @@ fn op_execute_query_stream(
       let result = panic::catch_unwind(AssertUnwindSafe(|| {
         let conn = match conn_arc.lock() {
           Ok(guard) => guard,
-          Err(poisoned) => poisoned.into_inner(),
+          Err(poisoned) => {
+            warn!("Lock was poisoned in streaming query, recovering");
+            poisoned.into_inner()
+          }
         };
         if conn.execute(&format!("USE {database}"), []).is_err() {
           return;
@@ -746,18 +754,12 @@ fn op_execute_query_stream(
         }
       }));
       if let Err(e) = result {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-          s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-          s.clone()
-        } else {
-          "Unknown panic during streaming query".to_string()
-        };
+        let msg = extract_panic_message(e);
         warn!("Streaming query panicked: {msg}");
-        let _ = sender.blocking_send(format!(
-          r#"{{"error":"Query execution panicked: {}"}}"#,
-          msg.replace('"', "\\\"")
-        ));
+        let error_json = serde_json::json!({
+          "error": format!("Query execution panicked: {}", msg)
+        });
+        let _ = sender.blocking_send(error_json.to_string());
       }
     });
   });
@@ -781,7 +783,10 @@ async fn op_execute_query_stream_next(
 
   let mut rx = match resource.receiver.lock() {
     Ok(guard) => guard,
-    Err(poisoned) => poisoned.into_inner(),
+    Err(poisoned) => {
+      warn!("Lock was poisoned in stream_next, recovering");
+      poisoned.into_inner()
+    }
   };
   let next_chunk = rx.recv().await;
 
