@@ -1,10 +1,14 @@
-const { WebSocketServer } = require("ws");
-const wss = new WebSocketServer({ port: 8080 });
+// Use Deno.upgradeWebSocket for proper integration with user worker routing
+Deno.serve((req) => {
+  const { socket, response } = Deno.upgradeWebSocket(req);
 
-wss.on("connection", function connection(ws) {
-  ws.on("message", function message(data) {
-    ws.send(data);
-  });
+  socket.onopen = () => {
+    socket.send("meow");
+  };
 
-  ws.send("meow");
+  socket.onmessage = (ev) => {
+    socket.send(ev.data);
+  };
+
+  return response;
 });

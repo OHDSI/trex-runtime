@@ -123,6 +123,7 @@ pub extern "C" fn v8_handle_early_drop_beforeunload_raw(
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleEarlyDropData) };
+  // Just cancel the token to signal early drop
   data.token.cancel();
 }
 

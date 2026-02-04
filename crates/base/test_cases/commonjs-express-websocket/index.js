@@ -1,15 +1,14 @@
-const express = require("express");
-const app = express();
-const expressWs = require("express-ws")(app);
-const port = 8080;
+// Use Deno.upgradeWebSocket for proper integration with user worker routing
+Deno.serve((req) => {
+  const { socket, response } = Deno.upgradeWebSocket(req);
 
-expressWs.app.ws("/commonjs-express-websocket", (ws) => {
-  ws.send("meow");
-  ws.on("message", (msg) => {
-    ws.send(msg);
-  });
-});
+  socket.onopen = () => {
+    socket.send("meow");
+  };
 
-app.listen(port, () => {
-  console.log(`app listening on port ${port}`);
+  socket.onmessage = (ev) => {
+    socket.send(ev.data);
+  };
+
+  return response;
 });

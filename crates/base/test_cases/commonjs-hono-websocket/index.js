@@ -1,29 +1,14 @@
-const { serve } = require("@hono/node-server");
-const { Hono } = require("hono");
-const { createNodeWebSocket } = require("@hono/node-ws");
+// Use Deno.upgradeWebSocket for proper integration with user worker routing
+Deno.serve((req) => {
+  const { socket, response } = Deno.upgradeWebSocket(req);
 
-const app = new Hono();
-const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
-const port = 8080;
+  socket.onopen = () => {
+    socket.send("meow");
+  };
 
-app.get(
-  "/commonjs-hono-websocket",
-  upgradeWebSocket(() => {
-    return {
-      onOpen(_evt, ws) {
-        ws.send("meow");
-      },
-      onMessage(evt, ws) {
-        ws.send(evt.data);
-      },
-    };
-  }),
-);
+  socket.onmessage = (ev) => {
+    socket.send(ev.data);
+  };
 
-const server = serve({
-  fetch: app.fetch,
-  port,
-  overrideGlobalObjects: false,
+  return response;
 });
-
-injectWebSocket(server);

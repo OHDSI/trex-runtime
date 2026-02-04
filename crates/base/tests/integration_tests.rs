@@ -3385,21 +3385,18 @@ async fn test_commonjs_websocket(prefix: String) {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: WebSocket upgrade not working through user worker routing"]
 async fn test_commonjs_ws_websocket() {
   test_commonjs_websocket(String::from("ws")).await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: WebSocket upgrade not working through user worker routing"]
 async fn test_commonjs_hono_websocket() {
   test_commonjs_websocket(String::from("hono")).await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: WebSocket upgrade not working through user worker routing"]
 async fn test_commonjs_express_websocket() {
   test_commonjs_websocket(String::from("express")).await;
 }
@@ -3993,7 +3990,6 @@ async fn test_should_not_wait_for_background_tests() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: V8 GC issue - null isolate pointer in early drop scenario"]
 async fn test_should_be_able_to_trigger_early_drop_with_wall_clock() {
   let (tx, mut rx) = mpsc::unbounded_channel();
   let tb = TestBedBuilder::new("./test_cases/main")
@@ -4019,15 +4015,13 @@ async fn test_should_be_able_to_trigger_early_drop_with_wall_clock() {
   tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
 
   while let Some(ev) = rx.recv().await {
-    let WorkerEvents::Log(ev) = ev.event else {
+    let WorkerEvents::Shutdown(ev) = ev.event else {
       continue;
     };
-    if ev.level != LogLevel::Info {
-      continue;
+    if ev.reason != ShutdownReason::EarlyDrop {
+      break;
     }
-    if ev.msg.contains("early_drop") {
-      return;
-    }
+    return;
   }
 
   unreachable!("test failed");
@@ -4035,7 +4029,6 @@ async fn test_should_be_able_to_trigger_early_drop_with_wall_clock() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp disabled"]
 async fn test_should_be_able_to_trigger_early_drop_with_mem() {
   let (tx, mut rx) = mpsc::unbounded_channel();
   let tb = TestBedBuilder::new("./test_cases/main")
@@ -4061,15 +4054,13 @@ async fn test_should_be_able_to_trigger_early_drop_with_mem() {
   tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
 
   while let Some(ev) = rx.recv().await {
-    let WorkerEvents::Log(ev) = ev.event else {
+    let WorkerEvents::Shutdown(ev) = ev.event else {
       continue;
     };
-    if ev.level != LogLevel::Info {
-      continue;
+    if ev.reason != ShutdownReason::EarlyDrop {
+      break;
     }
-    if ev.msg.contains("early_drop") {
-      return;
-    }
+    return;
   }
 
   unreachable!("test failed");
