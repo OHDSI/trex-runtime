@@ -461,7 +461,6 @@ async fn test_main_worker_abort_request() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp disabled"]
 async fn test_main_worker_with_jsx_function() {
   integration_test!(
     "./test_cases/main",
@@ -1522,14 +1521,12 @@ async fn test_websocket_upgrade_deno_secure() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_websocket_upgrade_node_non_secure() {
   test_websocket_upgrade(new_localhost_tls(false), true).await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp disabled"]
 async fn test_websocket_upgrade_node_secure() {
   test_websocket_upgrade(new_localhost_tls(true), true).await;
 }
@@ -2322,7 +2319,7 @@ async fn test_allow_net_fetch_google_com() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp disabled"]
+#[ignore = "requires worker_threads module not implemented in runtime"]
 async fn test_fastify_v4_package() {
   integration_test!(
     "./test_cases/main",
@@ -2340,7 +2337,7 @@ async fn test_fastify_v4_package() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp disabled"]
+#[ignore = "requires worker_threads module not implemented in runtime"]
 async fn test_fastify_latest_package() {
   integration_test!(
     "./test_cases/main",
