@@ -70,7 +70,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget python3
+          sudo apt-get -y install build-essential libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget python3
 
       - name: Install DuckDB library
         run: |
