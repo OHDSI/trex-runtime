@@ -35,7 +35,7 @@ on:
 
 env:
   D2E_BRANCH: ${{ github.event.inputs.d2e_branch || 'develop' }}
-  DUCKDB_VERSION: v1.4.0
+  DUCKDB_VERSION: v1.4.1
   VERSION: develop
 
 jobs:
@@ -86,6 +86,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ext/trexas
+
+      - name: Clean V8 cache
+        working-directory: ext/trexas
+        run: rm -rf target/*/gn_out target/*/obj/librusty_v8.a || true
 
       - name: Build extension
         working-directory: ext/trexas
