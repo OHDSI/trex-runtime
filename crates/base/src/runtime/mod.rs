@@ -188,13 +188,26 @@ fn init_v8_platform() {
   JsRuntime::init_platform(None, false);
 }
 
-#[derive(Default)]
 struct MemCheck {
-  drop_token: CancellationToken,
+  lifecycle: Arc<base_rt::IsolateLifecycle>,
   exceeded_token: CancellationToken,
   limit: Option<usize>,
   waker: Arc<AtomicWaker>,
   state: Arc<RwLock<MemCheckState>>,
+}
+
+impl Default for MemCheck {
+  fn default() -> Self {
+    Self {
+      lifecycle: Arc::new(base_rt::IsolateLifecycle::new(
+        CancellationToken::new(),
+      )),
+      exceeded_token: CancellationToken::new(),
+      limit: None,
+      waker: Arc::new(AtomicWaker::new()),
+      state: Arc::new(RwLock::new(MemCheckState::default())),
+    }
+  }
 }
 
 impl MemCheck {
@@ -437,6 +450,11 @@ impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
     self.drop_token.cancel();
 
     if self.conf.is_user_worker() {
+      // Begin isolate lifecycle drop - waits for any active GC callbacks to complete
+      // This prevents TOCTOU race conditions where a GC callback could access the
+      // isolate during drop
+      self.mem_check.lifecycle.begin_drop();
+
       self.js_runtime.v8_isolate().remove_gc_prologue_callback(
         mem_check_gc_prologue_callback_fn as _,
         Arc::as_ptr(&self.mem_check) as *mut _,
@@ -894,7 +912,7 @@ where
 
         let mut create_params = None;
         let mut mem_check = MemCheck {
-          drop_token: drop_token.clone(),
+          lifecycle: Arc::new(base_rt::IsolateLifecycle::new(drop_token.clone())),
           ..Default::default()
         };
 
@@ -2606,14 +2624,15 @@ unsafe extern "C" fn mem_check_gc_prologue_callback_fn(
   // SAFETY: data is non-null and points to valid MemCheck
   let mem_check = &*(data as *const MemCheck);
 
-  if mem_check.drop_token.is_cancelled() {
+  // Atomically acquire access guard - prevents race with runtime drop
+  let Some(_guard) = mem_check.lifecycle.try_enter() else {
     if *DEBUG_GC {
       tracing::debug!("GC prologue: runtime dropping, skipping mem check");
     }
     return;
-  }
+  };
 
-  // SAFETY: We've verified isolate pointer is non-null and runtime is not dropping
+  // SAFETY: We've verified isolate pointer is non-null and hold lifecycle guard
   let mut isolate_ref = v8::Isolate::from_raw_isolate_ptr_unchecked(isolate);
   mem_check.check(&mut isolate_ref);
 }
