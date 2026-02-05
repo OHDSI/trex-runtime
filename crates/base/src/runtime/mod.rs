@@ -998,7 +998,6 @@ where
         };
 
         let mut js_runtime = JsRuntime::new(runtime_options);
-        unsafe { js_runtime.v8_isolate().enter() };
 
         // Initialize lazy-loaded extensions
         // This is required for extensions that use lazy_init() instead of init()
