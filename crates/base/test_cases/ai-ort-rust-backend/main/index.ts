@@ -10,7 +10,7 @@ const handle = setInterval(async () => {
   } catch (e) {
     console.error(e.toString());
   }
-}, 100);
+}, 60 * 1000); // 1 minute - avoid race conditions with V8 during shutdown
 
 addEventListener("beforeunload", () => {
   clearInterval(handle);
