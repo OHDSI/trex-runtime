@@ -252,25 +252,11 @@ impl Worker {
     let worker_fut = async move {
       Some(
         rt.spawn_pinned(move || async move {
-          let new_runtime = 'scope: {
-            match DenoRuntime::new(self).await {
-              Ok(mut v) => {
-                if eager_module_init {
-                  if let Err(err) = v.init_main_module().await {
-                    break 'scope Err(err);
-                  }
-                }
-                Ok(v)
-              }
-              Err(err) => {
-                Err(err)
-              },
-            }
-          };
-          let mut new_runtime = match new_runtime {
+          // Create the Deno runtime (without module init yet)
+          let mut new_runtime = match DenoRuntime::new(self).await {
             Ok(v) => v,
             Err(err) => {
-              let err_msg = apply_source_maps(&err.to_string());
+              let err_msg = apply_source_maps(&format!("{err:#}"));
               let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
               let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
               let _ = booter_signal.send(Err(err.clone().into()));
@@ -309,20 +295,36 @@ impl Worker {
             thread = ?std::thread::current().id(),
           );
 
-            let supervise_fut = match imp.clone().supervise(&mut new_runtime) {
-              Some(v) => v.boxed(),
-              None if worker_kind.is_user_worker() => return Ok(WorkerEvents::Shutdown(ShutdownEvent {
-                  reason: ShutdownReason::EarlyDrop,
-                  cpu_time_used: 0,
-                  memory_used: WorkerMemoryUsed {
-                      total: 0,
-                      heap: 0,
-                      external: 0,
-                      mem_check_captured: Default::default(),
-                  }
-              })),
-              None => ready(Ok(())).boxed(),
-            };
+          // IMPORTANT: Set up supervisor BEFORE init_main_module so CPU time tracking
+          // is active during module evaluation. This is critical for enforcing CPU
+          // limits on slow code that runs at module load time.
+          let supervise_fut = match imp.clone().supervise(&mut new_runtime) {
+            Some(v) => v.boxed(),
+            None if worker_kind.is_user_worker() => return Ok(WorkerEvents::Shutdown(ShutdownEvent {
+                reason: ShutdownReason::EarlyDrop,
+                cpu_time_used: 0,
+                memory_used: WorkerMemoryUsed {
+                    total: 0,
+                    heap: 0,
+                    external: 0,
+                    mem_check_captured: Default::default(),
+                }
+            })),
+            None => ready(Ok(())).boxed(),
+          };
+
+          // Now initialize the main module with CPU tracking active
+          if eager_module_init {
+            if let Err(err) = new_runtime.init_main_module().await {
+              let err_msg = apply_source_maps(&format!("{err:#}"));
+              let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
+              let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
+              // Cancel the supervisor since we're exiting
+              new_runtime.drop_token.cancel();
+              let _ = supervise_fut.await;
+              return imp.on_boot_error(err.into()).await;
+            }
+          }
 
           let _guard = scopeguard::guard((), |_| {
             if let Some((key, tx)) = worker_key.zip(pool_msg_tx) {
@@ -358,8 +360,11 @@ impl Worker {
               exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
             }
 
-            drop(new_runtime);
+            // Cancel drop_token to signal supervisors to stop, then wait for them
+            // BEFORE dropping the runtime to avoid V8 access during disposal.
+            new_runtime.drop_token.cancel();
             let _ = supervise_fut.await;
+            drop(new_runtime);
 
             result
           }
@@ -460,25 +465,11 @@ impl Worker {
 
         // Execute worker logic on the dedicated thread using LocalSet
         thread_utils::block_on_local(&rt, async move {
-          // Create the Deno runtime
-          let new_runtime_result = 'scope: {
-            match DenoRuntime::new(self).await {
-              Ok(mut v) => {
-                if eager_module_init {
-                  if let Err(err) = v.init_main_module().await {
-                    break 'scope Err(err);
-                  }
-                }
-                Ok(v)
-              }
-              Err(err) => Err(err),
-            }
-          };
-
-          let mut new_runtime = match new_runtime_result {
+          // Create the Deno runtime (without module init yet)
+          let mut new_runtime = match DenoRuntime::new(self).await {
             Ok(v) => v,
             Err(err) => {
-              let err_msg = apply_source_maps(&err.to_string());
+              let err_msg = apply_source_maps(&format!("{err:#}"));
               let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
               let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
               let _ = booter_signal.send(Err(err.clone().into()));
@@ -508,10 +499,26 @@ impl Worker {
             thread = ?std::thread::current().id(),
           );
 
+          // IMPORTANT: Set up supervisor BEFORE init_main_module so CPU time tracking
+          // is active during module evaluation. This is critical for enforcing CPU
+          // limits on slow code that runs at module load time.
           let supervise_fut = match imp_for_supervise.clone().supervise(&mut new_runtime) {
             Some(v) => v.boxed(),
             None => return Ok(()),
           };
+
+          // Now initialize the main module with CPU tracking active
+          if eager_module_init {
+            if let Err(err) = new_runtime.init_main_module().await {
+              let err_msg = apply_source_maps(&format!("{err:#}"));
+              let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
+              let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
+              // Cancel the supervisor since we're exiting
+              new_runtime.drop_token.cancel();
+              let _ = supervise_fut.await;
+              return Err(err.into());
+            }
+          }
 
           let _guard = scopeguard::guard((), |_| {
             if let Some((key, tx)) = worker_key.zip(pool_msg_tx.clone()) {
@@ -546,8 +553,11 @@ impl Worker {
               exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
             }
 
-            drop(new_runtime);
+            // Cancel drop_token to signal supervisors to stop, then wait for them
+            // BEFORE dropping the runtime to avoid V8 access during disposal.
+            new_runtime.drop_token.cancel();
             let _ = supervise_fut.await;
+            drop(new_runtime);
 
             result
           }

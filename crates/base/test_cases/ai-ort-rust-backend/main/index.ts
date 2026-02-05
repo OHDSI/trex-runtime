@@ -10,10 +10,15 @@ const handle = setInterval(async () => {
   } catch (e) {
     console.error(e.toString());
   }
-}, 100);
+}, 60 * 1000);
 
-addEventListener("beforeunload", () => {
+addEventListener("beforeunload", async () => {
   clearInterval(handle);
+  try {
+    await EdgeRuntime.ai.forceCleanupAllSessions();
+  } catch (_) {
+    // ignore cleanup errors on shutdown
+  }
 });
 
 Deno.serve(async (req: Request) => {

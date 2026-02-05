@@ -1,8 +1,8 @@
 mod model;
 mod tensor;
 
-pub(crate) mod onnx;
-pub(crate) mod session;
+pub mod onnx;
+pub mod session;
 
 use core::str;
 use std::borrow::Cow;
@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use base_rt::BlockingScopeCPUUsageMetricExt;
+use base_rt::DenoRuntimeDropToken;
 use deno_core::JsBuffer;
 use deno_core::JsRuntime;
 use deno_core::OpState;
@@ -81,8 +82,19 @@ pub async fn op_ai_ort_run_session(
   })?;
 
   let model_session = model.get_session();
-  let cross_thread_spawner =
-    state.borrow().borrow::<V8CrossThreadTaskSpawner>().clone();
+  let (cross_thread_spawner, drop_token) = {
+    let state = state.borrow();
+    (
+      state.borrow::<V8CrossThreadTaskSpawner>().clone(),
+      state.borrow::<DenoRuntimeDropToken>().clone(),
+    )
+  };
+
+  // Check if runtime is dropping before spawning V8 task
+  if drop_token.is_cancelled() {
+    return Err(JsErrorBox::generic("runtime is shutting down"));
+  }
+
   let (tx, rx) =
     oneshot::channel::<Result<HashMap<String, ToJsTensor>, String>>();
 

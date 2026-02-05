@@ -1,7 +1,7 @@
 extern crate blas_src;
 
 mod consts;
-mod onnxruntime;
+pub mod onnxruntime;
 mod utils;
 
 use anyhow::Context;
@@ -9,6 +9,7 @@ use anyhow::Error;
 use anyhow::anyhow;
 use anyhow::bail;
 use base_rt::BlockingScopeCPUUsageMetricExt;
+use base_rt::DenoRuntimeDropToken;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
@@ -46,6 +47,7 @@ deno_core::extension!(
     op_ai_run_model,
     op_ai_init_model,
     op_ai_try_cleanup_unused_session,
+    op_ai_force_cleanup_all_sessions,
     op_ai_ort_init_session,
     op_ai_ort_run_session,
   ],
@@ -91,8 +93,13 @@ fn normalize(mut tensor: Array2<f32>) -> Array2<f32> {
 }
 
 async fn init_gte(state: Rc<RefCell<OpState>>) -> Result<(), Error> {
-  let cross_thread_spawner =
-    state.borrow().borrow::<V8CrossThreadTaskSpawner>().clone();
+  let (cross_thread_spawner, drop_token) = {
+    let state = state.borrow();
+    (
+      state.borrow::<V8CrossThreadTaskSpawner>().clone(),
+      state.borrow::<DenoRuntimeDropToken>().clone(),
+    )
+  };
   let is_already_initialized = {
     type Sender = mpsc::UnboundedSender<GteModelRequest>;
     let state = state.borrow();
@@ -249,6 +256,11 @@ async fn init_gte(state: Rc<RefCell<OpState>>) -> Result<(), Error> {
           break;
         }
 
+        // Check if runtime is dropping before spawning V8 task
+        if drop_token.is_cancelled() {
+          break;
+        }
+
         let req = req.unwrap();
 
         cross_thread_spawner.spawn(move |state| {
@@ -343,4 +355,10 @@ pub async fn op_ai_try_cleanup_unused_session() -> Result<usize, JsErrorBox> {
   session::cleanup()
     .await
     .map_err(|e| JsErrorBox::generic(e.to_string()))
+}
+
+#[op2(async)]
+#[bigint]
+pub async fn op_ai_force_cleanup_all_sessions() -> usize {
+  session::force_cleanup_all().await
 }

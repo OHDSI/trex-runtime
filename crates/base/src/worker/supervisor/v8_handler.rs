@@ -1,17 +1,14 @@
 //! V8 interrupt callback handlers.
-//!
-//! Callbacks use raw pointers to handle null isolates during disposal.
-//! Use [`V8TaskSpawner`] for ops that may trigger reentrancy.
 
+use std::sync::Arc;
+
+use base_rt::RuntimeState;
 use deno_core::v8;
-use deno_core::JsRuntime;
-use deno_core::V8TaskSpawner;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::instrument;
 
-use crate::runtime::MaybeDenoRuntime;
 use crate::runtime::WillTerminateReason;
 
 use super::IsolateMemoryStats;
@@ -58,31 +55,21 @@ pub extern "C" fn v8_handle_termination_raw(
 #[repr(C)]
 pub struct V8HandleBeforeunloadData {
   pub reason: WillTerminateReason,
+  pub runtime_drop_token: CancellationToken,
+  pub runtime_state: Arc<RuntimeState>,
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn v8_handle_beforeunload_raw(
-  isolate_ptr: *mut v8::Isolate,
+  _isolate_ptr: *mut v8::Isolate,
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleBeforeunloadData) };
 
-  if isolate_ptr.is_null() {
+  if data.runtime_drop_token.is_cancelled() {
     return;
   }
-
-  let isolate = unsafe { &mut *isolate_ptr };
-
-  JsRuntime::op_state_from(isolate)
-    .borrow()
-    .borrow::<V8TaskSpawner>()
-    .spawn(move |scope| {
-      if let Err(err) = MaybeDenoRuntime::<()>::Isolate(scope)
-        .dispatch_beforeunload_event(data.reason)
-      {
-        log::error!("beforeunload event error: {}", err);
-      }
-    });
+  data.runtime_state.wall_clock_beforeunload_triggered.raise();
 }
 
 #[repr(C)]
@@ -106,26 +93,22 @@ pub extern "C" fn v8_handle_early_retire_raw(
   debug!("early retire signal received");
 }
 
+#[repr(C)]
+pub struct V8HandleDrainData {
+  pub runtime_drop_token: CancellationToken,
+  pub runtime_state: Arc<RuntimeState>,
+}
+
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[instrument(level = "debug", skip_all)]
 pub extern "C" fn v8_handle_drain_raw(
-  isolate_ptr: *mut v8::Isolate,
-  _data: *mut std::ffi::c_void,
+  _isolate_ptr: *mut v8::Isolate,
+  data: *mut std::ffi::c_void,
 ) {
-  if isolate_ptr.is_null() {
+  let data = unsafe { Box::from_raw(data as *mut V8HandleDrainData) };
+
+  if data.runtime_drop_token.is_cancelled() {
     return;
   }
-
-  let isolate = unsafe { &mut *isolate_ptr };
-
-  JsRuntime::op_state_from(isolate)
-    .borrow()
-    .borrow::<V8TaskSpawner>()
-    .spawn(move |scope| {
-      if let Err(err) =
-        MaybeDenoRuntime::<()>::Isolate(scope).dispatch_drain_event()
-      {
-        log::error!("drain event error: {}", err);
-      }
-    });
+  data.runtime_state.drain_triggered.raise();
 }

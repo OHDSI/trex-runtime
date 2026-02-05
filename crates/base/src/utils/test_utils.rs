@@ -323,6 +323,14 @@ impl TestBed {
   }
 }
 
+impl Drop for TestBed {
+  fn drop(&mut self) {
+    // Signal workers to shut down even if .exit() wasn't called
+    self.pool_termination_token.cancel();
+    self.main_termination_token.cancel();
+  }
+}
+
 pub async fn create_test_user_worker<Opt: Into<CreateTestUserWorkerArgs>>(
   opts: Opt,
 ) -> Result<(worker::WorkerSurface, RequestScope), Error> {

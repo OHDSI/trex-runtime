@@ -481,7 +481,96 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
           // if we are using byonm, then this should never be called because
           // we don't use deno_graph's npm resolution in this case
-          InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
+          InnerCliNpmResolverRef::Byonm(byonm_resolver) => {
+            // For BYONM mode, packages are already in node_modules and will be
+            // resolved during module loading. Try to resolve each package from
+            // node_modules and construct the PackageNv from the package.json.
+            use deno_semver::StackString;
+            use deno_semver::package::PackageNv;
+
+            let results: Vec<_> = package_reqs
+              .iter()
+              .map(|req| {
+                // Try to find the package in node_modules
+                let pkg_folder = match byonm_resolver.resolve_pkg_folder_from_deno_module_req(
+                  req,
+                  &Url::parse("file:///").unwrap(),
+                ) {
+                  Ok(path) => path,
+                  Err(_) => {
+                    return Err(NpmLoadError::PackageReqResolution(Arc::new(
+                      JsErrorBox::generic(format!(
+                        "Could not find a matching package for '{}' in the node_modules \
+                        directory. Ensure you have run 'npm install' or 'yarn install'.",
+                        req
+                      )),
+                    ) as Arc<dyn JsErrorClass>));
+                  }
+                };
+
+                // Read package.json to get the version
+                let pkg_json_path = pkg_folder.join("package.json");
+                let pkg_json = match std::fs::read_to_string(&pkg_json_path) {
+                  Ok(content) => content,
+                  Err(_) => {
+                    return Err(NpmLoadError::PackageReqResolution(Arc::new(
+                      JsErrorBox::generic(format!(
+                        "Could not read package.json for '{}' at {:?}",
+                        req, pkg_json_path
+                      )),
+                    ) as Arc<dyn JsErrorClass>));
+                  }
+                };
+
+                let pkg_json: serde_json::Value = match serde_json::from_str(&pkg_json) {
+                  Ok(v) => v,
+                  Err(_) => {
+                    return Err(NpmLoadError::PackageReqResolution(Arc::new(
+                      JsErrorBox::generic(format!(
+                        "Could not parse package.json for '{}'",
+                        req
+                      )),
+                    ) as Arc<dyn JsErrorClass>));
+                  }
+                };
+
+                let version_str = pkg_json
+                  .get("version")
+                  .and_then(|v| v.as_str())
+                  .unwrap_or("0.0.0");
+
+                let version = match deno_semver::Version::parse_from_npm(version_str) {
+                  Ok(v) => v,
+                  Err(_) => {
+                    return Err(NpmLoadError::PackageReqResolution(Arc::new(
+                      JsErrorBox::generic(format!(
+                        "Invalid version '{}' in package.json for '{}'",
+                        version_str, req
+                      )),
+                    ) as Arc<dyn JsErrorClass>));
+                  }
+                };
+
+                Ok(PackageNv {
+                  name: StackString::from(req.name.as_str()),
+                  version,
+                })
+              })
+              .collect();
+
+            // Check if any package failed to resolve
+            let has_errors = results.iter().any(|r| r.is_err());
+            return NpmResolvePkgReqsResult {
+              results,
+              dep_graph_result: if has_errors {
+                Err(Arc::new(JsErrorBox::generic(
+                  "Some npm packages could not be found in node_modules/. Run 'npm install' to install them.",
+                )) as Arc<dyn JsErrorClass>)
+              } else {
+                Ok(())
+              },
+            };
+          }
         };
 
         let top_level_result = if self.found_package_json_dep_flag.is_raised() {

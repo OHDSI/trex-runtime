@@ -254,6 +254,8 @@ class Session {
 const MAIN_WORKER_API = {
   tryCleanupUnusedSession: () =>
     /* async */ core.ops.op_ai_try_cleanup_unused_session(),
+  forceCleanupAllSessions: () =>
+    /* async */ core.ops.op_ai_force_cleanup_all_sessions(),
 };
 
 const USER_WORKER_API = {

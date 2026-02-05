@@ -211,3 +211,11 @@ pub async fn cleanup() -> Result<usize, AnyError> {
 
   Ok(remove_counter)
 }
+
+/// Clear all cached sessions.
+pub async fn force_cleanup_all() -> usize {
+  let mut guard = SESSIONS.lock().await;
+  let count = guard.len();
+  guard.clear();
+  count
+}

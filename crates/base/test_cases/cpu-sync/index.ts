@@ -1,15 +1,12 @@
 // For CPU time regulation testing only (top-level synchronous mode)
 
 function mySlowFunction(baseNumber) {
-  console.time("mySlowFunction");
-  let now = Date.now();
+  const iterations = Math.pow(baseNumber, 7);
   let result = 0;
-  for (var i = Math.pow(baseNumber, 7); i >= 0; i--) {
+  for (var i = iterations; i >= 0; i--) {
     result += Math.atan(i) * Math.tan(i);
   }
-  let duration = Date.now() - now;
-  console.timeEnd("mySlowFunction");
-  return { result: result, duration: duration };
+  return result;
 }
 
 mySlowFunction(19);

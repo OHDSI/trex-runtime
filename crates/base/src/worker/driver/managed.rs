@@ -124,6 +124,7 @@ impl WorkerDriver for Managed {
     let Managed { inner, cx } = self.clone();
     let mut cx = cx.try_lock().ok()?;
     let runtime_drop_token = runtime.drop_token.clone();
+    let termination_request_token = runtime.termination_request_token.clone();
     let termination_token = inner.termination_token.clone()?;
     let termination_event_sender = match cx.take_termination_event_sender() {
       Ok(v) => v,
@@ -133,13 +134,21 @@ impl WorkerDriver for Managed {
       }
     };
 
-    let (waker, thread_safe_handle) = (
+    let (waker, thread_safe_handle, runtime_state) = (
       runtime.waker.clone(),
       runtime.js_runtime.v8_isolate().thread_safe_handle(),
+      runtime.runtime_state.clone(),
     );
 
     let wait_fut = async move {
       termination_token.inbound.cancelled().await;
+
+      // Cancel termination_request_token to allow the event loop to exit.
+      // This is necessary for the main worker to stop its run() method.
+      if !termination_request_token.is_cancelled() {
+        termination_request_token.cancel();
+        waker.wake();
+      }
 
       let _ =
         termination_event_sender.send(WorkerEvents::Shutdown(ShutdownEvent {
@@ -156,9 +165,14 @@ impl WorkerDriver for Managed {
       let data_ptr_mut =
         Box::into_raw(Box::new(supervisor::V8HandleBeforeunloadData {
           reason: WillTerminateReason::Termination,
+          runtime_drop_token: runtime_drop_token.clone(),
+          runtime_state: runtime_state.clone(),
         }));
 
-      if thread_safe_handle.request_interrupt(
+      // Guard against calling V8 handle methods during/after runtime disposal
+      if runtime_drop_token.is_cancelled() {
+        drop(unsafe { Box::from_raw(data_ptr_mut) });
+      } else if thread_safe_handle.request_interrupt(
         as_interrupt_callback(v8_handle_beforeunload_raw),
         data_ptr_mut as *mut _,
       ) {

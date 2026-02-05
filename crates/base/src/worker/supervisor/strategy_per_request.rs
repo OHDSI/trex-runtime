@@ -32,6 +32,7 @@ pub async fn supervise(
   let Arguments {
     key,
     runtime_opts,
+    runtime_state,
     timing,
     cpu_usage_metrics_rx,
     mut memory_limit_rx,
@@ -39,10 +40,13 @@ pub async fn supervise(
     isolate_memory_usage_tx,
     thread_safe_handle,
     waker,
-    tokens: Tokens {
-      termination,
-      supervise,
-    },
+    tokens:
+      Tokens {
+        termination,
+        supervise,
+        runtime_drop,
+        isolate_lifecycle,
+      },
     flags,
     ..
   } = args;
@@ -53,16 +57,24 @@ pub async fn supervise(
     ..
   } = timing.unwrap_or_default();
 
-  let _guard = scopeguard::guard(is_retired, |v| {
-    v.raise();
+  let _guard = scopeguard::guard(
+    (is_retired, isolate_lifecycle.clone()),
+    |(v, isolate_lifecycle)| {
+      v.raise();
 
-    if thread_safe_handle.request_interrupt(
-      as_interrupt_callback(v8_handle_early_retire_raw),
-      std::ptr::null_mut(),
-    ) {
-      waker.wake();
-    }
-  });
+      // Guard against calling V8 handle methods during/after runtime disposal
+      let Some(_guard) = isolate_lifecycle.try_enter() else {
+        return;
+      };
+
+      if thread_safe_handle.request_interrupt(
+        as_interrupt_callback(v8_handle_early_retire_raw),
+        std::ptr::null_mut(),
+      ) {
+        waker.wake();
+      }
+    },
+  );
 
   let mut cpu_timer = Option::<CPUTimer>::None;
 
@@ -76,6 +88,7 @@ pub async fn supervise(
   let is_wall_clock_limit_disabled = worker_timeout_ms == 0;
   let is_cpu_time_limit_disabled =
     cpu_time_soft_limit_ms == 0 && cpu_time_hard_limit_ms == 0;
+
   let mut is_worker_entered = false;
   let mut is_wall_clock_beforeunload_armed = false;
 
@@ -130,7 +143,9 @@ pub async fn supervise(
       Some(metrics) = cpu_usage_metrics_rx.recv() => {
         match metrics {
           CPUUsageMetrics::Enter(_thread_id, timer) => {
-            assert!(!is_worker_entered);
+            if is_worker_entered {
+              continue;
+            }
             is_worker_entered = true;
 
             if !is_cpu_time_limit_disabled {
@@ -141,15 +156,18 @@ pub async fn supervise(
           }
 
           CPUUsageMetrics::Leave(CPUUsage { accumulated, diff }) => {
-            assert!(is_worker_entered);
+            if !is_worker_entered {
+              continue;
+            }
 
             is_worker_entered = false;
             cpu_usage_ms += diff / 1_000_000;
             cpu_usage_accumulated_ms = accumulated / 1_000_000;
 
+
             if !is_cpu_time_limit_disabled {
               if cpu_usage_ms >= cpu_time_hard_limit_ms as i64 {
-                log::error!("CPU time limit reached: isolate: {:?}", key);
+                log::error!("CPU time limit reached (on leave): isolate: {:?}", key);
                 complete_reason = Some(ShutdownReason::CPUTime);
               }
 
@@ -168,8 +186,10 @@ pub async fn supervise(
           pending::<_>().await
         }
       } => {
-        if is_worker_entered && req_start_ack {
-          log::error!("CPU time limit reached: isolate: {:?}", key);
+        // For oneshot workers, enforce CPU limits during module init too since
+        // module init is part of the single request lifecycle.
+        // For non-oneshot workers, only enforce during request handling.
+        if is_worker_entered && (oneshot || req_start_ack) {
           complete_reason = Some(ShutdownReason::CPUTime);
         }
       }
@@ -216,14 +236,21 @@ pub async fn supervise(
         if !is_wall_clock_limit_disabled && !is_wall_clock_beforeunload_armed
       => {
         let data_ptr_mut = Box::into_raw(Box::new(V8HandleBeforeunloadData {
-            reason: WillTerminateReason::WallClock
+            reason: WillTerminateReason::WallClock,
+            runtime_drop_token: runtime_drop.clone(),
+            runtime_state: runtime_state.clone(),
         }));
 
-        if thread_safe_handle.request_interrupt(
-          as_interrupt_callback(v8_handle_beforeunload_raw),
-          data_ptr_mut as *mut _,
-        ) {
-          waker.wake();
+        // Guard against calling V8 handle methods during/after runtime disposal
+        if let Some(_guard) = isolate_lifecycle.try_enter() {
+          if thread_safe_handle.request_interrupt(
+            as_interrupt_callback(v8_handle_beforeunload_raw),
+            data_ptr_mut as *mut _,
+          ) {
+            waker.wake();
+          } else {
+            drop(unsafe { Box::from_raw(data_ptr_mut)});
+          }
         } else {
           drop(unsafe { Box::from_raw(data_ptr_mut)});
         }
@@ -254,8 +281,11 @@ pub async fn supervise(
       }
 
       Some(reason) => {
-        if thread_safe_handle.terminate_execution() {
-          waker.wake();
+        // Guard against calling V8 handle methods during/after runtime disposal
+        if let Some(_guard) = isolate_lifecycle.try_enter() {
+          if thread_safe_handle.terminate_execution() {
+            waker.wake();
+          }
         }
 
         drop(isolate_memory_usage_tx);

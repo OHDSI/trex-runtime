@@ -56,6 +56,12 @@ pub struct IsolateMemoryStats {
 pub struct Tokens {
   pub termination: Option<TerminationToken>,
   pub supervise: CancellationToken,
+  /// Token that is cancelled when the runtime is being dropped.
+  /// Supervisors should check this before calling thread_safe_handle methods.
+  pub runtime_drop: CancellationToken,
+  /// Lifecycle guard for safe V8 isolate access.
+  /// Use `try_enter()` to get a guard before calling thread_safe_handle methods.
+  pub isolate_lifecycle: Arc<base_rt::IsolateLifecycle>,
 }
 
 pub struct Arguments {
@@ -153,6 +159,8 @@ pub fn create_supervisor(
   let tokens = Tokens {
     termination: termination_token.clone(),
     supervise: supervise_cancel_token.clone(),
+    runtime_drop: runtime_drop_token.clone(),
+    isolate_lifecycle: runtime.mem_check_lifecycle(),
   };
 
   let maybe_inspector_params = runtime.inspector().map(|_| {

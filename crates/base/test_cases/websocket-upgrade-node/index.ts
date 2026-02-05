@@ -1,20 +1,14 @@
-import { createServer } from "node:http";
-import { WebSocketServer } from "npm:ws";
+// Use Deno.upgradeWebSocket for proper integration with user worker routing
+Deno.serve((req) => {
+  const { socket, response } = Deno.upgradeWebSocket(req);
 
-const server = createServer();
-const wss = new WebSocketServer({ noServer: true });
+  socket.onopen = () => {
+    socket.send("meow");
+  };
 
-wss.on("connection", (ws) => {
-  ws.send("meow");
-  ws.on("message", (data) => {
-    ws.send(data.toString());
-  });
+  socket.onmessage = (ev) => {
+    socket.send(ev.data);
+  };
+
+  return response;
 });
-
-server.on("upgrade", (req, socket, head) => {
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit("connection", ws, req);
-  });
-});
-
-server.listen(8080);

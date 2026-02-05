@@ -29,7 +29,12 @@ pub type DuplexStreamSender = mpsc::UnboundedSender<DuplexStreamEntry>;
 mod runtime_state;
 
 pub mod error;
+pub mod isolate_lifecycle;
 
+pub use isolate_lifecycle::IsolateGuard;
+pub use isolate_lifecycle::IsolateLifecycle;
+pub use isolate_lifecycle::IsolateState;
+pub use runtime_state::LifecyclePhase;
 pub use runtime_state::RuntimeState;
 
 pub const DEFAULT_PRIMARY_WORKER_POOL_SIZE: usize = 2;
@@ -151,6 +156,7 @@ impl BlockingScopeCPUUsageMetricExt for &mut OpState {
     let drop_token = self.borrow::<DenoRuntimeDropToken>().clone();
     let cross_thread_spawner =
       self.borrow::<V8CrossThreadTaskSpawner>().clone();
+    let lifecycle = self.try_borrow::<Arc<IsolateLifecycle>>().cloned();
     let usage = {
       if let Some(store) = self.try_borrow_mut::<BlockingScopeCPUUsage>() {
         store
@@ -175,11 +181,30 @@ impl BlockingScopeCPUUsageMetricExt for &mut OpState {
         std::cmp::max(0, cpu_time_after_drop_ns - current_cpu_time_ns);
 
       usage.fetch_add(diff_cpu_time_ns, Ordering::SeqCst);
+
+      // Use IsolateLifecycle guard if available, fallback to drop_token check
+      let can_spawn = if let Some(ref lc) = lifecycle {
+        lc.try_enter().is_some()
+      } else {
+        !drop_token.is_cancelled()
+      };
+
+      if !can_spawn {
+        debug!(
+          js_runtime_dropped = true,
+          unreported_blocking_cpu_time_ms = diff_cpu_time_ns / 1_000_000
+        );
+        return result;
+      }
+
+      // Acquire the guard for the V8 spawn operation
+      let _guard = lifecycle.as_ref().and_then(|lc| lc.try_enter());
+
       cross_thread_spawner.spawn({
         let span = debug_span!("in v8 stack");
         move |_| {
           let _span = span.entered();
-          tx.send(()).unwrap();
+          let _ = tx.send(());
         }
       });
 

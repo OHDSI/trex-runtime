@@ -1,19 +1,11 @@
-import { createServer } from "node:http";
-import { WebSocketServer } from "npm:ws";
+// Use Deno.upgradeWebSocket for proper integration with user worker routing
+// This is a "no-send" variant that doesn't send on open, only echoes messages
+Deno.serve((req) => {
+  const { socket, response } = Deno.upgradeWebSocket(req);
 
-const server = createServer();
-const wss = new WebSocketServer({ noServer: true });
+  socket.onmessage = (ev) => {
+    socket.send(ev.data);
+  };
 
-wss.on("connection", (ws) => {
-  ws.on("message", (data) => {
-    ws.send(data.toString());
-  });
+  return response;
 });
-
-server.on("upgrade", (req, socket, head) => {
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit("connection", ws, req);
-  });
-});
-
-server.listen(8080);

@@ -15,7 +15,10 @@ use anyhow::Error;
 use deno::util::sync::AtomicFlag;
 use either::Either::Left;
 use enum_as_inner::EnumAsInner;
+use ext_event_worker::events::BootFailureEvent;
+use ext_event_worker::events::EventMetadata;
 use ext_event_worker::events::WorkerEventWithMetadata;
+use ext_event_worker::events::WorkerEvents;
 use ext_runtime::SharedMetricSource;
 use ext_workers::context::CreateUserWorkerResult;
 use ext_workers::context::SendRequestResult;
@@ -504,7 +507,7 @@ impl WorkerPool {
       user_worker_rt_opts.key = Some(uuid);
 
       user_worker_rt_opts.pool_msg_tx = Some(worker_pool_msgs_tx.clone());
-      user_worker_rt_opts.events_msg_tx = events_msg_tx;
+      user_worker_rt_opts.events_msg_tx = events_msg_tx.clone();
       user_worker_rt_opts.cancel = Some(cancel.clone());
 
       worker_options.timing = Some(Timing {
@@ -570,7 +573,22 @@ impl WorkerPool {
           };
         }
         Err(err) => {
-          error!("{err:#}");
+          let err_msg = format!("{err:#}");
+          error!("{err_msg}");
+
+          // Send BootFailure event if event channel is available
+          if let Some(ref events_tx) = events_msg_tx {
+            let _ = events_tx.send(WorkerEventWithMetadata {
+              event: WorkerEvents::BootFailure(BootFailureEvent {
+                msg: err_msg.clone(),
+              }),
+              metadata: EventMetadata {
+                service_path: Some(service_path.clone()),
+                ..Default::default()
+              },
+            });
+          }
+
           if tx.send(Err(err)).is_err() {
             error!("main worker receiver dropped")
           }
