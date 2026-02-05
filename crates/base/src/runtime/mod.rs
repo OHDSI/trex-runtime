@@ -409,11 +409,8 @@ fn cleanup_js_runtime(runtime: &mut JsRuntime) {
     states.borrow_mut().remove(&isolate_key);
   });
 
-  // NOTE: We intentionally do NOT call isolate.exit() here.
-  // In earlier versions, we called exit() before JsRuntime::drop to work around
-  // V8 140.2.0 Locker API issues. However, this causes "Cannot create a handle
-  // without a HandleScope" crashes when deno_core tries to process pending
-  // cross-thread tasks during drop. JsRuntime's own drop handles isolate cleanup.
+  // Don't call isolate.exit() - JsRuntime::drop handles cleanup properly.
+  // Calling exit() causes HandleScope crashes during cross-thread task processing.
 }
 
 pub struct DenoRuntime<RuntimeContext = DefaultRuntimeContext> {

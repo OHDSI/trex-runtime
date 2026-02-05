@@ -3476,14 +3476,10 @@ async fn test_supabase_ai_gte() {
 
 // -- ext_ai: ORT base api
 
-/// Check if ONNX runtime is available, panic with clear message if not.
 fn require_onnx_runtime() {
   if let Err(msg) = ext_ai::onnxruntime::onnx::check_onnx_runtime_available() {
     panic!(
-      "ONNX Runtime not available - skipping test.\n\
-       To run ORT tests, set LD_LIBRARY_PATH to include the ONNX runtime library directory.\n\
-       Example: LD_LIBRARY_PATH=/path/to/onnx-runtime/lib cargo test test_ort\n\
-       Error: {}",
+      "ONNX Runtime not available. Set LD_LIBRARY_PATH to include onnx-runtime/lib.\nError: {}",
       msg
     );
   }

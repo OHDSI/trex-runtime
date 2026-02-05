@@ -325,9 +325,7 @@ impl TestBed {
 
 impl Drop for TestBed {
   fn drop(&mut self) {
-    // Cancel both termination tokens synchronously to signal workers to shut down.
-    // This ensures cleanup even if .exit() wasn't called, preventing V8 isolate
-    // issues when tests end without proper cleanup.
+    // Signal workers to shut down even if .exit() wasn't called
     self.pool_termination_token.cancel();
     self.main_termination_token.cancel();
   }
