@@ -45,6 +45,7 @@ pub async fn supervise(
         termination,
         supervise,
         runtime_drop,
+        isolate_lifecycle,
       },
     flags,
     ..
@@ -57,14 +58,14 @@ pub async fn supervise(
   } = timing.unwrap_or_default();
 
   let _guard = scopeguard::guard(
-    (is_retired, runtime_drop.clone()),
-    |(v, runtime_drop)| {
+    (is_retired, isolate_lifecycle.clone()),
+    |(v, isolate_lifecycle)| {
       v.raise();
 
       // Guard against calling V8 handle methods during/after runtime disposal
-      if runtime_drop.is_cancelled() {
+      let Some(_guard) = isolate_lifecycle.try_enter() else {
         return;
-      }
+      };
 
       if thread_safe_handle.request_interrupt(
         as_interrupt_callback(v8_handle_early_retire_raw),
@@ -241,13 +242,15 @@ pub async fn supervise(
         }));
 
         // Guard against calling V8 handle methods during/after runtime disposal
-        if runtime_drop.is_cancelled() {
-          drop(unsafe { Box::from_raw(data_ptr_mut)});
-        } else if thread_safe_handle.request_interrupt(
-          as_interrupt_callback(v8_handle_beforeunload_raw),
-          data_ptr_mut as *mut _,
-        ) {
-          waker.wake();
+        if let Some(_guard) = isolate_lifecycle.try_enter() {
+          if thread_safe_handle.request_interrupt(
+            as_interrupt_callback(v8_handle_beforeunload_raw),
+            data_ptr_mut as *mut _,
+          ) {
+            waker.wake();
+          } else {
+            drop(unsafe { Box::from_raw(data_ptr_mut)});
+          }
         } else {
           drop(unsafe { Box::from_raw(data_ptr_mut)});
         }
@@ -279,10 +282,10 @@ pub async fn supervise(
 
       Some(reason) => {
         // Guard against calling V8 handle methods during/after runtime disposal
-        if !runtime_drop.is_cancelled()
-          && thread_safe_handle.terminate_execution()
-        {
-          waker.wake();
+        if let Some(_guard) = isolate_lifecycle.try_enter() {
+          if thread_safe_handle.terminate_execution() {
+            waker.wake();
+          }
         }
 
         drop(isolate_memory_usage_tx);

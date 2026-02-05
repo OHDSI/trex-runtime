@@ -1331,6 +1331,9 @@ where
 
       op_state.put(DenoRuntimeDropToken(DropToken(drop_token.clone())));
 
+      // Store IsolateLifecycle for spawn_cpu_accumul_blocking_scope to use
+      op_state.put(mem_check.lifecycle.clone());
+
       op_state.put(RuntimeOtelExtraAttributes(
         otel_attributes
           .unwrap_or_default()
@@ -1910,6 +1913,10 @@ where
 
   pub fn mem_check_state(&self) -> Arc<RwLock<MemCheckState>> {
     self.mem_check.state.clone()
+  }
+
+  pub fn mem_check_lifecycle(&self) -> Arc<base_rt::IsolateLifecycle> {
+    self.mem_check.lifecycle.clone()
   }
 
   pub fn add_memory_limit_callback<C>(&self, cb: C)
