@@ -3475,9 +3475,24 @@ async fn test_supabase_ai_gte() {
 }
 
 // -- ext_ai: ORT base api
+
+/// Check if ONNX runtime is available, panic with clear message if not.
+fn require_onnx_runtime() {
+  if let Err(msg) = ext_ai::onnxruntime::onnx::check_onnx_runtime_available() {
+    panic!(
+      "ONNX Runtime not available - skipping test.\n\
+       To run ORT tests, set LD_LIBRARY_PATH to include the ONNX runtime library directory.\n\
+       Example: LD_LIBRARY_PATH=/path/to/onnx-runtime/lib cargo test test_ort\n\
+       Error: {}",
+      msg
+    );
+  }
+}
+
 #[tokio::test]
 #[serial]
 async fn test_ort_string_tensor() {
+  require_onnx_runtime();
   ext_ai::onnxruntime::session::force_cleanup_all().await;
 
   let base_path = "./test_cases/ai-ort-rust-backend";
@@ -3503,6 +3518,7 @@ async fn test_ort_string_tensor() {
 
 // -- ext_ai: ORT @huggingface/transformers
 async fn test_ort_transformers_js(script_path: &str) {
+  require_onnx_runtime();
   // Clean up any leftover sessions from previous failed tests
   ext_ai::onnxruntime::session::force_cleanup_all().await;
   fn visit_json(value: &mut serde_json::Value) {

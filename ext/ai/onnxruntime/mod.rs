@@ -1,7 +1,7 @@
 mod model;
 mod tensor;
 
-pub(crate) mod onnx;
+pub mod onnx;
 pub mod session;
 
 use core::str;

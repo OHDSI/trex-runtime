@@ -62,3 +62,15 @@ pub(crate) fn ensure_onnx_env_init() -> Option<Arc<ort::Error>> {
   assert!(ONNX_INIT_ONNX_ENV_DONE.load(Ordering::SeqCst));
   ONNX_INIT_RESULT.lock().unwrap().clone()
 }
+
+/// Check if ONNX runtime is available and initialized.
+/// Returns Ok(()) if available, Err with message if not.
+pub fn check_onnx_runtime_available() -> Result<(), String> {
+  if !ONNX_INIT_ONNX_ENV_DONE.load(Ordering::SeqCst) {
+    return Err("ONNX runtime not initialized".to_string());
+  }
+  match ONNX_INIT_RESULT.lock().unwrap().as_ref() {
+    Some(err) => Err(format!("ONNX runtime not available: {}", err)),
+    None => Ok(()),
+  }
+}
