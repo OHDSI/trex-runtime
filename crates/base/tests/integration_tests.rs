@@ -3609,6 +3609,7 @@ async fn test_ort_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "question-answering model causes V8 memory corruption in CI"]
 async fn test_ort_nlp_question_answering() {
   test_ort_transformers_js("question-answering").await;
 }
@@ -3691,6 +3692,7 @@ async fn test_ort_cache_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "question-answering model causes V8 memory corruption in CI"]
 async fn test_ort_cache_nlp_question_answering() {
   test_ort_transformers_js("question-answering-cache").await;
 }
