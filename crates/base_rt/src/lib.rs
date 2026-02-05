@@ -175,11 +175,21 @@ impl BlockingScopeCPUUsageMetricExt for &mut OpState {
         std::cmp::max(0, cpu_time_after_drop_ns - current_cpu_time_ns);
 
       usage.fetch_add(diff_cpu_time_ns, Ordering::SeqCst);
+
+      // Check if runtime is dropping before spawning V8 task
+      if drop_token.is_cancelled() {
+        debug!(
+          js_runtime_dropped = true,
+          unreported_blocking_cpu_time_ms = diff_cpu_time_ns / 1_000_000
+        );
+        return result;
+      }
+
       cross_thread_spawner.spawn({
         let span = debug_span!("in v8 stack");
         move |_| {
           let _span = span.entered();
-          tx.send(()).unwrap();
+          let _ = tx.send(());
         }
       });
 

@@ -9,6 +9,7 @@ use anyhow::Error;
 use anyhow::anyhow;
 use anyhow::bail;
 use base_rt::BlockingScopeCPUUsageMetricExt;
+use base_rt::DenoRuntimeDropToken;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::V8CrossThreadTaskSpawner;
@@ -92,8 +93,13 @@ fn normalize(mut tensor: Array2<f32>) -> Array2<f32> {
 }
 
 async fn init_gte(state: Rc<RefCell<OpState>>) -> Result<(), Error> {
-  let cross_thread_spawner =
-    state.borrow().borrow::<V8CrossThreadTaskSpawner>().clone();
+  let (cross_thread_spawner, drop_token) = {
+    let state = state.borrow();
+    (
+      state.borrow::<V8CrossThreadTaskSpawner>().clone(),
+      state.borrow::<DenoRuntimeDropToken>().clone(),
+    )
+  };
   let is_already_initialized = {
     type Sender = mpsc::UnboundedSender<GteModelRequest>;
     let state = state.borrow();
@@ -247,6 +253,11 @@ async fn init_gte(state: Rc<RefCell<OpState>>) -> Result<(), Error> {
         let req = req_rx.recv().await;
 
         if req.is_none() {
+          break;
+        }
+
+        // Check if runtime is dropping before spawning V8 task
+        if drop_token.is_cancelled() {
           break;
         }
 
