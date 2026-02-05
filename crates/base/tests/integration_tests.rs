@@ -3593,6 +3593,12 @@ async fn test_ort_transformers_js(script_path: &str) {
     }),
     TerminationToken::new()
   );
+
+  // Clean up ONNX sessions to free memory between tests
+  let cleaned = ext_ai::onnxruntime::session::force_cleanup_all().await;
+  if cleaned > 0 {
+    eprintln!("Cleaned up {} ONNX sessions", cleaned);
+  }
 }
 
 #[tokio::test]

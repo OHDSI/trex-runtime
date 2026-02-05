@@ -32,6 +32,7 @@ pub async fn supervise(
   let Arguments {
     key,
     runtime_opts,
+    runtime_state,
     timing,
     cpu_usage_metrics_rx,
     mut memory_limit_rx,
@@ -238,6 +239,7 @@ pub async fn supervise(
         let data_ptr_mut = Box::into_raw(Box::new(V8HandleBeforeunloadData {
             reason: WillTerminateReason::WallClock,
             runtime_drop_token: runtime_drop.clone(),
+            runtime_state: runtime_state.clone(),
         }));
 
         // Guard against calling V8 handle methods during/after runtime disposal

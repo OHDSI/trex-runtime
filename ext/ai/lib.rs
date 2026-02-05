@@ -1,7 +1,7 @@
 extern crate blas_src;
 
 mod consts;
-mod onnxruntime;
+pub mod onnxruntime;
 mod utils;
 
 use anyhow::Context;
@@ -46,6 +46,7 @@ deno_core::extension!(
     op_ai_run_model,
     op_ai_init_model,
     op_ai_try_cleanup_unused_session,
+    op_ai_force_cleanup_all_sessions,
     op_ai_ort_init_session,
     op_ai_ort_run_session,
   ],
@@ -343,4 +344,10 @@ pub async fn op_ai_try_cleanup_unused_session() -> Result<usize, JsErrorBox> {
   session::cleanup()
     .await
     .map_err(|e| JsErrorBox::generic(e.to_string()))
+}
+
+#[op2(async)]
+#[bigint]
+pub async fn op_ai_force_cleanup_all_sessions() -> usize {
+  session::force_cleanup_all().await
 }

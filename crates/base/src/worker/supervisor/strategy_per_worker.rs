@@ -266,11 +266,13 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
 
   let mut dispatch_drain_fn = Some({
     let runtime_drop = runtime_drop.clone();
+    let runtime_state = state.runtime.clone();
     let thread_safe_handle = thread_safe_handle.clone();
     let waker = waker.clone();
     move || {
       let data_ptr_mut = Box::into_raw(Box::new(V8HandleDrainData {
         runtime_drop_token: runtime_drop.clone(),
+        runtime_state: runtime_state.clone(),
       }));
 
       // Guard against calling V8 handle methods during/after runtime disposal
@@ -489,6 +491,7 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
         let data_ptr_mut = Box::into_raw(Box::new(V8HandleBeforeunloadData {
           reason: WillTerminateReason::WallClock,
           runtime_drop_token: runtime_drop.clone(),
+          runtime_state: state.runtime.clone(),
         }));
 
         // Guard against calling V8 handle methods during/after runtime disposal

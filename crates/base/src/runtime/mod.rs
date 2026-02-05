@@ -1834,6 +1834,38 @@ where
             }
           }
         }
+
+        // Check if wall clock beforeunload was triggered by the supervisor
+        if state.wall_clock_beforeunload_triggered.is_raised() {
+          state.wall_clock_beforeunload_triggered.lower();
+
+          if !state.is_terminated() {
+            if let Err(err) = MaybeDenoRuntime::DenoRuntime(&mut *this)
+              .dispatch_beforeunload_event(WillTerminateReason::WallClock)
+            {
+              if state.is_terminated() {
+                return Poll::Ready(Err(anyhow!("execution terminated")));
+              }
+              return Poll::Ready(Err(err));
+            }
+          }
+        }
+
+        // Check if drain was triggered by the supervisor
+        if state.drain_triggered.is_raised() {
+          state.drain_triggered.lower();
+
+          if !state.is_terminated() {
+            if let Err(err) =
+              MaybeDenoRuntime::DenoRuntime(&mut *this).dispatch_drain_event()
+            {
+              if state.is_terminated() {
+                return Poll::Ready(Err(anyhow!("execution terminated")));
+              }
+              return Poll::Ready(Err(err));
+            }
+          }
+        }
       }
 
       if need_pool_event_loop

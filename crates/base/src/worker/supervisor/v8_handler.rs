@@ -1,5 +1,8 @@
 //! V8 interrupt callback handlers.
 
+use std::sync::Arc;
+
+use base_rt::RuntimeState;
 use deno_core::v8;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -53,16 +56,24 @@ pub extern "C" fn v8_handle_termination_raw(
 pub struct V8HandleBeforeunloadData {
   pub reason: WillTerminateReason,
   pub runtime_drop_token: CancellationToken,
+  pub runtime_state: Arc<RuntimeState>,
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn v8_handle_beforeunload_raw(
-  isolate_ptr: *mut v8::Isolate,
+  _isolate_ptr: *mut v8::Isolate,
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleBeforeunloadData) };
-  let _ = isolate_ptr;
-  let _ = data;
+
+  // Check if runtime is being dropped - if so, skip
+  if data.runtime_drop_token.is_cancelled() {
+    return;
+  }
+
+  // Signal the event loop to dispatch the beforeunload event
+  // This avoids using V8TaskSpawner which can crash during isolate disposal
+  data.runtime_state.wall_clock_beforeunload_triggered.raise();
 }
 
 #[repr(C)]
@@ -90,15 +101,22 @@ pub extern "C" fn v8_handle_early_retire_raw(
 #[repr(C)]
 pub struct V8HandleDrainData {
   pub runtime_drop_token: CancellationToken,
+  pub runtime_state: Arc<RuntimeState>,
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[instrument(level = "debug", skip_all)]
 pub extern "C" fn v8_handle_drain_raw(
-  isolate_ptr: *mut v8::Isolate,
+  _isolate_ptr: *mut v8::Isolate,
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleDrainData) };
-  let _ = isolate_ptr;
-  let _ = data;
+
+  // Check if runtime is being dropped - if so, skip
+  if data.runtime_drop_token.is_cancelled() {
+    return;
+  }
+
+  // Signal the event loop to dispatch the drain event
+  data.runtime_state.drain_triggered.raise();
 }

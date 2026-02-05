@@ -134,9 +134,10 @@ impl WorkerDriver for Managed {
       }
     };
 
-    let (waker, thread_safe_handle) = (
+    let (waker, thread_safe_handle, runtime_state) = (
       runtime.waker.clone(),
       runtime.js_runtime.v8_isolate().thread_safe_handle(),
+      runtime.runtime_state.clone(),
     );
 
     let wait_fut = async move {
@@ -165,6 +166,7 @@ impl WorkerDriver for Managed {
         Box::into_raw(Box::new(supervisor::V8HandleBeforeunloadData {
           reason: WillTerminateReason::Termination,
           runtime_drop_token: runtime_drop_token.clone(),
+          runtime_state: runtime_state.clone(),
         }));
 
       // Guard against calling V8 handle methods during/after runtime disposal

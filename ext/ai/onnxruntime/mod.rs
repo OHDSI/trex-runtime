@@ -2,7 +2,7 @@ mod model;
 mod tensor;
 
 pub(crate) mod onnx;
-pub(crate) mod session;
+pub mod session;
 
 use core::str;
 use std::borrow::Cow;

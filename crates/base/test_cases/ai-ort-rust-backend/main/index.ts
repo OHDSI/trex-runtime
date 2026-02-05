@@ -12,8 +12,17 @@ const handle = setInterval(async () => {
   }
 }, 60 * 1000); // 1 minute - avoid race conditions with V8 during shutdown
 
-addEventListener("beforeunload", () => {
+addEventListener("beforeunload", async () => {
   clearInterval(handle);
+  // Force cleanup all cached ONNX sessions to free memory between tests
+  try {
+    const cleanedCount = await EdgeRuntime.ai.forceCleanupAllSessions();
+    if (cleanedCount > 0) {
+      console.log("Cleaned up", cleanedCount, "ONNX sessions on shutdown");
+    }
+  } catch (e) {
+    console.error("Failed to cleanup sessions:", e);
+  }
 });
 
 Deno.serve(async (req: Request) => {
