@@ -66,13 +66,9 @@ pub extern "C" fn v8_handle_beforeunload_raw(
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleBeforeunloadData) };
 
-  // Check if runtime is being dropped - if so, skip
   if data.runtime_drop_token.is_cancelled() {
     return;
   }
-
-  // Signal the event loop to dispatch the beforeunload event
-  // This avoids using V8TaskSpawner which can crash during isolate disposal
   data.runtime_state.wall_clock_beforeunload_triggered.raise();
 }
 
@@ -86,7 +82,6 @@ pub extern "C" fn v8_handle_early_drop_beforeunload_raw(
   data: *mut std::ffi::c_void,
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleEarlyDropData) };
-  // Just cancel the token to signal early drop
   data.token.cancel();
 }
 
@@ -112,11 +107,8 @@ pub extern "C" fn v8_handle_drain_raw(
 ) {
   let data = unsafe { Box::from_raw(data as *mut V8HandleDrainData) };
 
-  // Check if runtime is being dropped - if so, skip
   if data.runtime_drop_token.is_cancelled() {
     return;
   }
-
-  // Signal the event loop to dispatch the drain event
   data.runtime_state.drain_triggered.raise();
 }

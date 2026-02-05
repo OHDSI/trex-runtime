@@ -72,7 +72,6 @@ impl State {
 
   fn worker_enter(&mut self) {
     if self.is_worker_entered {
-      // Already entered - can happen due to channel buffering or race conditions
       return;
     }
     self.is_worker_entered = true;
@@ -81,7 +80,6 @@ impl State {
 
   fn worker_leave(&mut self) {
     if !self.is_worker_entered {
-      // Not entered - can happen due to channel buffering or race conditions
       return;
     }
     self.is_worker_entered = false;

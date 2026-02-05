@@ -10,9 +10,7 @@ pub struct RuntimeState {
   pub terminated: Arc<AtomicFlag>,
   pub found_inspector_session: Arc<AtomicFlag>,
   pub mem_reached_half: Arc<AtomicFlag>,
-  /// Set by wall clock beforeunload interrupt to signal event loop to dispatch beforeunload event
   pub wall_clock_beforeunload_triggered: Arc<AtomicFlag>,
-  /// Set by drain interrupt to signal event loop to dispatch drain event
   pub drain_triggered: Arc<AtomicFlag>,
 }
 

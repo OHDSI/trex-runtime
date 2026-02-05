@@ -212,8 +212,7 @@ pub async fn cleanup() -> Result<usize, AnyError> {
   Ok(remove_counter)
 }
 
-/// Force clear all sessions regardless of reference count.
-/// Use with caution - only for testing or shutdown scenarios.
+/// Clear all cached sessions.
 pub async fn force_cleanup_all() -> usize {
   let mut guard = SESSIONS.lock().await;
   let count = guard.len();

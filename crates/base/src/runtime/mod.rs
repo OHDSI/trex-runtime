@@ -2512,10 +2512,6 @@ fn terminate_execution_if_cancelled(
     }
     // SAFETY: We've verified the pointer is non-null
     let isolate = unsafe { &mut *isolate_ptr };
-    // Check if JsRuntime state is still valid (slot 0 is cleared during drop)
-    // Note: This check can print "[RUSTY_V8 ERROR] get_data_internal: null isolate pointer"
-    // during shutdown, but it's a warning not a crash, and the check prevents actual crashes
-    // when trying to call methods on an invalid isolate.
     if isolate.get_data(0).is_null() {
       return;
     }
@@ -2626,8 +2622,6 @@ unsafe extern "C" fn mem_check_gc_prologue_callback_fn(
   // SAFETY: data is non-null and points to valid MemCheck
   let mem_check = &*(data as *const MemCheck);
 
-  // Check if runtime is being dropped - if so, skip isolate access
-  // to avoid accessing invalid isolate state during shutdown
   if mem_check.drop_token.is_cancelled() {
     if *DEBUG_GC {
       tracing::debug!("GC prologue: runtime dropping, skipping mem check");

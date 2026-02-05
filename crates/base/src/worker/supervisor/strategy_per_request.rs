@@ -143,7 +143,6 @@ pub async fn supervise(
         match metrics {
           CPUUsageMetrics::Enter(_thread_id, timer) => {
             if is_worker_entered {
-              // Already entered - can happen due to channel buffering or race conditions
               continue;
             }
             is_worker_entered = true;
@@ -157,7 +156,6 @@ pub async fn supervise(
 
           CPUUsageMetrics::Leave(CPUUsage { accumulated, diff }) => {
             if !is_worker_entered {
-              // Not entered - can happen due to channel buffering or race conditions
               continue;
             }
 
