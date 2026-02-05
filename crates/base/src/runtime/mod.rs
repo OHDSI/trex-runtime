@@ -188,24 +188,13 @@ fn init_v8_platform() {
   JsRuntime::init_platform(None, false);
 }
 
+#[derive(Default)]
 struct MemCheck {
   drop_token: CancellationToken,
   exceeded_token: CancellationToken,
   limit: Option<usize>,
   waker: Arc<AtomicWaker>,
   state: Arc<RwLock<MemCheckState>>,
-}
-
-impl Default for MemCheck {
-  fn default() -> Self {
-    Self {
-      drop_token: CancellationToken::default(),
-      exceeded_token: CancellationToken::default(),
-      limit: None,
-      waker: Arc::default(),
-      state: Arc::default(),
-    }
-  }
 }
 
 impl MemCheck {
