@@ -12,7 +12,7 @@ strip = true
 
 
 [dependencies]
-duckdb.workspace = true
+duckdb = { workspace = true, features = ["vtab-loadable", "vscalar"] }
 duckdb-loadable-macros = "0.1.9"
 libduckdb-sys = { version = "1.4.1", features = ["loadable-extension"] }
 trex_cli = { path = "../../cli", package = "cli" }
