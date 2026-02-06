@@ -230,31 +230,16 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Increase swap to 15G
-        run: |
-          sudo swapoff -a
-          sudo fallocate -l 15G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-
       - name: Download Docker images artifact
         uses: actions/download-artifact@v4
         with:
           name: d2e-docker-images
           path: /tmp
 
-      - name: Download D2E workspace artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: d2e-workspace
-          path: /tmp
-
       - name: Load Docker images
         run: |
-          zstd -d /tmp/d2e-images.tar.zst -o /tmp/d2e-images.tar
-          docker load -i /tmp/d2e-images.tar
-          rm /tmp/d2e-images.tar /tmp/d2e-images.tar.zst
+          zstd -dc /tmp/d2e-images.tar.zst | docker load
+          rm /tmp/d2e-images.tar.zst
           docker images --format "table {{.ID}}\t{{.Repository}}\t{{.Tag}}"
 
       - name: Checkout D2E
@@ -265,11 +250,24 @@ jobs:
           path: d2e
           submodules: recursive
 
+      - name: Download D2E workspace artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: d2e-workspace
+          path: /tmp
+
       - name: Restore D2E workspace
         run: |
-          zstd -d /tmp/d2e-workspace.tar.zst -o /tmp/d2e-workspace.tar
-          tar xf /tmp/d2e-workspace.tar -C d2e
-          rm /tmp/d2e-workspace.tar /tmp/d2e-workspace.tar.zst
+          zstd -dc /tmp/d2e-workspace.tar.zst | tar xf - -C d2e
+          rm /tmp/d2e-workspace.tar.zst
+
+      - name: Increase swap to 15G
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 15G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
 
       - name: Setup D2E
         working-directory: d2e
