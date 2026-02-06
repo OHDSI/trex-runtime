@@ -37,6 +37,7 @@ env:
   D2E_BRANCH: ${{ github.event.inputs.d2e_branch || 'develop' }}
   DUCKDB_VERSION: v1.4.1
   VERSION: develop
+  PLUGINS_SEED: '["d2e-flows", "d2e-ui", "d2e-atlas", "data-transformation-flow", "hades-flow", "trex-hana", "trex-pgwire", "d2e-fhir-server", "i2b2-flow", "data-management-flow"]'
 
 jobs:
   build-extension:
