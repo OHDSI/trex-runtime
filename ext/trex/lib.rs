@@ -729,8 +729,9 @@ fn op_execute_query_stream(
         let conn = match conn_arc.lock().unwrap().try_clone() {
           Ok(c) => c,
           Err(e) => {
-            let _ = sender
-              .blocking_send(format!("{{\"error\":\"connection clone: {e}\"}}"));
+            let _ = sender.blocking_send(format!(
+              "{{\"error\":\"connection clone: {e}\"}}"
+            ));
             return;
           }
         };
