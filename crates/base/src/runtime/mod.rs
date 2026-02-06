@@ -824,7 +824,7 @@ where
           static_files
         };
 
-        let (_fs, s3_fs) = build_file_system_fn(if is_user_worker && should_block_fs {
+        let (fs, s3_fs) = build_file_system_fn(if is_user_worker && should_block_fs {
           Arc::new(StaticFs::new(
             node_modules,
             static_files,
@@ -1023,7 +1023,13 @@ where
           deno_net::deno_net::args::<PermissionsContainer>(None, None),
           deno_http::deno_http::args(deno_http::Options::default()),
           deno_io::deno_io::args(Some(stdio.clone())),
-          deno_fs::deno_fs::args::<PermissionsContainer>(Arc::new(deno_fs::RealFs)),
+          deno_fs::deno_fs::args::<PermissionsContainer>(
+            if s3_fs.is_some() {
+              fs.clone()
+            } else {
+              Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
+            },
+          ),
           {
             let sys = node_services.sys.clone();
             ext_node::deno_node::args::<
@@ -1031,7 +1037,11 @@ where
               deno_resolver::npm::DenoInNpmPackageChecker,
               npm::NpmResolver<VfsSys>,
               VfsSys,
-            >(Some(node_services), Arc::new(deno_fs::RealFs), sys)
+            >(Some(node_services), if s3_fs.is_some() {
+              fs.clone()
+            } else {
+              Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
+            }, sys)
           },
           deno_cache::deno_cache::args(Default::default()),
         ]).map_err(|e| anyhow::anyhow!("Failed to lazy init extensions: {:#}", e))?;
