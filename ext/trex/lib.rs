@@ -494,7 +494,7 @@ fn execute_query(
     let params_json = serde_json::to_string(&params)
       .map_err(|e| TrexError::Generic(format!("param serialize: {e}")))?;
 
-    match executor.submit(database, sql, params_json).blocking_recv() {
+    match executor.submit(database, sql, params_json).recv() {
       Ok(query_executor::QueryResult::Success(json)) => Ok(json),
       Ok(query_executor::QueryResult::Error(msg)) => {
         Err(TrexError::Generic(msg))

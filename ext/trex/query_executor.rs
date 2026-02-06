@@ -11,7 +11,7 @@ pub struct QueryRequest {
   pub database: String,
   pub sql: String,
   pub params_json: String,
-  pub response_tx: tokio::sync::oneshot::Sender<QueryResult>,
+  pub response_tx: std::sync::mpsc::SyncSender<QueryResult>,
 }
 
 pub enum QueryResult {
@@ -66,8 +66,8 @@ impl QueryExecutor {
     database: String,
     sql: String,
     params_json: String,
-  ) -> tokio::sync::oneshot::Receiver<QueryResult> {
-    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+  ) -> std::sync::mpsc::Receiver<QueryResult> {
+    let (response_tx, response_rx) = std::sync::mpsc::sync_channel(1);
 
     if let Err(e) = self.sender.send(QueryRequest {
       database,
@@ -75,7 +75,7 @@ impl QueryExecutor {
       params_json,
       response_tx,
     }) {
-      let (tx, rx) = tokio::sync::oneshot::channel();
+      let (tx, rx) = std::sync::mpsc::sync_channel(1);
       let _ = tx.send(QueryResult::Error(format!("executor closed: {e}")));
       return rx;
     }
