@@ -727,6 +727,15 @@ where
           .and_then(serde_json::Value::as_bool)
           .unwrap_or_default();
 
+        let should_block_fs = if is_user_worker {
+          let allow_fs_access = maybe_user_conf
+            .and_then(|conf| conf.allow_host_fs_access)
+            .unwrap_or(false);
+          !allow_fs_access
+        } else {
+          false
+        };
+
         let rt_provider = create_module_loader_for_standalone_from_eszip_kind(
           eszip,
           permissions_options,
@@ -735,7 +744,7 @@ where
             maybe_import_map_path,
           }),
           Some(base_dir_path.to_string_lossy().as_ref()),
-          is_user_worker,
+          should_block_fs,
         )
         .await?;
 
@@ -764,15 +773,6 @@ where
               .as_ref()
               .with_context(|| "could not find entrypoint key")?,
           )?,
-        };
-
-        let should_block_fs = if is_user_worker {
-          let allow_fs_access = maybe_user_conf
-            .and_then(|conf| conf.allow_host_fs_access)
-            .unwrap_or(false);
-          !allow_fs_access
-        } else {
-          false
         };
 
         let build_file_system_fn = |base_fs: Arc<dyn deno_fs::FileSystem>| -> Result<
@@ -826,10 +826,7 @@ where
         };
 
         let (fs, s3_fs) = build_file_system_fn(if is_user_worker && should_block_fs {
-          Arc::new(StaticFs::new(
-            node_modules,
-            static_files,
-            if matches!(entrypoint, Some(Entrypoint::ModuleCode(_)) | None)
+          let compile_base_dir = if matches!(entrypoint, Some(Entrypoint::ModuleCode(_)) | None)
               && is_some_entry_point
             {
               // it is eszip from before v2
@@ -847,11 +844,37 @@ where
                     .map(Path::to_path_buf)
                     .with_context(|| "failed to determine parent directory")
                 })?
-            },
+            };
+
+          // Compute path mapping between real source and compile-target paths
+          let compile_root = base_url
+            .to_file_path()
+            .map_err(|_| anyhow!("failed to resolve compile root"))?;
+          let source_root = main_module_url
+            .to_file_path()
+            .ok()
+            .and_then(|main_path| {
+              let relative_dir = main_path.parent()?.strip_prefix(&compile_root).ok()?;
+              let depth = relative_dir.components().count();
+              let mut root = base_dir_path.clone();
+              for _ in 0..depth {
+                root = root.parent()?.to_path_buf();
+              }
+              Some(root)
+            });
+
+          let mut static_fs = StaticFs::new(
+            node_modules,
+            static_files,
+            compile_base_dir,
             vfs_path,
             vfs,
             npm_snapshot,
-          ))
+          );
+          if let Some(source_root) = source_root {
+            static_fs = static_fs.set_path_mapping(source_root, compile_root);
+          }
+          Arc::new(static_fs)
         } else {
           // Use DenoCompileFileSystem for main workers and user workers with filesystem access enabled
           Arc::new(DenoCompileFileSystem::from_rc(vfs))
@@ -1476,6 +1499,9 @@ where
       });
 
     self.runtime_state.init.raise();
+    let _init_guard = scopeguard::guard(self.runtime_state.init.clone(), |v| {
+      v.lower();
+    });
 
     let mut accumulated_cpu_time_ns = 0i64;
 
@@ -1617,7 +1643,6 @@ where
       }
     }
 
-    self.runtime_state.init.lower();
     self.runtime_state.event_loop_completed.lower();
 
     if let Err(err) = self

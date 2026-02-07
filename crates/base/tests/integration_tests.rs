@@ -3168,7 +3168,9 @@ async fn test_tmp_fs_should_not_be_available_in_import_stmt() {
 
       assert_eq!(status, 500);
       assert!(
-        payload.msg.contains("Module not found: file:///tmp/meowmeow.ts"),
+        payload
+          .msg
+          .contains("Module not found: file:///tmp/meowmeow.ts"),
         "unexpected error: {}",
         payload.msg
       );
@@ -3605,7 +3607,6 @@ async fn test_ort_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "snapshot mismatch in CI"]
 async fn test_ort_nlp_question_answering() {
   test_ort_transformers_js("question-answering").await;
 }
@@ -3654,21 +3655,19 @@ async fn test_ort_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
+#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_vision_image_classification() {
   test_ort_transformers_js("image-classification").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_vision_zero_shot_image_classification() {
   test_ort_transformers_js("zero-shot-image-classification").await;
 }
@@ -3688,7 +3687,6 @@ async fn test_ort_cache_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "snapshot mismatch in CI"]
 async fn test_ort_cache_nlp_question_answering() {
   test_ort_transformers_js("question-answering-cache").await;
 }
@@ -3737,21 +3735,19 @@ async fn test_ort_cache_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
+#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_cache_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction-cache").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_cache_vision_image_classification() {
   test_ort_transformers_js("image-classification-cache").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_cache_vision_zero_shot_image_classification() {
   test_ort_transformers_js("zero-shot-image-classification-cache").await;
 }

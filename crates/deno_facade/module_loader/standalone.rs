@@ -563,7 +563,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       #[allow(clippy::collapsible_if)]
-      if !self.shared.disable_fs_fallback && original_specifier.scheme() == "file" {
+      if !self.shared.disable_fs_fallback
+        && original_specifier.scheme() == "file"
+      {
         if let Ok(path) = original_specifier.to_file_path() {
           let paths_to_try: Vec<PathBuf> = {
             let mut paths = vec![path.clone()];
