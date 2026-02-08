@@ -1,4 +1,3 @@
-use std::fs::File;
 use std::path::Path;
 
 fn main() {
@@ -7,17 +6,13 @@ fn main() {
 
   println!("cargo::rustc-check-cfg=cfg(dotenv)");
 
+  // Only enable S3 tests when .env exists and has actual content.
+  // CI creates this file with MinIO credentials; locally it should
+  // only exist if you have a running MinIO instance.
   if env_path.exists() {
-    println!("cargo:rustc-cfg=dotenv")
-  } else {
-    match File::create_new(env_path) {
-      Ok(_) => {}
-      Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-        println!("cargo:rustc-cfg=dotenv")
-      }
-      Err(e) => {
-        eprintln!("Warning: Could not create {}: {}", env_file, e);
-      }
+    let content = std::fs::read_to_string(env_path).unwrap_or_default();
+    if content.lines().any(|l| l.contains('=')) {
+      println!("cargo:rustc-cfg=dotenv");
     }
   }
 
