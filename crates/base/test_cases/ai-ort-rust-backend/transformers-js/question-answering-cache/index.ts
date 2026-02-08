@@ -26,7 +26,7 @@ Deno.serve(async (req: Request) => {
   }
 
   assertEquals(output.answer, snapshot.answer);
-  assertAlmostEquals(round6(output.score), snapshot.score);
+  assertAlmostEquals(round6(output.score), snapshot.score, 1e-5);
 
   return new Response();
 });

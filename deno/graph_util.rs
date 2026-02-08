@@ -27,6 +27,7 @@ use deno_graph::ModuleLoadError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_graph::source::LoaderChecksum;
 use deno_resolver::deno_json::JsxImportSourceConfig;
+use deno_resolver::deno_json::JsxImportSourceSpecifierConfig;
 
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
@@ -805,16 +806,93 @@ impl ModuleGraphBuilder {
   }
 
   fn create_graph_resolver(&self) -> Result<CliGraphResolver, AnyError> {
-    // TODO(deno-upgrade): In Deno 2.5.6, JSX import source config is obtained through
-    // JsxImportSourceConfigResolver::from_compiler_options_resolver().
-    // We need to add compiler_options_resolver to ModuleGraphBuilder and use it here.
-    // For now, using None which will fall back to defaults in the resolver.
-    let jsx_import_source_config = None;
+    let jsx_import_source_config = self.resolve_jsx_import_source_config()?;
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,
       resolver: &self.resolver,
       jsx_import_source_config,
     })
+  }
+
+  /// Extract JsxImportSourceConfig from the workspace root deno.json.
+  fn resolve_jsx_import_source_config(
+    &self,
+  ) -> Result<Option<JsxImportSourceConfig>, AnyError> {
+    let Some(root_config) = self.options.workspace().root_deno_json() else {
+      return Ok(None);
+    };
+    let Some(compiler_options) = root_config
+      .json
+      .compiler_options
+      .as_ref()
+      .and_then(|v| v.as_object())
+    else {
+      return Ok(None);
+    };
+
+    let jsx = compiler_options.get("jsx").and_then(|v| v.as_str());
+    let is_jsx_automatic = matches!(
+      jsx,
+      Some("react-jsx" | "preserve" | "react-jsxdev" | "precompile")
+    );
+    let base = root_config.specifier.clone();
+
+    let import_source = compiler_options
+      .get("jsxImportSource")
+      .and_then(|v| v.as_str())
+      .map(|s| JsxImportSourceSpecifierConfig {
+        specifier: s.to_string(),
+        base: base.clone(),
+      })
+      .or_else(|| {
+        is_jsx_automatic.then(|| JsxImportSourceSpecifierConfig {
+          specifier: "react".to_string(),
+          base: base.clone(),
+        })
+      });
+
+    let import_source_types = compiler_options
+      .get("jsxImportSourceTypes")
+      .and_then(|v| v.as_str())
+      .map(|s| JsxImportSourceSpecifierConfig {
+        specifier: s.to_string(),
+        base: base.clone(),
+      })
+      .or_else(|| import_source.clone());
+
+    let module = match jsx {
+      Some("react-jsx" | "preserve") => "jsx-runtime",
+      Some("react-jsxdev") => "jsx-dev-runtime",
+      Some("precompile") => "jsx-runtime",
+      Some("react") | None => {
+        if import_source.is_some() {
+          anyhow::bail!(
+            "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {}",
+            base
+          );
+        }
+        if import_source_types.is_some() {
+          anyhow::bail!(
+            "'jsxImportSourceTypes' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {}",
+            base
+          );
+        }
+        return Ok(None);
+      }
+      Some(other) => {
+        anyhow::bail!(
+          "Unsupported 'jsx' compiler option value '{}'. Supported: 'react-jsx', 'react-jsxdev', 'react', 'preserve', 'precompile'\n  at {}",
+          other,
+          base
+        );
+      }
+    };
+
+    Ok(Some(JsxImportSourceConfig {
+      module: module.to_string(),
+      import_source,
+      import_source_types,
+    }))
   }
 }
 

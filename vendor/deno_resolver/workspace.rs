@@ -37,6 +37,7 @@ use deno_terminal::colors;
 use import_map::ImportMap;
 use import_map::ImportMapDiagnostic;
 use import_map::ImportMapError;
+use import_map::ImportMapErrorKind;
 use import_map::ImportMapWithDiagnostics;
 use import_map::specifier::SpecifierError;
 use indexmap::IndexMap;
@@ -246,10 +247,10 @@ impl MappedResolutionError {
         SpecifierError::InvalidUrl(_) => false,
         SpecifierError::ImportPrefixMissing { .. } => true,
       },
-      MappedResolutionError::ImportMap(err) => {
-        // ImportMapError no longer exposes kind, check the error message
-        err.to_string().contains("Relative import path")
-      }
+      MappedResolutionError::ImportMap(err) => matches!(
+        err.as_kind(),
+        ImportMapErrorKind::UnmappedBareSpecifier(_, _)
+      ),
       MappedResolutionError::Workspace(_) => false,
       MappedResolutionError::NotFoundInCompilerOptionsPaths(_) => false,
     }

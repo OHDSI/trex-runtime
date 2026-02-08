@@ -30,6 +30,11 @@ pub struct StaticFs {
   byonm_node_modules_path: Option<PathBuf>,
   snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   vfs: Arc<FileBackedVfs>,
+  /// Maps real source paths to compile-target paths for static file lookup.
+  /// When set, paths starting with `source_root` are remapped to `compile_root`
+  /// before looking up in the static_files map.
+  source_root: Option<PathBuf>,
+  compile_root: Option<PathBuf>,
 }
 
 impl StaticFs {
@@ -57,7 +62,53 @@ impl StaticFs {
       byonm_node_modules_path,
       vfs_path,
       snapshot,
+      source_root: None,
+      compile_root: None,
     }
+  }
+
+  pub fn set_path_mapping(
+    mut self,
+    source_root: PathBuf,
+    compile_root: PathBuf,
+  ) -> Self {
+    self.source_root = Some(source_root);
+    self.compile_root = Some(compile_root);
+    self
+  }
+
+  fn remap_to_compile_path(&self, path: &Path) -> Option<PathBuf> {
+    let source_root = self.source_root.as_ref()?;
+    let compile_root = self.compile_root.as_ref()?;
+    let relative = path.strip_prefix(source_root).ok()?;
+    Some(compile_root.join(relative))
+  }
+
+  fn lookup_static_file(
+    &self,
+    normalized: &Path,
+  ) -> Option<FsResult<Cow<'static, [u8]>>> {
+    let eszip = self.vfs.eszip.as_ref();
+    let file = self
+      .static_files
+      .get(normalized)
+      .and_then(|it| eszip.ensure_module(it))?;
+
+    let Some(res) = std::thread::scope(|s| {
+      s.spawn(move || IO_RT.block_on(async move { file.source().await }))
+        .join()
+        .unwrap()
+    }) else {
+      return Some(Err(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          "No content available",
+        )
+        .into(),
+      ));
+    };
+
+    Some(Ok(Cow::Owned(res.to_vec())))
   }
 
   pub fn is_valid_npm_package(&self, path: &Path) -> bool {
@@ -453,7 +504,6 @@ impl deno_fs::FileSystem for StaticFs {
       let buf = file.read_all_sync()?;
       Ok(buf)
     } else {
-      let eszip = self.vfs.eszip.as_ref();
       let path_ref = path;
       let path_buf = if path_ref.is_relative() {
         self.base_dir_path.join(path_ref)
@@ -463,35 +513,24 @@ impl deno_fs::FileSystem for StaticFs {
 
       let normalized = normalize_path(Cow::Owned(path_buf));
 
-      if let Some(file) = self
-        .static_files
-        .get(normalized.as_ref())
-        .and_then(|it| eszip.ensure_module(it))
-      {
-        let Some(res) = std::thread::scope(|s| {
-          s.spawn(move || IO_RT.block_on(async move { file.source().await }))
-            .join()
-            .unwrap()
-        }) else {
-          return Err(
-            std::io::Error::new(
-              std::io::ErrorKind::NotFound,
-              "No content available",
-            )
-            .into(),
-          );
-        };
-
-        Ok(Cow::Owned(res.to_vec()))
-      } else {
-        Err(
-          std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("path not found: {}", normalized.to_string_lossy()),
-          )
-          .into(),
-        )
+      // Try direct lookup first, then remap real source paths to compile-target paths
+      if let Some(result) = self.lookup_static_file(&normalized) {
+        return result;
       }
+      if let Some(remapped) = self.remap_to_compile_path(&normalized) {
+        let remapped = normalize_path(Cow::Owned(remapped));
+        if let Some(result) = self.lookup_static_file(&remapped) {
+          return result;
+        }
+      }
+
+      Err(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("path not found: {}", normalized.to_string_lossy()),
+        )
+        .into(),
+      )
     }
   }
 

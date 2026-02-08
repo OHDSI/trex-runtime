@@ -127,7 +127,6 @@ mod test {
 
   #[tokio::test]
   #[allow(clippy::arc_with_non_send_sync)]
-  #[ignore]
   async fn test_extract_eszip() {
     let mut emitter_factory = EmitterFactory::new();
 

@@ -62,7 +62,8 @@ const { promise: fence, resolve, reject } = Promise.withResolvers<void>();
 
 setTimeout(() => {
   try {
-    checkBlocklisted(whitelisted);
+    // Whitelisted APIs should remain accessible after init (not become blocked)
+    checkWhitelisted(whitelisted);
     resolve();
   } catch (ex) {
     reject(ex);
