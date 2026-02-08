@@ -323,6 +323,8 @@ pub struct ServerFlags {
   pub beforeunload_wall_clock_pct: Option<u8>,
   pub beforeunload_cpu_pct: Option<u8>,
   pub beforeunload_memory_pct: Option<u8>,
+
+  pub restrict_host_fs: bool,
 }
 
 #[derive(Debug)]

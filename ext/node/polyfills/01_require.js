@@ -160,6 +160,7 @@ import util from "node:util";
 import v8 from "node:v8";
 import vm from "node:vm";
 import wasi from "node:wasi";
+import workerThreads from "node:worker_threads";
 import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);
@@ -271,6 +272,7 @@ function setupBuiltinModules() {
     v8,
     vm,
     wasi,
+    worker_threads: workerThreads,
     zlib,
   };
   for (const [name, moduleExports] of ObjectEntries(nodeModules)) {

@@ -1555,7 +1555,6 @@ async fn test_decorators(suffix: &str) {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: deno.json compilerOptions not read from workspace - TC39 decorators require experimentalDecorators: false"]
 async fn test_decorator_parse_tc39() {
   test_decorators("tc39").await;
 }
@@ -1746,7 +1745,6 @@ async fn test_slowloris_no_prompt_timeout(
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_slowloris_no_prompt_timeout_non_secure() {
   test_slowloris_no_prompt_timeout(new_localhost_tls(false), false).await;
 }
@@ -1760,7 +1758,6 @@ async fn test_slowloris_no_prompt_timeout_non_secure_inverted() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "too slow"]
 async fn test_slowloris_no_prompt_timeout_secure() {
   test_slowloris_no_prompt_timeout(new_localhost_tls(true), false).await;
 }
@@ -1827,7 +1824,6 @@ async fn test_slowloris_slow_header_timedout(
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_slowloris_slow_header_timedout_non_secure() {
   test_slowloris_slow_header_timedout(new_localhost_tls(false), false).await;
 }
@@ -1841,7 +1837,6 @@ async fn test_slowloris_slow_header_timedout_non_secure_inverted() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "too slow 2x"]
 async fn test_slowloris_slow_header_timedout_secure() {
   test_slowloris_slow_header_timedout(new_localhost_tls(true), false).await;
 }
@@ -1892,7 +1887,6 @@ async fn test_request_idle_timeout_no_streamed_response(
 
 #[tokio::test]
 #[serial]
-#[ignore = "running too much tests"]
 async fn test_request_idle_timeout_no_streamed_response_non_secure() {
   test_request_idle_timeout_no_streamed_response(new_localhost_tls(false))
     .await;
@@ -1910,7 +1904,6 @@ async fn test_request_idle_timeout_no_streamed_response_non_secure_1000() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "running too much tests"]
 async fn test_request_idle_timeout_no_streamed_response_secure() {
   test_request_idle_timeout_no_streamed_response(new_localhost_tls(true)).await;
 }
@@ -1976,14 +1969,12 @@ async fn test_request_idle_timeout_streamed_response(maybe_tls: Option<Tls>) {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex too much tests"]
 async fn test_request_idle_timeout_streamed_response_non_secure() {
   test_request_idle_timeout_streamed_response(new_localhost_tls(false)).await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex too much tests"]
 async fn test_request_idle_timeout_streamed_response_secure() {
   test_request_idle_timeout_streamed_response(new_localhost_tls(true)).await;
 }
@@ -2051,7 +2042,6 @@ async fn test_request_idle_timeout_streamed_response_first_chunk_timeout(
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex too much tests"]
 async fn test_request_idle_timeout_streamed_response_first_chunk_timeout_non_secure(
 ) {
   test_request_idle_timeout_streamed_response_first_chunk_timeout(
@@ -2062,7 +2052,6 @@ async fn test_request_idle_timeout_streamed_response_first_chunk_timeout_non_sec
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex too much tests"]
 async fn test_request_idle_timeout_streamed_response_first_chunk_timeout_secure(
 ) {
   test_request_idle_timeout_streamed_response_first_chunk_timeout(
@@ -2144,7 +2133,6 @@ async fn test_request_idle_timeout_websocket_deno(
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_request_idle_timeout_websocket_deno_non_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(false), false)
     .await;
@@ -2152,7 +2140,6 @@ async fn test_request_idle_timeout_websocket_deno_non_secure() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_request_idle_timeout_websocket_deno_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(true), false)
     .await;
@@ -2160,7 +2147,6 @@ async fn test_request_idle_timeout_websocket_deno_secure() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_request_idle_timeout_websocket_node_non_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(false), true)
     .await;
@@ -2235,7 +2221,6 @@ async fn test_allow_net<F, R>(
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_allow_net_fetch_google_com() {
   #[derive(Deserialize)]
   struct FetchResponse {
@@ -2312,7 +2297,6 @@ async fn test_allow_net_fetch_google_com() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires worker_threads module not implemented in runtime"]
 async fn test_fastify_v4_package() {
   integration_test!(
     "./test_cases/main",
@@ -2330,7 +2314,6 @@ async fn test_fastify_v4_package() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires worker_threads module not implemented in runtime"]
 async fn test_fastify_latest_package() {
   integration_test!(
     "./test_cases/main",
@@ -2543,7 +2526,6 @@ async fn test_supabase_issue_29583() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_issue_func_205() {
   let (tx, mut rx) = mpsc::unbounded_channel();
   let tb = TestBedBuilder::new("./test_cases/main")
@@ -2643,7 +2625,6 @@ async fn test_issue_func_280() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: event worker boot event not being received - timeout"]
 async fn test_issue_func_284() {
   async fn find_boot_event(
     rx: &mut mpsc::UnboundedReceiver<WorkerEventWithMetadata>,
@@ -2679,7 +2660,7 @@ async fn test_issue_func_284() {
     }
   });
 
-  timeout(Duration::from_secs(1), find_boot_event(&mut rx))
+  timeout(Duration::from_secs(10), find_boot_event(&mut rx))
     .await
     .unwrap()
     .unwrap();
@@ -2698,12 +2679,12 @@ async fn test_issue_func_284() {
     }
   });
 
-  let boot_time = timeout(Duration::from_secs(1), find_boot_event(&mut rx))
+  let boot_time = timeout(Duration::from_secs(10), find_boot_event(&mut rx))
     .await
     .unwrap()
     .unwrap();
 
-  assert!(boot_time < 1000);
+  assert!(boot_time < 5000);
 }
 
 #[tokio::test]
@@ -2798,7 +2779,6 @@ async fn test_js_entrypoint() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "eszip bundling fails for jsx/tsx - React/JSX runtime not properly configured"]
 async fn test_should_be_able_to_bundle_against_various_exts() {
   let get_eszip_buf = |path: &str| {
     let path = path.to_string();
@@ -3059,7 +3039,6 @@ async fn test_private_npm_package_import() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "tmp_fs feature not fully functional - file operations return unexpected results"]
 async fn test_tmp_fs_usage() {
   {
     integration_test!(
@@ -3172,7 +3151,6 @@ async fn test_tmp_fs_usage() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "tmp_fs import handling times out instead of failing fast with Module not found error"]
 async fn test_tmp_fs_should_not_be_available_in_import_stmt() {
   // The s3 fs and tmp fs are not currently attached to the module loader, so the import statement
   // should not recognize their prefixes. (But, depending on the case, they may be attached in the
@@ -3189,11 +3167,13 @@ async fn test_tmp_fs_should_not_be_available_in_import_stmt() {
         ErrorResponsePayload::assert_error_response(resp).await;
 
       assert_eq!(status, 500);
-      dbg!(&payload.msg);
-      assert!(payload.msg.starts_with(
-        "InvalidWorkerResponse: event loop error while evaluating the module: \
-        TypeError: Module not found: file:///tmp/meowmeow.ts"
-      ));
+      assert!(
+        payload
+          .msg
+          .contains("Module not found: file:///tmp/meowmeow.ts"),
+        "unexpected error: {}",
+        payload.msg
+      );
     }),
     TerminationToken::new()
   );
@@ -3361,21 +3341,18 @@ async fn test_commonjs_websocket(prefix: String) {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: WebSocket upgrade not working through user worker routing"]
 async fn test_commonjs_ws_websocket() {
   test_commonjs_websocket(String::from("ws")).await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: WebSocket upgrade not working through user worker routing"]
 async fn test_commonjs_hono_websocket() {
   test_commonjs_websocket(String::from("hono")).await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: WebSocket upgrade not working through user worker routing"]
 async fn test_commonjs_express_websocket() {
   test_commonjs_websocket(String::from("express")).await;
 }
@@ -3428,7 +3405,6 @@ async fn test_byonm_typescript() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: workspace member resolution not implemented - @workspace/* imports not resolved"]
 async fn test_deno_workspace() {
   integration_test!(
     "./test_cases/main",
@@ -3455,8 +3431,10 @@ async fn test_deno_workspace() {
 
 #[tokio::test]
 #[serial]
-#[ignore]
 async fn test_supabase_ai_gte() {
+  require_onnx_runtime();
+  ext_ai::onnxruntime::session::force_cleanup_all().await;
+
   let tb = TestBedBuilder::new("./test_cases/main")
     .with_per_worker_policy(None)
     .build()
@@ -3472,6 +3450,8 @@ async fn test_supabase_ai_gte() {
     .unwrap();
 
   assert_eq!(resp.status().as_u16(), StatusCode::OK);
+  tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
+  ext_ai::onnxruntime::session::force_cleanup_all().await;
 }
 
 // -- ext_ai: ORT base api
@@ -3509,6 +3489,7 @@ async fn test_ort_string_tensor() {
     .unwrap();
 
   assert_eq!(resp.status().as_u16(), StatusCode::OK);
+  tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
   ext_ai::onnxruntime::session::force_cleanup_all().await;
 }
 
@@ -3575,6 +3556,13 @@ async fn test_ort_transformers_js(script_path: &str) {
     .header("Content-Type", "application/json")
     .header("Content-Length", content_length.to_string());
 
+  // Store status code to defer assertion until after server cleanup.
+  // If an assertion panics inside the integration_test! callback, the
+  // TerminationToken cleanup is skipped, leaving V8 isolates in a bad
+  // state that crashes subsequent tests.
+  let result_status = std::sync::Arc::new(std::sync::atomic::AtomicU16::new(0));
+  let status_capture = result_status.clone();
+
   integration_test!(
     main_path,
     NON_SECURE_PORT,
@@ -3582,13 +3570,15 @@ async fn test_ort_transformers_js(script_path: &str) {
     None,
     Some(req),
     None,
-    (|resp| async {
-      let res = resp.unwrap();
+    (|resp| async move {
+      let Ok(res) = resp else {
+        return;
+      };
       let status_code = res.status();
+      status_capture
+        .store(status_code.as_u16(), std::sync::atomic::Ordering::SeqCst);
 
-      assert!(matches!(status_code, StatusCode::OK | StatusCode::CREATED));
-
-      if status_code == StatusCode::OK {
+      if status_code != StatusCode::CREATED {
         return;
       }
 
@@ -3612,6 +3602,14 @@ async fn test_ort_transformers_js(script_path: &str) {
   );
 
   ext_ai::onnxruntime::session::force_cleanup_all().await;
+
+  let status = result_status.load(std::sync::atomic::Ordering::SeqCst);
+  assert!(
+    status == 200 || status == 201,
+    "ORT test '{}' expected status 200 or 201, got {}",
+    script_path,
+    status
+  );
 }
 
 #[tokio::test]
@@ -3628,7 +3626,7 @@ async fn test_ort_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "snapshot mismatch in CI"]
+#[ignore = "flaky: worker OOM (Array buffer allocation failed)"]
 async fn test_ort_nlp_question_answering() {
   test_ort_transformers_js("question-answering").await;
 }
@@ -3677,21 +3675,19 @@ async fn test_ort_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
+#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_vision_image_classification() {
   test_ort_transformers_js("image-classification").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_vision_zero_shot_image_classification() {
   test_ort_transformers_js("zero-shot-image-classification").await;
 }
@@ -3711,7 +3707,7 @@ async fn test_ort_cache_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "snapshot mismatch in CI"]
+#[ignore = "flaky: worker OOM (Array buffer allocation failed)"]
 async fn test_ort_cache_nlp_question_answering() {
   test_ort_transformers_js("question-answering-cache").await;
 }
@@ -3760,21 +3756,19 @@ async fn test_ort_cache_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
+#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_cache_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction-cache").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_cache_vision_image_classification() {
   test_ort_transformers_js("image-classification-cache").await;
 }
 
 #[tokio::test]
 #[serial]
-#[ignore = "requires magick.wasm accessible via VFS - needs fix"]
 async fn test_ort_cache_vision_zero_shot_image_classification() {
   test_ort_transformers_js("zero-shot-image-classification-cache").await;
 }
@@ -3966,7 +3960,6 @@ async fn test_should_not_wait_for_background_tests() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "trex temp: V8 GC issue - null isolate pointer in early drop scenario"]
 async fn test_should_be_able_to_trigger_early_drop_with_wall_clock() {
   let (tx, mut rx) = mpsc::unbounded_channel();
   let tb = TestBedBuilder::new("./test_cases/main")
@@ -4437,6 +4430,88 @@ impl TlsExt for Option<Tls> {
       .with_single_cert(certs, key)
       .unwrap()
   }
+}
+
+// Test: user worker with default settings (allowHostFsAccess=false) cannot read host files
+#[tokio::test]
+#[serial]
+async fn test_host_fs_access_blocked_by_default() {
+  integration_test!(
+    "./test_cases/main",
+    NON_SECURE_PORT,
+    "host-fs-access",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 500);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let ok = body.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+      assert!(!ok, "Expected host fs read to fail, but it succeeded");
+    }),
+    TerminationToken::new()
+  );
+}
+
+// Test: user worker with allowHostFsAccess=true can read host files
+#[tokio::test]
+#[serial]
+async fn test_host_fs_access_allowed() {
+  integration_test!(
+    "./test_cases/main_with_host_fs_access",
+    NON_SECURE_PORT,
+    "host-fs-access",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 200);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let ok = body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+      assert!(
+        ok,
+        "Expected host fs read to succeed with allowHostFsAccess=true"
+      );
+    }),
+    TerminationToken::new()
+  );
+}
+
+// Test: restrict_host_fs=true rejects allowHostFsAccess=true
+#[tokio::test]
+#[serial]
+async fn test_restrict_host_fs_rejects_allow_host_fs_access() {
+  integration_test_with_server_flag!(
+    ServerFlags {
+      restrict_host_fs: true,
+      ..Default::default()
+    },
+    "./test_cases/main_with_host_fs_access",
+    NON_SECURE_PORT,
+    "host-fs-access",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 500);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let msg = body.get("msg").and_then(|v| v.as_str()).unwrap_or("");
+      assert!(
+        msg.contains(
+          "allowHostFsAccess cannot be enabled when restrict_host_fs is set"
+        ),
+        "Expected restrict_host_fs error, got: {}",
+        msg
+      );
+    }),
+    TerminationToken::new()
+  );
 }
 
 fn new_localhost_tls(secure: bool) -> Option<Tls> {

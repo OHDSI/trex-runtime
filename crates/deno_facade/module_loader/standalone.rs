@@ -228,6 +228,7 @@ pub struct SharedModuleLoaderState {
   pub(crate) vfs: Arc<FileBackedVfs>,
   #[allow(dead_code)]
   pub(crate) sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
+  pub(crate) disable_fs_fallback: bool,
 }
 
 #[derive(Clone)]
@@ -562,7 +563,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
     let Some(module) = self.shared.eszip.get_module(original_specifier) else {
       #[allow(clippy::collapsible_if)]
-      if original_specifier.scheme() == "file" {
+      if !self.shared.disable_fs_fallback
+        && original_specifier.scheme() == "file"
+      {
         if let Ok(path) = original_specifier.to_file_path() {
           let paths_to_try: Vec<PathBuf> = {
             let mut paths = vec![path.clone()];
@@ -843,6 +846,7 @@ pub async fn create_module_loader_for_eszip(
   permissions_options: PermissionsOptions,
   include_source_map: bool,
   service_path: Option<&str>,
+  disable_fs_fallback: bool,
 ) -> Result<RuntimeProviders, AnyError> {
   let migrated = eszip.migrated();
   let current_exe_path = std::env::current_exe().unwrap();
@@ -1259,6 +1263,7 @@ pub async fn create_module_loader_for_eszip(
       node_resolver: node_resolver.clone(),
       vfs: vfs.clone(),
       sloppy_imports_resolver: None,
+      disable_fs_fallback,
     }),
   };
 
@@ -1292,6 +1297,7 @@ pub async fn create_module_loader_for_standalone_from_eszip_kind(
   include_source_map: bool,
   options: Option<MigrateOptions>,
   service_path: Option<&str>,
+  disable_fs_fallback: bool,
 ) -> Result<RuntimeProviders, AnyError> {
   let eszip = migrate::try_migrate_if_needed(
     payload_to_eszip(eszip_payload_kind).await?,
@@ -1304,6 +1310,7 @@ pub async fn create_module_loader_for_standalone_from_eszip_kind(
     permissions_options,
     include_source_map,
     service_path,
+    disable_fs_fallback,
   )
   .await
 }

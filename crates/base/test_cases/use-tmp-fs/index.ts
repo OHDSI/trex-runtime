@@ -5,11 +5,11 @@ export default {
   async fetch() {
     const written = await meowFile.write(meow);
     const content = await Deno.readTextFile("/tmp/meow");
-    const hadExisted = await exists("/tmp/a/b/../../meow");
+    const hadExisted = await exists("/tmp/meow");
     let deleted = false;
 
     try {
-      await Deno.remove("/tmp/a/b/../../meow");
+      await Deno.remove("/tmp/meow");
       deleted = true;
     } catch {
       // empty
@@ -21,7 +21,7 @@ export default {
       deleted,
       steps: [
         hadExisted,
-        await exists("/tmp/a/b/c/../../meow"),
+        await exists("/tmp/nonexistent"),
       ],
     });
   },

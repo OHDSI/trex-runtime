@@ -14,7 +14,8 @@ WAT sample
 */
 let wasm;
 
-let buf = Deno.readFileSync(import.meta.dirname + "/grow.wasm") as Uint8Array;
+// Use path relative to project root (matching static_patterns)
+let buf = Deno.readFileSync("./test_cases/wasm/grow_standalone/grow.wasm") as Uint8Array;
 let mod = new WebAssembly.Module(buf);
 let imports = { wbg: {} };
 let instance = new WebAssembly.Instance(mod, imports);

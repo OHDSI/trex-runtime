@@ -338,6 +338,11 @@ fn get_start_command() -> Command {
         .help("Configure console auto instrumentation for OpenTelemetry Logs")
         .value_parser(value_parser!(OtelConsoleConfig)),
     )
+    .arg(
+      arg!(--"restrict-host-fs")
+        .help("Restrict host filesystem access for main/event workers (use PrefixFs instead of RealFs)")
+        .action(ArgAction::SetTrue),
+    )
 }
 
 fn get_bundle_command() -> Command {

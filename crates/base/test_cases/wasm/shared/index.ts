@@ -104,8 +104,9 @@ export function use_grow() {
 
 export default function init() {
   // 20985134 bytes ~= 21M (in file system)
+  // Use path relative to project root (matching static_patterns)
   let buf = Deno.readFileSync(
-    import.meta.dirname + "/20mib.wasm",
+    "./test_cases/wasm/shared/20mib.wasm",
   ) as Uint8Array;
   let mod = new WebAssembly.Module(buf);
   let imports = { wbg: {} };

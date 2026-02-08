@@ -239,15 +239,7 @@ impl DenoOptions {
     &self,
     _config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    // resolve_ts_config_for_emit moved from Workspace to CompilerOptionsResolver in Deno 2.5.6
-    // CompilerOptionsResolver needs to be created separately and is not part of Workspace
-    // For now, return a stub TsConfigForEmit with default compiler options
-    // TODO: Properly implement by:
-    // 1. Creating a CompilerOptionsResolver via CompilerOptionsResolver::new()
-    // 2. Calling for_specifier() to get compiler options data
-    // 3. Extracting transpile_options() or emit_options() as needed
-
-    let default_compiler_options = serde_json::json!({
+    let mut compiler_options = serde_json::json!({
       "checkJs": false,
       "experimentalDecorators": true,
       "emitDecoratorMetadata": true,
@@ -262,8 +254,19 @@ impl DenoOptions {
       "jsxPrecompileSkipElements": null
     });
 
+    // Merge workspace root deno.json compilerOptions over defaults
+    if let Some(root_config) = self.workspace().root_deno_json()
+      && let Some(serde_json::Value::Object(user_opts)) =
+        &root_config.json.compiler_options
+      && let serde_json::Value::Object(defaults) = &mut compiler_options
+    {
+      for (key, value) in user_opts {
+        defaults.insert(key.clone(), value.clone());
+      }
+    }
+
     Ok(TsConfigForEmit {
-      ts_config: args::deno_json::TsConfigWrapper(default_compiler_options),
+      ts_config: args::deno_json::TsConfigWrapper(compiler_options),
       maybe_ignored_options: None,
     })
   }
