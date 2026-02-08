@@ -10,6 +10,8 @@ const CDW_BUILT_IN_DIR = "/usr/src/cdw_data/built_in";
 const {
 	op_install_plugin,
 	op_execute_query,
+	op_acquire_worker,
+	op_execute_query_pinned,
 	op_exit,
 	op_get_dbc,
 	op_set_dbc,
@@ -228,6 +230,7 @@ export class UserDatabaseManager {
 
 	getConnection(db_id, schema, vocab_schema, result_schema, translationMap) {
 		const dbc = this.getDatabaseCredentials();
+		const worker_id = op_acquire_worker();
 		let dialect = "duckdb";
 		if (db_id != CDW_DUCKDB_FILE_DATABASE_CODE) {
 			try {
@@ -237,9 +240,9 @@ export class UserDatabaseManager {
 			}
 		}
 		if(dialect !== 'hana') {
-			return new TrexConnection(new TrexDB(db_id), new TrexDB(`${db_id}`), schema,vocab_schema,result_schema,'duckdb',translationMap);
+			return new TrexConnection(new TrexDB(db_id, worker_id), new TrexDB(`${db_id}`, worker_id), schema,vocab_schema,result_schema,'duckdb',translationMap);
 		} else {
-			return new TrexConnection(new HanaDB(db_id), new HanaDB(`${db_id}`), schema,vocab_schema,result_schema,'hana',translationMap);
+			return new TrexConnection(new HanaDB(db_id, worker_id), new HanaDB(`${db_id}`, worker_id), schema,vocab_schema,result_schema,'hana',translationMap);
 		}
 	}
 }
@@ -248,11 +251,13 @@ export class UserDatabaseManager {
 
 export class TrexDB {
 	__database;
-	constructor(database) {
+	__worker_id;
+	constructor(database, worker_id) {
 		const dbm = DatabaseManager.getDatabaseManager();
 		if (database === CDW_DUCKDB_FILE_DATABASE_CODE) {
       this.__database = CDW_DUCKDB_FILE_DATABASE_CODE;
 			dbm.add_cdw_config_duckdb_connection()
+			this.__worker_id = worker_id !== undefined ? worker_id : op_acquire_worker();
       return;
     }
 
@@ -264,7 +269,7 @@ export class TrexDB {
 				this.__database = this.__database+"_trexpg";
 			}
 		}
-		
+		this.__worker_id = worker_id !== undefined ? worker_id : op_acquire_worker();
 	}
 
 	getdatabase() {
@@ -282,7 +287,7 @@ export class TrexDB {
 			try {
 				const nparams = map_params(params);
 				console.log(`DB: ${this.__database} SQL: ${sql}`);
-				resolve(JSON.parse(op_execute_query(this.__database, sql, nparams)));
+				resolve(JSON.parse(op_execute_query_pinned(this.__worker_id, this.__database, sql, nparams)));
 			} catch(e) {
 				reject(e);
 			}
@@ -291,8 +296,8 @@ export class TrexDB {
 }
 
 export class HanaDB extends TrexDB {
-	constructor(database) {
-		super(database);
+	constructor(database, worker_id) {
+		super(database, worker_id);
 	}
 	executeWrite(sql, params) {
 		return this.execute(sql, params);

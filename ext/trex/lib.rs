@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod query_executor;
 
 use base64::{engine::general_purpose, Engine as _};
 use deno_core::op2;
@@ -48,23 +49,24 @@ type PendingRequestsMap =
 type RequestChannelType = Arc<Mutex<Option<mpsc::Sender<JsonValue>>>>;
 
 static TREX_DB: LazyLock<Arc<Mutex<Connection>>> = LazyLock::new(|| {
-  let cfg = match Config::default().allow_unsigned_extensions() {
-    Ok(c) => c,
-    Err(e) => {
-      eprintln!("Failed to allow unsigned extensions: {e}");
-      Config::default()
-    }
-  };
+  let cfg = Config::default()
+    .allow_unsigned_extensions()
+    .unwrap_or_default();
+
   let conn = Connection::open_in_memory_with_flags(cfg)
-    .expect("Failed to open DuckDB in-memory with config");
+    .expect("failed to open DuckDB in-memory");
+
   if let Ok(path) = std::env::var("DUCKDB_CIRCE_EXTENSION") {
-    let escaped = path.replace('\'', "''");
-    if let Err(e) = conn.execute(&format!("LOAD '{}'", escaped), []) {
-      eprintln!("Failed to LOAD extension from {}: {e}", path);
+    if let Err(e) =
+      conn.execute(&format!("LOAD '{}'", path.replace('\'', "''")), [])
+    {
+      warn!(path, error = %e, "failed to load circe extension");
     }
   } else {
     let _ = conn.execute("LOAD circe", []);
   }
+
+  let _ = connection::init_query_executor(&conn);
   let conn_arc = Arc::new(Mutex::new(conn));
   let _ = connection::init_owned_connection(conn_arc.clone());
   conn_arc
@@ -208,96 +210,72 @@ fn set_dbc_inner(dbc: String) {
 
 #[op2(fast)]
 fn op_install_plugin(#[string] name: String, #[string] dir: String) {
-  // Check if we should use node_modules structure (for backward compatibility with bun)
-  // Environment variable: TPM_USE_NODE_MODULES=false to disable (default: true)
-  let use_node_modules = env::var("TPM_USE_NODE_MODULES")
-    .unwrap_or_else(|_| "true".to_string())
-    .to_lowercase()
-    != "false";
+  use tracing::{error, info};
 
-  // Determine install directory based on structure preference
+  let use_node_modules = env::var("TPM_USE_NODE_MODULES")
+    .map(|v| v.to_lowercase() != "false")
+    .unwrap_or(true);
+
   let install_dir = if use_node_modules {
-    format!("{}/node_modules", dir)
+    format!("{dir}/node_modules")
   } else {
-    dir.clone()
+    dir
   };
 
-  // Try to load TPM extension (ignore if already loaded)
-  let _ = execute_query("memory".to_string(), "LOAD 'tpm'".to_string(), vec![]);
-
-  // Escape SQL special characters
-  let escaped_name = name.replace("'", "''");
-  let escaped_dir = install_dir.replace("'", "''");
+  let _ =
+    execute_query("memory".to_string(), "LOAD 'tpm'".to_string(), vec![], -1);
 
   let sql = format!(
     "SELECT install_results FROM tpm_install('{}', '{}')",
-    escaped_name, escaped_dir
+    name.replace('\'', "''"),
+    install_dir.replace('\'', "''")
   );
 
-  let result = execute_query("memory".to_string(), sql, vec![]);
-
-  match result {
+  match execute_query("memory".to_string(), sql, vec![], -1) {
     Ok(json_str) => {
       match serde_json::from_str::<Vec<serde_json::Value>>(&json_str) {
+        Ok(rows) if rows.is_empty() => {
+          warn!(package = %name, "no packages installed");
+        }
         Ok(rows) => {
-          if rows.is_empty() {
-            eprintln!("Warning: No packages installed for: {}", name);
-            return;
-          }
-
-          let mut success_count = 0;
-          let mut error_count = 0;
-
+          let (mut ok, mut err) = (0usize, 0usize);
           for row in rows {
-            if let Some(install_result) = row.get("install_results") {
-              if let Ok(result_str) =
-                serde_json::from_value::<String>(install_result.clone())
+            if let Some(result) = row
+              .get("install_results")
+              .and_then(|v| serde_json::from_value::<String>(v.clone()).ok())
+              .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            {
+              let pkg = result
+                .get("package")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+              let ver = result
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+              if result
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
               {
-                if let Ok(result_obj) =
-                  serde_json::from_str::<serde_json::Value>(&result_str)
-                {
-                  let package = result_obj
-                    .get("package")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                  let version = result_obj
-                    .get("version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                  let success = result_obj
-                    .get("success")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                  if success {
-                    println!("Successfully installed: {}@{}", package, version);
-                    success_count += 1;
-                  } else {
-                    let error = result_obj
-                      .get("error")
-                      .and_then(|v| v.as_str())
-                      .unwrap_or("unknown error");
-                    eprintln!("Failed to install {}: {}", package, error);
-                    error_count += 1;
-                  }
-                }
+                info!(package = pkg, version = ver, "installed");
+                ok += 1;
+              } else {
+                let e = result
+                  .get("error")
+                  .and_then(|v| v.as_str())
+                  .unwrap_or("unknown");
+                error!(package = pkg, error = e, "install failed");
+                err += 1;
               }
             }
           }
-
-          println!(
-            "Plugin installation complete: {} succeeded, {} failed",
-            success_count, error_count
-          );
+          info!(succeeded = ok, failed = err, "plugin install complete");
         }
-        Err(e) => {
-          eprintln!("Warning: Failed to parse installation results: {}. Raw response: {}", e, json_str);
-        }
+        Err(e) => warn!(error = %e, "failed to parse install results"),
       }
     }
-    Err(e) => {
-      eprintln!("Warning: Failed to install plugin '{}': {}. Make sure TPM extension is installed.", name, e);
-    }
+    Err(e) => warn!(package = %name, error = %e, "plugin install failed"),
   }
 }
 
@@ -512,64 +490,86 @@ fn execute_query(
   database: String,
   sql: String,
   params: Vec<TrexType>,
+  worker_id: i32,
 ) -> Result<String, TrexError> {
-  // Wrap the entire DuckDB operation in catch_unwind to prevent panics
-  // from external extensions (like hana_scan) from crashing the V8 runtime
-  let result = panic::catch_unwind(AssertUnwindSafe(|| {
-    execute_query_inner(database, sql, params)
-  }));
+  if let Some(executor) = connection::get_query_executor() {
+    let params_json = serde_json::to_string(&params)
+      .map_err(|e| TrexError::Generic(format!("param serialize: {e}")))?;
 
+    let rx = if worker_id >= 0 {
+      executor.submit_to(worker_id as usize, database, sql, params_json)
+    } else {
+      executor.submit(database, sql, params_json)
+    };
+
+    match rx.recv() {
+      Ok(query_executor::QueryResult::Success(json)) => Ok(json),
+      Ok(query_executor::QueryResult::Error(msg)) => {
+        Err(TrexError::Generic(msg))
+      }
+      Err(_) => Err(TrexError::Generic("executor channel closed".into())),
+    }
+  } else {
+    execute_query_fallback(database, sql, params)
+  }
+}
+
+fn execute_query_fallback(
+  database: String,
+  sql: String,
+  params: Vec<TrexType>,
+) -> Result<String, TrexError> {
+  let result = panic::catch_unwind(AssertUnwindSafe(|| {
+    execute_query_fallback_inner(database, sql, params)
+  }));
   match result {
-    Ok(inner_result) => inner_result,
+    Ok(inner) => inner,
     Err(panic_err) => {
-      let panic_msg = extract_panic_message(panic_err);
-      Err(TrexError::Generic(format!(
-        "Query execution panicked: {panic_msg}"
-      )))
+      let msg = extract_panic_message(panic_err);
+      Err(TrexError::Generic(format!("query panicked: {msg}")))
     }
   }
 }
 
-fn execute_query_inner(
+fn execute_query_fallback_inner(
   database: String,
   sql: String,
   params: Vec<TrexType>,
 ) -> Result<String, TrexError> {
   let conn_arc = get_active_connection();
-  let conn = match conn_arc.lock() {
-    Ok(guard) => guard,
+  let guard = match conn_arc.lock() {
+    Ok(g) => g,
     Err(poisoned) => {
-      warn!("Lock was poisoned, recovering");
+      warn!("lock was poisoned, recovering");
       poisoned.into_inner()
     }
   };
-  let _ = conn
-    .execute(&format!("USE {database}"), [])
-    .inspect_err(|e| warn!("{e}"));
+  let conn = guard
+    .try_clone()
+    .map_err(|e| TrexError::Generic(format!("connection clone: {e}")))?;
+  drop(guard);
+
+  if let Err(e) = conn.execute(&format!("USE {database}"), []) {
+    warn!(database, error = %e, "failed to switch database");
+  }
+
   if sql.trim().is_empty() {
     return Ok("[]".to_string());
   }
-  let tmpstmt = conn
-    .prepare(&sql)
-    .inspect_err(|e| warn!("prepare error: {e:?}"));
-  match tmpstmt {
+
+  match conn.prepare(&sql) {
     Ok(mut stmt) => match stmt.query_arrow(params_from_iter(params.iter())) {
-      Ok(iter) => {
-        let batches: Vec<RecordBatch> = iter.collect();
-        Ok(record_batches_to_json(&batches))
-      }
-      Err(e) => Err(TrexError::Generic(format!("Query execution failed: {e}"))),
+      Ok(iter) => Ok(record_batches_to_json(&iter.collect::<Vec<_>>())),
+      Err(e) => Err(TrexError::Generic(format!("query exec: {e}"))),
     },
     Err(e) => {
-      // Build full error chain for better debugging
-      let err: &dyn StdError = &e;
-      let mut msg = format!("{err}");
-      let mut source = err.source();
+      let mut msg = e.to_string();
+      let mut source = (&e as &dyn StdError).source();
       while let Some(s) = source {
         msg = format!("{msg}: {s}");
         source = s.source();
       }
-      Err(TrexError::Generic(format!("Query failed: {msg}")))
+      Err(TrexError::Generic(msg))
     }
   }
 }
@@ -581,7 +581,26 @@ fn op_execute_query(
   #[string] sql: String,
   #[serde] params: Vec<TrexType>,
 ) -> Result<String, TrexError> {
-  execute_query(database, sql, params)
+  execute_query(database, sql, params, -1)
+}
+
+#[op2(fast)]
+#[smi]
+fn op_acquire_worker() -> u32 {
+  connection::get_query_executor()
+    .map(|e| e.next_worker_id() as u32)
+    .unwrap_or(0)
+}
+
+#[op2]
+#[string]
+fn op_execute_query_pinned(
+  #[smi] worker_id: u32,
+  #[string] database: String,
+  #[string] sql: String,
+  #[serde] params: Vec<TrexType>,
+) -> Result<String, TrexError> {
+  execute_query(database, sql, params, worker_id as i32)
 }
 
 pub struct QueryStreamResource {
@@ -755,13 +774,23 @@ fn op_execute_query_stream(
     tokio::task::spawn_blocking(move || {
       // Wrap DuckDB operations in catch_unwind to prevent panics from crashing V8
       let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        let conn = match conn_arc.lock() {
-          Ok(guard) => guard,
+        let guard = match conn_arc.lock() {
+          Ok(g) => g,
           Err(poisoned) => {
-            warn!("Lock was poisoned in streaming query, recovering");
+            warn!("lock was poisoned in streaming query, recovering");
             poisoned.into_inner()
           }
         };
+        let conn = match guard.try_clone() {
+          Ok(c) => c,
+          Err(e) => {
+            let _ = sender.blocking_send(format!(
+              "{{\"error\":\"connection clone: {e}\"}}"
+            ));
+            return;
+          }
+        };
+        drop(guard);
         if conn.execute(&format!("USE {database}"), []).is_err() {
           return;
         }
@@ -827,6 +856,8 @@ deno_core::extension!(
     ops = [
         op_install_plugin,
         op_execute_query,
+        op_acquire_worker,
+        op_execute_query_pinned,
         op_get_dbc,
         op_get_dbc2,
         op_set_dbc,
@@ -1274,7 +1305,7 @@ mod tests {
   #[serial]
   fn test_execute_query_simple_select() {
     let result =
-      execute_query("memory".into(), "SELECT 1 AS val".into(), vec![]);
+      execute_query("memory".into(), "SELECT 1 AS val".into(), vec![], -1);
     let json_str = result.unwrap();
     let parsed: Vec<JsonValue> = serde_json::from_str(&json_str).unwrap();
     assert_eq!(parsed.len(), 1);
@@ -1284,7 +1315,7 @@ mod tests {
   #[test]
   #[serial]
   fn test_execute_query_empty_sql() {
-    let result = execute_query("memory".into(), "".into(), vec![]);
+    let result = execute_query("memory".into(), "".into(), vec![], -1);
     assert_eq!(result.unwrap(), "[]");
   }
 
@@ -1296,16 +1327,19 @@ mod tests {
       "CREATE TABLE IF NOT EXISTS test_cq_tbl (id INTEGER, name VARCHAR)"
         .into(),
       vec![],
+      -1,
     );
     let _ = execute_query(
       "memory".into(),
       "INSERT INTO test_cq_tbl VALUES (1, 'Alice'), (2, 'Bob')".into(),
       vec![],
+      -1,
     );
     let result = execute_query(
       "memory".into(),
       "SELECT * FROM test_cq_tbl ORDER BY id".into(),
       vec![],
+      -1,
     )
     .unwrap();
     let parsed: Vec<JsonValue> = serde_json::from_str(&result).unwrap();
@@ -1316,6 +1350,7 @@ mod tests {
       "memory".into(),
       "DROP TABLE IF EXISTS test_cq_tbl".into(),
       vec![],
+      -1,
     );
   }
 
@@ -1330,6 +1365,7 @@ mod tests {
         TrexType::String("hi".into()),
         TrexType::Number(1.23),
       ],
+      -1,
     )
     .unwrap();
     let parsed: Vec<JsonValue> = serde_json::from_str(&result).unwrap();
@@ -1346,6 +1382,7 @@ mod tests {
       "memory".into(),
       "SELECT $1::TIMESTAMP AS ts".into(),
       vec![TrexType::DateTime(1704067200000)],
+      -1,
     )
     .unwrap();
     let parsed: Vec<JsonValue> = serde_json::from_str(&result).unwrap();
@@ -1356,10 +1393,11 @@ mod tests {
   #[test]
   #[serial]
   fn test_execute_query_invalid_sql() {
-    let result = execute_query("memory".into(), "NOT VALID SQL".into(), vec![]);
+    let result =
+      execute_query("memory".into(), "NOT VALID SQL".into(), vec![], -1);
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("Query failed"));
+    assert!(!err_msg.is_empty());
   }
 
   #[test]
@@ -1369,6 +1407,7 @@ mod tests {
       "memory".into(),
       "SELECT * FROM generate_series(1, 5) AS t(n)".into(),
       vec![],
+      -1,
     )
     .unwrap();
     let parsed: Vec<JsonValue> = serde_json::from_str(&result).unwrap();
@@ -1385,16 +1424,22 @@ mod tests {
       )"
       .into(),
       vec![],
+      -1,
     );
     let _ = execute_query(
       "memory".into(),
       "INSERT INTO test_types VALUES (1, 'hello', 1.5, true, '2024-01-01', '2024-01-01 12:00:00')"
         .into(),
       vec![],
+      -1,
     );
-    let result =
-      execute_query("memory".into(), "SELECT * FROM test_types".into(), vec![])
-        .unwrap();
+    let result = execute_query(
+      "memory".into(),
+      "SELECT * FROM test_types".into(),
+      vec![],
+      -1,
+    )
+    .unwrap();
     let parsed: Vec<JsonValue> = serde_json::from_str(&result).unwrap();
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed[0]["i"], 1);
@@ -1405,6 +1450,7 @@ mod tests {
       "memory".into(),
       "DROP TABLE IF EXISTS test_types".into(),
       vec![],
+      -1,
     );
   }
 

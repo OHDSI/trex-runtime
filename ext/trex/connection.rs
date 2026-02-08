@@ -1,5 +1,23 @@
+//! DuckDB connection management and query executor initialization.
+
+use crate::query_executor::{QueryExecutor, EXECUTOR_POOL_SIZE};
 use duckdb::Connection;
 use std::sync::{Arc, Mutex, OnceLock};
+
+static QUERY_EXECUTOR: OnceLock<Arc<QueryExecutor>> = OnceLock::new();
+static CONNECTION_PROVIDER: OnceLock<Arc<dyn ConnectionProvider>> =
+  OnceLock::new();
+
+pub fn init_query_executor(connection: &Connection) -> Result<(), String> {
+  let executor = QueryExecutor::new(connection, EXECUTOR_POOL_SIZE)?;
+  QUERY_EXECUTOR
+    .set(Arc::new(executor))
+    .map_err(|_| "executor already initialized".into())
+}
+
+pub fn get_query_executor() -> Option<Arc<QueryExecutor>> {
+  QUERY_EXECUTOR.get().cloned()
+}
 
 pub trait ConnectionProvider: Send + Sync {
   fn get_connection(&self) -> Arc<Mutex<Connection>>;
@@ -37,15 +55,12 @@ impl ConnectionProvider for SharedConnectionProvider {
   }
 }
 
-static CONNECTION_PROVIDER: OnceLock<Arc<dyn ConnectionProvider>> =
-  OnceLock::new();
-
 pub fn set_connection_provider(
   provider: Arc<dyn ConnectionProvider>,
 ) -> Result<(), String> {
   CONNECTION_PROVIDER
     .set(provider)
-    .map_err(|_| "Connection provider already set".to_string())
+    .map_err(|_| "provider already set".into())
 }
 
 pub fn get_connection_provider() -> Option<Arc<dyn ConnectionProvider>> {
@@ -59,15 +74,13 @@ pub fn get_connection() -> Option<Arc<Mutex<Connection>>> {
 pub fn init_owned_connection(
   conn: Arc<Mutex<Connection>>,
 ) -> Result<(), String> {
-  let provider = Arc::new(OwnedConnectionProvider::new(conn));
-  set_connection_provider(provider)
+  set_connection_provider(Arc::new(OwnedConnectionProvider::new(conn)))
 }
 
 pub fn init_shared_connection(
   conn: Arc<Mutex<Connection>>,
 ) -> Result<(), String> {
-  let provider = Arc::new(SharedConnectionProvider::new(conn));
-  set_connection_provider(provider)
+  set_connection_provider(Arc::new(SharedConnectionProvider::new(conn)))
 }
 
 #[cfg(test)]

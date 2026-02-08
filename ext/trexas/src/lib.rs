@@ -20,24 +20,29 @@ use std::{
     Arc, Mutex, OnceLock as OnceCell,
   },
 };
+use tracing::warn;
 
 static SHARED_CONNECTION: OnceCell<Arc<Mutex<Connection>>> = OnceCell::new();
 
-pub fn store_shared_connection(
+fn store_shared_connection(
   connection: &Connection,
 ) -> Result<(), Box<dyn Error>> {
+  if let Err(e) = trex_core::connection::init_query_executor(connection) {
+    warn!(error = %e, "query executor init failed (may already exist)");
+  }
+
   let cloned = connection
     .try_clone()
-    .map_err(|e| format!("Failed to clone connection: {}", e))?;
+    .map_err(|e| format!("connection clone: {e}"))?;
 
   SHARED_CONNECTION
     .set(Arc::new(Mutex::new(cloned)))
-    .map_err(|_| "Connection already stored")?;
+    .map_err(|_| "connection already stored")?;
 
   Ok(())
 }
 
-pub fn get_shared_connection() -> Option<Arc<Mutex<Connection>>> {
+fn get_shared_connection() -> Option<Arc<Mutex<Connection>>> {
   SHARED_CONNECTION.get().cloned()
 }
 
@@ -540,11 +545,10 @@ impl VScalar for TrexCreateBundleScalar {
   }
 }
 
-#[duckdb_entrypoint_c_api(ext_name = "trexas")]
 /// # Safety
-/// This function is called by DuckDB's extension loading mechanism and must be marked
-/// as unsafe due to FFI requirements. The Connection parameter is guaranteed to be valid
-/// by DuckDB when this function is called.
+///
+/// Called by DuckDB via `duckdb_entrypoint_c_api`. The connection must be valid.
+#[duckdb_entrypoint_c_api(ext_name = "trexas")]
 pub unsafe fn extension_entrypoint(
   con: Connection,
 ) -> Result<(), Box<dyn Error>> {
@@ -552,44 +556,22 @@ pub unsafe fn extension_entrypoint(
 
   if let Some(shared_conn) = get_shared_connection() {
     if let Err(e) = trex_core::connection::init_shared_connection(shared_conn) {
-      eprintln!(
-        "Warning: Failed to initialize trex with shared connection: {}",
-        e
-      );
+      warn!(error = %e, "trex shared connection init failed");
     }
   }
 
+  con.register_scalar_function::<TrexVersionScalar>("trex_version")?;
+  con.register_scalar_function::<StartTrexServerScalar>("trex_start_server")?;
+  con.register_scalar_function::<StartTrexServerWithConfigScalar>(
+    "trex_start_server_with_config",
+  )?;
+  con.register_scalar_function::<StopTrexServerScalar>("trex_stop_server")?;
+  con.register_scalar_function::<StopAllTrexServersScalar>(
+    "trex_stop_all_servers",
+  )?;
   con
-    .register_scalar_function::<TrexVersionScalar>("trex_version")
-    .expect("Failed to register trex_version scalar function");
-
-  con
-    .register_scalar_function::<StartTrexServerScalar>("trex_start_server")
-    .expect("Failed to register trex_start_server function");
-
-  con
-    .register_scalar_function::<StartTrexServerWithConfigScalar>(
-      "trex_start_server_with_config",
-    )
-    .expect("Failed to register trex_start_server_with_config function");
-
-  con
-    .register_scalar_function::<StopTrexServerScalar>("trex_stop_server")
-    .expect("Failed to register trex_stop_server function");
-
-  con
-    .register_scalar_function::<StopAllTrexServersScalar>(
-      "trex_stop_all_servers",
-    )
-    .expect("Failed to register trex_stop_all_servers function");
-
-  con
-    .register_scalar_function::<TrexCreateBundleScalar>("trex_create_bundle")
-    .expect("Failed to register trex_create_bundle function");
-
-  con
-    .register_table_function::<TrexServersTable>("trex_list_servers")
-    .expect("Failed to register trex_list_servers function");
+    .register_scalar_function::<TrexCreateBundleScalar>("trex_create_bundle")?;
+  con.register_table_function::<TrexServersTable>("trex_list_servers")?;
 
   Ok(())
 }

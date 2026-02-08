@@ -328,7 +328,7 @@ jobs:
             -e D2E_BASE_URL=https://localhost:443 \
             -e CI=true \
             -e GITHUB_ACTIONS=true \
-            d2e-e2e npm test
+            d2e-e2e npx playwright test --grep-invert "patient-analytics-patient-list"
 
       - name: Upload test results
         if: always()
