@@ -142,7 +142,6 @@ async fn test_write_and_get_bytes(bytes: usize) {
 #[serial]
 #[tokio::test]
 async fn test_write_and_get_various_bytes() {
-
   test_write_and_get_bytes(0).await;
   test_write_and_get_bytes(1).await;
   test_write_and_get_bytes(3 * MIB).await;
@@ -162,7 +161,6 @@ async fn test_write_and_get_various_bytes() {
 #[tokio::test]
 #[serial]
 async fn test_write_and_get_over_50_mib() {
-
   if !is_supabase_storage_being_tested() {
     return;
   }
@@ -256,7 +254,6 @@ impl DenoDirEntry {
 #[tokio::test]
 #[serial]
 async fn test_mkdir_and_read_dir() {
-
   remove("", true).await;
 
   {
@@ -303,7 +300,6 @@ async fn test_mkdir_and_read_dir() {
 #[tokio::test]
 #[serial]
 async fn test_mkdir_recursive_and_read_dir() {
-
   remove("", true).await;
 
   {
@@ -355,7 +351,6 @@ async fn test_mkdir_recursive_and_read_dir() {
 #[tokio::test]
 #[serial]
 async fn test_mkdir_with_no_recursive_opt_must_check_parent_path_exists() {
-
   remove("", true).await;
 
   {
@@ -420,7 +415,6 @@ async fn test_mkdir_with_no_recursive_opt_must_check_parent_path_exists() {
 #[tokio::test]
 #[serial]
 async fn test_mkdir_recursive_and_remove_recursive() {
-
   remove("", true).await;
 
   {
@@ -600,7 +594,6 @@ async fn test_mkdir_recursive_and_remove_recursive() {
 #[tokio::test]
 #[serial]
 async fn test_ensure_using_sync_api_in_async_callback_is_not_allowed() {
-
   remove("", true).await;
 
   let mut arr = vec![0u8; 1024];
