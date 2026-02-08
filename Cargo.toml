@@ -15,12 +15,10 @@ members = [
   "ext/ai/utilities",
   "ext/env",
   "ext/event_worker",
-  "ext/node",
   "ext/os",
   "ext/trex",
   "ext/runtime",
   "ext/workers",
-  "vendor/deno_console",
   "vendor/deno_os",
   "ext/trexas",
 ]
@@ -59,7 +57,7 @@ deno_semver = "=0.9.0"
 # deno libs
 deno_maybe_sync = "0.8.0"
 deno_npm_cache = "0.40.0"
-deno_npm_installer = { version = "0.16.0", path = "./vendor/deno_npm_installer" }
+deno_npm_installer = "0.16.0"
 deno_terminal = "0.2.2"
 deno_unsync = "0.4.4"
 node_resolver = "0.59.0"
@@ -68,7 +66,7 @@ node_resolver = "0.59.0"
 deno_broadcast_channel = "0.215.0"
 deno_cache = "0.153.0"
 deno_canvas = "0.90.0"
-deno_console = { path = "./vendor/deno_console" }
+deno_console = "0.221.0"
 deno_crypto = "0.235.0"
 deno_features = "0.18.0"
 deno_fetch = "0.245.0"
@@ -104,7 +102,7 @@ ext_ai = { version = "0.1.0", path = "./ext/ai" }
 ext_ai_v8_utilities = { version = "0.1.0", path = "./ext/ai/utilities" }
 ext_env = { version = "0.1.0", path = "./ext/env" }
 ext_event_worker = { version = "0.1.0", path = "./ext/event_worker" }
-ext_node = { version = "0.1.0", path = "./ext/node" }
+ext_node = "0.1.0"
 ext_os = { version = "0.1.0", path = "./ext/os" }
 ext_runtime = { version = "0.1.0", path = "./ext/runtime" }
 ext_workers = { version = "0.1.0", path = "./ext/workers" }
@@ -161,6 +159,7 @@ ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 fast-socks5 = "0.9.6"
 faster-hex = "0.9"
+filetime = "0.2.16"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 flate2 = { version = "=1.0.30", default-features = false }
 fqdn = "0.3.12"
@@ -191,6 +190,7 @@ memchr = "2.7.4"
 memmem = "0.1.1"
 monch = "=0.5.0"
 once_cell = "1.17.1"
+os_pipe = { version = "=1.2.1", features = ["io_safety"] }
 parking_lot = "0.12.0"
 path-clean = "=0.1.0"
 pathdiff = "0.2.1"
@@ -205,6 +205,7 @@ phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pin-project-lite = "0.2.13"
 rand = "=0.8.5"
+rayon = "1.8.0"
 regex = "^1.7.0"
 quinn = { version = "0.11.9", features = ["runtime-tokio", "rustls", "aws-lc-rs"] }
 reqwest = { version = "0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
@@ -255,7 +256,7 @@ opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_
 opentelemetry_sdk = "0.27.0"
 
 # upstream resolvers
-deno_resolver = { version = "0.52.0", path = "./vendor/deno_resolver" }
+deno_resolver = "0.52.0"
 
 # upstream deno extensions
 deno_process = "0.36.0"
@@ -288,20 +289,38 @@ winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
 
 [patch.crates-io]
-# Deno 2.5.6 upgrade - using p-hoffmann forks with upgraded dependencies
+# Standalone forks
 deno_core = { git = "https://github.com/p-hoffmann/deno_core", branch = "supabase-v0.363.0" }
 eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.104.0-edge-runtime" }
 v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v140.2.0" }
 timezone_provider = { git = "https://github.com/boa-dev/temporal", tag = "v0.0.14" }
 
-deno_unsync = { path = "./vendor/deno_unsync" }
-deno_telemetry = { path = "./vendor/deno_telemetry" }
-# Using local deno_net with stubbed op_tls_peer_certificate
-deno_net = { path = "./vendor/deno_net" }
-# Using local deno_io to remove op_set_raw (moved to deno_tty which isn't available in edge-runtime)
-deno_io = { path = "./vendor/deno_io" }
-# Using local deno_fs to remove op_set_raw from 30_fs.js (moved to deno_tty)
-deno_fs = { path = "./vendor/deno_fs" }
+# Deno monorepo fork — patched crates
+deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_io = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_net = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_console = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_telemetry = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+ext_node = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_npm_installer = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+# Deno monorepo fork — unmodified transitive deps (must come from same monorepo to avoid version conflicts)
+deno_config = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_crypto_provider = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_features = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_fetch = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_maybe_sync = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_npm_cache = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_package_json = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_permissions = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_process = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_signals = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_subprocess_windows = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+deno_tls = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+node_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex" }
+
+# Kept as local vendor (too divergent)
+deno_os = { path = "./vendor/deno_os" }
 
 [profile.dind]
 inherits = "dev"
