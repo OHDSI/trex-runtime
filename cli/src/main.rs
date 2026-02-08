@@ -235,8 +235,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .copied()
           .unwrap();
 
-        let restrict_host_fs = sub_matches
-          .get_flag("restrict-host-fs");
+        let restrict_host_fs = sub_matches.get_flag("restrict-host-fs");
 
         let flags = ServerFlags {
           otel: if !enable_otel.is_empty() {

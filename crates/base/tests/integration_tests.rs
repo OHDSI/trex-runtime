@@ -4470,7 +4470,10 @@ async fn test_host_fs_access_allowed() {
 
       let body = resp.json::<serde_json::Value>().await.unwrap();
       let ok = body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
-      assert!(ok, "Expected host fs read to succeed with allowHostFsAccess=true");
+      assert!(
+        ok,
+        "Expected host fs read to succeed with allowHostFsAccess=true"
+      );
     }),
     TerminationToken::new()
   );
@@ -4498,7 +4501,9 @@ async fn test_restrict_host_fs_rejects_allow_host_fs_access() {
       let body = resp.json::<serde_json::Value>().await.unwrap();
       let msg = body.get("msg").and_then(|v| v.as_str()).unwrap_or("");
       assert!(
-        msg.contains("allowHostFsAccess cannot be enabled when restrict_host_fs is set"),
+        msg.contains(
+          "allowHostFsAccess cannot be enabled when restrict_host_fs is set"
+        ),
         "Expected restrict_host_fs error, got: {}",
         msg
       );
