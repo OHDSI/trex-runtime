@@ -58,6 +58,9 @@ pub struct ServerConfig {
   pub worker_pool_max_size: Option<usize>,
   pub worker_memory_limit_mb: Option<usize>,
   pub decorator: bool,
+
+  // Filesystem restrictions
+  pub restrict_host_fs: bool,
 }
 
 impl std::fmt::Debug for ServerConfig {
@@ -103,6 +106,7 @@ impl std::fmt::Debug for ServerConfig {
       .field("worker_pool_max_size", &self.worker_pool_max_size)
       .field("worker_memory_limit_mb", &self.worker_memory_limit_mb)
       .field("decorator", &self.decorator)
+      .field("restrict_host_fs", &self.restrict_host_fs)
       .finish()
   }
 }
@@ -138,6 +142,7 @@ impl Default for ServerConfig {
       worker_pool_max_size: None,
       worker_memory_limit_mb: None,
       decorator: false,
+      restrict_host_fs: false,
     }
   }
 }
@@ -162,6 +167,7 @@ impl ServerConfig {
       beforeunload_wall_clock_pct: self.beforeunload_wall_clock_pct,
       beforeunload_cpu_pct: self.beforeunload_cpu_pct,
       beforeunload_memory_pct: self.beforeunload_memory_pct,
+      restrict_host_fs: self.restrict_host_fs,
     }
   }
 

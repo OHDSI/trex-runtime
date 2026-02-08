@@ -386,6 +386,8 @@ pub struct TrexServerConfig {
   pub worker_memory_limit_mb: Option<usize>,
   #[serde(default)]
   pub decorator: bool,
+  #[serde(default)]
+  pub restrict_host_fs: bool,
 }
 
 fn default_host() -> String {
@@ -458,6 +460,7 @@ impl TrexServerConfig {
         .map(|p| p as u8),
       beforeunload_cpu_pct: self.beforeunload_cpu_pct.map(|p| p as u8),
       beforeunload_memory_pct: self.beforeunload_memory_pct.map(|p| p as u8),
+      restrict_host_fs: self.restrict_host_fs,
     };
 
     let user_worker_policy = if supervisor_policy.is_some()
@@ -514,6 +517,7 @@ impl TrexServerConfig {
       worker_pool_max_size: self.max_parallelism,
       worker_memory_limit_mb: self.worker_memory_limit_mb,
       decorator: self.decorator,
+      restrict_host_fs: self.restrict_host_fs,
     })
   }
 }

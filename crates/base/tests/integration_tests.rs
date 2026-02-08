@@ -4432,6 +4432,88 @@ impl TlsExt for Option<Tls> {
   }
 }
 
+// Test: user worker with default settings (allowHostFsAccess=false) cannot read host files
+#[tokio::test]
+#[serial]
+async fn test_host_fs_access_blocked_by_default() {
+  integration_test!(
+    "./test_cases/main",
+    NON_SECURE_PORT,
+    "host-fs-access",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 500);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let ok = body.get("ok").and_then(|v| v.as_bool()).unwrap_or(true);
+      assert!(!ok, "Expected host fs read to fail, but it succeeded");
+    }),
+    TerminationToken::new()
+  );
+}
+
+// Test: user worker with allowHostFsAccess=true can read host files
+#[tokio::test]
+#[serial]
+async fn test_host_fs_access_allowed() {
+  integration_test!(
+    "./test_cases/main_with_host_fs_access",
+    NON_SECURE_PORT,
+    "host-fs-access",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 200);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let ok = body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+      assert!(
+        ok,
+        "Expected host fs read to succeed with allowHostFsAccess=true"
+      );
+    }),
+    TerminationToken::new()
+  );
+}
+
+// Test: restrict_host_fs=true rejects allowHostFsAccess=true
+#[tokio::test]
+#[serial]
+async fn test_restrict_host_fs_rejects_allow_host_fs_access() {
+  integration_test_with_server_flag!(
+    ServerFlags {
+      restrict_host_fs: true,
+      ..Default::default()
+    },
+    "./test_cases/main_with_host_fs_access",
+    NON_SECURE_PORT,
+    "host-fs-access",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 500);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let msg = body.get("msg").and_then(|v| v.as_str()).unwrap_or("");
+      assert!(
+        msg.contains(
+          "allowHostFsAccess cannot be enabled when restrict_host_fs is set"
+        ),
+        "Expected restrict_host_fs error, got: {}",
+        msg
+      );
+    }),
+    TerminationToken::new()
+  );
+}
+
 fn new_localhost_tls(secure: bool) -> Option<Tls> {
   secure.then(|| {
     Tls::new(SECURE_PORT, TLS_LOCALHOST_KEY, TLS_LOCALHOST_CERT).unwrap()

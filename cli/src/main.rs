@@ -235,6 +235,8 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .copied()
           .unwrap();
 
+        let restrict_host_fs = sub_matches.get_flag("restrict-host-fs");
+
         let flags = ServerFlags {
           otel: if !enable_otel.is_empty() {
             if enable_otel.len() > 1 {
@@ -269,6 +271,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           beforeunload_wall_clock_pct: maybe_beforeunload_wall_clock_pct,
           beforeunload_cpu_pct: maybe_beforeunload_cpu_pct,
           beforeunload_memory_pct: maybe_beforeunload_memory_pct,
+          restrict_host_fs,
         };
 
         let mut builder = Builder::new(addr, &main_service_path);

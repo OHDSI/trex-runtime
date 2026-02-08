@@ -731,6 +731,9 @@ where
           let allow_fs_access = maybe_user_conf
             .and_then(|conf| conf.allow_host_fs_access)
             .unwrap_or(false);
+          if allow_fs_access && flags.restrict_host_fs {
+            bail!("allowHostFsAccess cannot be enabled when restrict_host_fs is set");
+          }
           !allow_fs_access
         } else {
           false
@@ -744,7 +747,7 @@ where
             maybe_import_map_path,
           }),
           Some(base_dir_path.to_string_lossy().as_ref()),
-          should_block_fs,
+          should_block_fs || flags.restrict_host_fs,
         )
         .await?;
 
@@ -788,17 +791,13 @@ where
 
           fs.set_runtime_state(&runtime_state);
 
-          // Apply filesystem blocking to the base filesystem
-          fs.set_check_sync_api(should_block_fs);
-
           Ok(
             if let Some(s3_fs) =
               maybe_s3_fs_config.map(S3Fs::new).transpose()?
             {
               let mut s3_prefix_fs = fs.add_fs("/s3", s3_fs.clone());
 
-              // Apply the same blocking logic to S3 filesystem
-              s3_prefix_fs.set_check_sync_api(should_block_fs);
+              s3_prefix_fs.set_check_sync_api(is_user_worker);
 
               (Arc::new(s3_prefix_fs), Some(s3_fs))
             } else {
@@ -1048,7 +1047,7 @@ where
           deno_http::deno_http::args(deno_http::Options::default()),
           deno_io::deno_io::args(Some(stdio.clone())),
           deno_fs::deno_fs::args::<PermissionsContainer>(
-            if should_block_fs || s3_fs.is_some() {
+            if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
               fs.clone()
             } else {
               Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
@@ -1061,7 +1060,7 @@ where
               deno_resolver::npm::DenoInNpmPackageChecker,
               npm::NpmResolver<VfsSys>,
               VfsSys,
-            >(Some(node_services), if should_block_fs || s3_fs.is_some() {
+            >(Some(node_services), if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
               fs.clone()
             } else {
               Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
