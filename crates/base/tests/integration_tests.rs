@@ -3575,7 +3575,8 @@ async fn test_ort_transformers_js(script_path: &str) {
         return;
       };
       let status_code = res.status();
-      status_capture.store(status_code.as_u16(), std::sync::atomic::Ordering::SeqCst);
+      status_capture
+        .store(status_code.as_u16(), std::sync::atomic::Ordering::SeqCst);
 
       if status_code != StatusCode::CREATED {
         return;
@@ -3606,7 +3607,8 @@ async fn test_ort_transformers_js(script_path: &str) {
   assert!(
     status == 200 || status == 201,
     "ORT test '{}' expected status 200 or 201, got {}",
-    script_path, status
+    script_path,
+    status
   );
 }
 
