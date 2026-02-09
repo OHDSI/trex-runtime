@@ -2542,45 +2542,19 @@ fn terminate_execution_if_cancelled(
   isolate: &mut v8::Isolate,
   token: CancellationToken,
 ) -> TerminateExecutionIfCancelledReturnType {
-  // Raw pointer version to handle null isolate during disposal
-  extern "C" fn interrupt_fn_raw(
-    isolate_ptr: *mut v8::Isolate,
-    _: *mut std::ffi::c_void,
-  ) {
-    if isolate_ptr.is_null() {
-      return;
-    }
-    // SAFETY: We've verified the pointer is non-null
-    let isolate = unsafe { &mut *isolate_ptr };
-    if isolate.get_data(0).is_null() {
-      return;
-    }
-    let _ = isolate.terminate_execution();
-  }
-
   let handle = isolate.thread_safe_handle();
   let cancel_task_token = CancellationToken::new();
-  let request_interrupt_fn = move || {
-    // SAFETY: *mut T and &mut T have identical ABI representation.
-    let callback = unsafe {
-      std::mem::transmute::<
-        extern "C" fn(*mut v8::Isolate, *mut std::ffi::c_void),
-        extern "C" fn(&mut v8::Isolate, *mut std::ffi::c_void),
-      >(interrupt_fn_raw)
-    };
-    let _ = handle.request_interrupt(callback, std::ptr::null_mut());
-  };
 
   drop(base_rt::SUPERVISOR_RT.spawn({
     let cancel_task_token = cancel_task_token.clone();
 
     async move {
       if token.is_cancelled() {
-        request_interrupt_fn();
+        handle.terminate_execution();
       } else {
         tokio::select! {
           _ = token.cancelled_owned() => {
-            request_interrupt_fn();
+            handle.terminate_execution();
           }
 
           _ = cancel_task_token.cancelled_owned() => {}
