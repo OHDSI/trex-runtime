@@ -2253,6 +2253,9 @@ where
     let _ = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(());
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
@@ -2310,6 +2313,9 @@ where
     let fn_ret = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(false);
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
@@ -2366,6 +2372,9 @@ where
     let _ = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(());
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
@@ -2414,6 +2423,9 @@ where
     let _ = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(());
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
