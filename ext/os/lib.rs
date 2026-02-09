@@ -188,10 +188,10 @@ fn op_system_memory_info() -> Option<MemInfo> {
       if let Ok(contents) = std::fs::read_to_string("/proc/meminfo") {
         for line in contents.lines() {
           if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            if let Some(kb_str) = rest.trim().strip_suffix("kB") {
-              if let Ok(kb) = kb_str.trim().parse::<u64>() {
-                mem_info.available = kb.saturating_mul(1024);
-              }
+            if let Some(kb_str) = rest.trim().strip_suffix("kB")
+              && let Ok(kb) = kb_str.trim().parse::<u64>()
+            {
+              mem_info.available = kb.saturating_mul(1024);
             }
             break;
           }
