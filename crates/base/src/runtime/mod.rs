@@ -1436,12 +1436,7 @@ where
           isolate_ref as *mut v8::Isolate
         };
         let context = self.js_runtime.main_context();
-        let future = {
-          let isolate = unsafe { &mut *isolate_ptr };
-          let _scope = v8::HandleScope::new(isolate);
-          let res = self.js_runtime.load_main_es_module(&url);
-          res
-        };
+        let future = self.js_runtime.load_main_es_module(&url);
         ScopedFuture {
           future,
           isolate: isolate_ptr,
@@ -1455,13 +1450,9 @@ where
           isolate_ref as *mut v8::Isolate
         };
         let context = self.js_runtime.main_context();
-        let future = {
-          let isolate = unsafe { &mut *isolate_ptr };
-          let _scope = v8::HandleScope::new(isolate);
-          self
-            .js_runtime
-            .load_main_es_module_from_code(&url, module_code)
-        };
+        let future = self
+          .js_runtime
+          .load_main_es_module_from_code(&url, module_code);
         let id = ScopedFuture {
           future,
           isolate: isolate_ptr,
