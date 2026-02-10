@@ -144,6 +144,7 @@ fn log_locker_event(isolate_key: usize, stage: &'static str, depth: u32) {
     depth,
   );
 }
+use crate::worker::supervisor::as_interrupt_callback;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::CPUUsageMetrics;
 use crate::worker::DuplexStreamEntry;
@@ -441,15 +442,9 @@ pub struct DenoRuntime<RuntimeContext = DefaultRuntimeContext> {
 
 impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
   fn drop(&mut self) {
-    // Cancel drop_token FIRST to signal supervisors that the runtime is being dropped.
-    // Supervisors should check this token before calling thread_safe_handle methods
-    // to avoid accessing the isolate during/after disposal.
     self.drop_token.cancel();
 
     if self.conf.is_user_worker() {
-      // Begin isolate lifecycle drop - waits for any active GC callbacks to complete
-      // This prevents TOCTOU race conditions where a GC callback could access the
-      // isolate during drop
       self.mem_check.lifecycle.begin_drop();
 
       self.js_runtime.v8_isolate().remove_gc_prologue_callback(
@@ -479,6 +474,7 @@ impl<F: Future> Future for ScopedFuture<F> {
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> Poll<Self::Output> {
+    debug_assert!(!self.isolate.is_null());
     let isolate = unsafe { &mut *self.isolate };
     let scope_storage = std::pin::pin!(v8::HandleScope::new(isolate));
     let mut scope = scope_storage.init();
@@ -1406,12 +1402,7 @@ where
           isolate_ref as *mut v8::Isolate
         };
         let context = self.js_runtime.main_context();
-        let future = {
-          let isolate = unsafe { &mut *isolate_ptr };
-          let _scope = v8::HandleScope::new(isolate);
-          let res = self.js_runtime.load_main_es_module(&url);
-          res
-        };
+        let future = self.js_runtime.load_main_es_module(&url);
         ScopedFuture {
           future,
           isolate: isolate_ptr,
@@ -1425,13 +1416,9 @@ where
           isolate_ref as *mut v8::Isolate
         };
         let context = self.js_runtime.main_context();
-        let future = {
-          let isolate = unsafe { &mut *isolate_ptr };
-          let _scope = v8::HandleScope::new(isolate);
-          self
-            .js_runtime
-            .load_main_es_module_from_code(&url, module_code)
-        };
+        let future = self
+          .js_runtime
+          .load_main_es_module_from_code(&url, module_code);
         let id = ScopedFuture {
           future,
           isolate: isolate_ptr,
@@ -1693,18 +1680,14 @@ where
 
       if woked {
         extern "C" fn dummy(_: *mut v8::Isolate, _: *mut std::ffi::c_void) {}
-        // SAFETY: *mut T and &mut T have identical ABI representation.
-        let callback = unsafe {
-          std::mem::transmute::<
-            extern "C" fn(*mut v8::Isolate, *mut std::ffi::c_void),
-            extern "C" fn(&mut v8::Isolate, *mut std::ffi::c_void),
-          >(dummy)
-        };
         this
           .js_runtime
           .v8_isolate()
           .thread_safe_handle()
-          .request_interrupt(callback, std::ptr::null_mut());
+          .request_interrupt(
+            as_interrupt_callback(dummy),
+            std::ptr::null_mut(),
+          );
       }
 
       let op_state = this.js_runtime.op_state();
@@ -2218,6 +2201,9 @@ where
     let _ = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(());
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
@@ -2275,13 +2261,19 @@ where
     let fn_ret = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(false);
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
       }
     }
 
-    Ok(fn_ret.unwrap().is_false())
+    match fn_ret {
+      Some(ret_val) => Ok(ret_val.is_false()),
+      None => Ok(false),
+    }
   }
 
   /// Dispatches "unload" event to the JavaScript runtime.
@@ -2331,6 +2323,9 @@ where
     let _ = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(());
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
@@ -2379,6 +2374,9 @@ where
     let _ = event_fn.call(tc_scope, undefined.into(), &fn_args);
 
     if tc_scope.has_caught() {
+      if tc_scope.has_terminated() {
+        return Ok(());
+      }
       if let Some(ex) = tc_scope.exception() {
         let err = JsError::from_v8_exception(tc_scope, ex);
         return Err(err.into());
@@ -2507,45 +2505,19 @@ fn terminate_execution_if_cancelled(
   isolate: &mut v8::Isolate,
   token: CancellationToken,
 ) -> TerminateExecutionIfCancelledReturnType {
-  // Raw pointer version to handle null isolate during disposal
-  extern "C" fn interrupt_fn_raw(
-    isolate_ptr: *mut v8::Isolate,
-    _: *mut std::ffi::c_void,
-  ) {
-    if isolate_ptr.is_null() {
-      return;
-    }
-    // SAFETY: We've verified the pointer is non-null
-    let isolate = unsafe { &mut *isolate_ptr };
-    if isolate.get_data(0).is_null() {
-      return;
-    }
-    let _ = isolate.terminate_execution();
-  }
-
   let handle = isolate.thread_safe_handle();
   let cancel_task_token = CancellationToken::new();
-  let request_interrupt_fn = move || {
-    // SAFETY: *mut T and &mut T have identical ABI representation.
-    let callback = unsafe {
-      std::mem::transmute::<
-        extern "C" fn(*mut v8::Isolate, *mut std::ffi::c_void),
-        extern "C" fn(&mut v8::Isolate, *mut std::ffi::c_void),
-      >(interrupt_fn_raw)
-    };
-    let _ = handle.request_interrupt(callback, std::ptr::null_mut());
-  };
 
   drop(base_rt::SUPERVISOR_RT.spawn({
     let cancel_task_token = cancel_task_token.clone();
 
     async move {
       if token.is_cancelled() {
-        request_interrupt_fn();
+        handle.terminate_execution();
       } else {
         tokio::select! {
           _ = token.cancelled_owned() => {
-            request_interrupt_fn();
+            handle.terminate_execution();
           }
 
           _ = cancel_task_token.cancelled_owned() => {}

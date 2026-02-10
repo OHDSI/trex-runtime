@@ -48,7 +48,7 @@ macro_rules! v8_slice_from {
 
       let tensor_ptr = raw_tensor.as_ptr();
       let tensor_len = raw_tensor.len();
-      let tensor_rc = Rc::into_raw(Rc::new(raw_tensor)) as *const c_void;
+      let tensor_rc = Rc::into_raw(Rc::new(raw_tensor));
 
       let buffer_len = tensor_len * size_of::<$type>();
 
@@ -57,8 +57,8 @@ macro_rules! v8_slice_from {
         _len: usize,
         data: *mut c_void,
       ) {
-        // SAFETY: We know that data is a raw Rc from above
-        unsafe { drop(Rc::from_raw(data.cast::<$type>())) }
+        // SAFETY: data is a raw Rc<&mut [$type]> from Rc::into_raw above
+        unsafe { drop(Rc::from_raw(data as *const &mut [$type])) }
       }
 
       let buf_store = unsafe {

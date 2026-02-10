@@ -38,6 +38,9 @@ pub extern "C" fn v8_handle_termination_raw(
 ) {
   let mut data = unsafe { Box::from_raw(data as *mut V8HandleTerminationData) };
 
+  // Use black_box to prevent LLVM from optimizing away the null check
+  // by back-propagating the nonnull attribute from the &mut reference below.
+  let isolate_ptr = std::hint::black_box(isolate_ptr);
   if isolate_ptr.is_null() {
     drop(data.isolate_memory_usage_tx.take());
     return;

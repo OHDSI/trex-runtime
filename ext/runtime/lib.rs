@@ -202,6 +202,9 @@ impl RuntimeMetricSource {
     ) {
       let arg = unsafe { Box::<InterruptData>::from_raw(data as *mut _) };
 
+      // Use black_box to prevent LLVM from optimizing away the null check
+      // by back-propagating the nonnull attribute from the &mut reference below.
+      let isolate_ptr = std::hint::black_box(isolate_ptr);
       if isolate_ptr.is_null() {
         return;
       }
