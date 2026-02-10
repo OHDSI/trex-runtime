@@ -182,23 +182,28 @@ impl BlockingScopeCPUUsageMetricExt for &mut OpState {
 
       usage.fetch_add(diff_cpu_time_ns, Ordering::SeqCst);
 
-      // Use IsolateLifecycle guard if available, fallback to drop_token check
-      let can_spawn = if let Some(ref lc) = lifecycle {
-        lc.try_enter().is_some()
-      } else {
-        !drop_token.is_cancelled()
-      };
-
-      if !can_spawn {
+      // Acquire the lifecycle guard and hold it through spawn + block_on.
+      // This prevents begin_drop() from proceeding while the V8 task is queued.
+      let _guard = if let Some(ref lc) = lifecycle {
+        match lc.try_enter() {
+          Some(guard) => Some(guard),
+          None => {
+            debug!(
+              js_runtime_dropped = true,
+              unreported_blocking_cpu_time_ms = diff_cpu_time_ns / 1_000_000
+            );
+            return result;
+          }
+        }
+      } else if drop_token.is_cancelled() {
         debug!(
           js_runtime_dropped = true,
           unreported_blocking_cpu_time_ms = diff_cpu_time_ns / 1_000_000
         );
         return result;
-      }
-
-      // Acquire the guard for the V8 spawn operation
-      let _guard = lifecycle.as_ref().and_then(|lc| lc.try_enter());
+      } else {
+        None
+      };
 
       cross_thread_spawner.spawn({
         let span = debug_span!("in v8 stack");

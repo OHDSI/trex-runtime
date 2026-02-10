@@ -124,6 +124,7 @@ impl WorkerDriver for Managed {
     let Managed { inner, cx } = self.clone();
     let mut cx = cx.try_lock().ok()?;
     let runtime_drop_token = runtime.drop_token.clone();
+    let isolate_lifecycle = runtime.mem_check_lifecycle();
     let termination_request_token = runtime.termination_request_token.clone();
     let termination_token = inner.termination_token.clone()?;
     let termination_event_sender = match cx.take_termination_event_sender() {
@@ -170,13 +171,15 @@ impl WorkerDriver for Managed {
         }));
 
       // Guard against calling V8 handle methods during/after runtime disposal
-      if runtime_drop_token.is_cancelled() {
-        drop(unsafe { Box::from_raw(data_ptr_mut) });
-      } else if thread_safe_handle.request_interrupt(
-        as_interrupt_callback(v8_handle_beforeunload_raw),
-        data_ptr_mut as *mut _,
-      ) {
-        waker.wake();
+      if let Some(_guard) = isolate_lifecycle.try_enter() {
+        if thread_safe_handle.request_interrupt(
+          as_interrupt_callback(v8_handle_beforeunload_raw),
+          data_ptr_mut as *mut _,
+        ) {
+          waker.wake();
+        } else {
+          drop(unsafe { Box::from_raw(data_ptr_mut) });
+        }
       } else {
         drop(unsafe { Box::from_raw(data_ptr_mut) });
       }
