@@ -443,10 +443,9 @@ pub struct DenoRuntime<RuntimeContext = DefaultRuntimeContext> {
 impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
   fn drop(&mut self) {
     self.drop_token.cancel();
+    self.mem_check.lifecycle.begin_drop();
 
     if self.conf.is_user_worker() {
-      self.mem_check.lifecycle.begin_drop();
-
       self.js_runtime.v8_isolate().remove_gc_prologue_callback(
         mem_check_gc_prologue_callback_fn as _,
         Arc::as_ptr(&self.mem_check) as *mut _,
