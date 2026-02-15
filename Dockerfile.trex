@@ -25,15 +25,13 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
 RUN apt-get update && apt-get install -y binutils llvm-dev libclang-dev clang cmake ninja-build libgomp1 libopenblas-dev unzip wget python3
 RUN rustup component add rustfmt
 
-# Download and install DuckDB library
+# Download and install TrexSQL library
 RUN mkdir -p /usr/local/lib && \
-    wget -O /tmp/libduckdb-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.3.2/libduckdb-linux-amd64.zip && \
-    unzip /tmp/libduckdb-linux-amd64.zip -d /tmp/duckdb && \
-    cp /tmp/duckdb/libduckdb.so /usr/local/lib/ && \
-    cp /tmp/duckdb/libduckdb_static.a /usr/local/lib/ && \
-    cp /tmp/duckdb/duckdb.h /usr/local/include/ && \
-    cp /tmp/duckdb/duckdb.hpp /usr/local/include/ && \
-    rm -rf /tmp/libduckdb-linux-amd64.zip /tmp/duckdb && \
+    wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip && \
+    unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql && \
+    cp /tmp/trexsql/libtrexsql.so /usr/local/lib/ && \
+    cp /tmp/trexsql/duckdb.h /usr/local/include/ && \
+    rm -rf /tmp/libtrexsql-linux-amd64.zip /tmp/trexsql && \
     ldconfig
 
 #WORKDIR /usr/src/
@@ -84,7 +82,7 @@ COPY --from=builder /root/trex /usr/src/trex
 #COPY --from=builder /root/trex.debug /usr/src/trex.debug
 
 COPY --from=ort /root/onnxruntime/lib/libonnxruntime.so* /usr/lib/
-COPY --from=builder /usr/local/lib/libduckdb.so /usr/lib/
+COPY --from=builder /usr/local/lib/libtrexsql.so /usr/lib/
 
 RUN mkdir -p /root/.duckdb/extensions/v${DUCKDB_VERSION}/linux_amd64
 COPY --from=duckdb_circe /extensions/circe.duckdb_extension /root/.duckdb/extensions/v${DUCKDB_VERSION}/linux_amd64/circe.duckdb_extension

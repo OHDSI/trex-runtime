@@ -35,7 +35,7 @@ on:
 
 env:
   D2E_BRANCH: ${{ github.event.inputs.d2e_branch || 'develop' }}
-  DUCKDB_VERSION: v1.4.1
+  TREXSQL_VERSION: v1.4.4-trex
   VERSION: develop
   PLUGINS_SEED: '["d2e-flows", "d2e-ui", "d2e-atlas", "data-transformation-flow", "hades-flow", "trex-hana", "trex-pgwire", "d2e-fhir-server", "i2b2-flow", "data-management-flow"]'
 
@@ -54,12 +54,12 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install curl unzip libopenblas-dev libglib2.0-dev
 
-      - name: Install DuckDB library
+      - name: Install TrexSQL library
         run: |
-          curl -L -O https://github.com/duckdb/duckdb/releases/download/${{ env.DUCKDB_VERSION }}/libduckdb-linux-amd64.zip
-          unzip libduckdb-linux-amd64.zip
-          sudo cp duckdb.h* /usr/local/include/
-          sudo cp libduckdb.so /usr/local/lib/
+          curl --retry 3 --retry-delay 5 --retry-all-errors -L -O https://github.com/p-hoffmann/trexsql-rs/releases/download/${{ env.TREXSQL_VERSION }}/libtrexsql-linux-amd64.zip
+          unzip libtrexsql-linux-amd64.zip
+          sudo cp duckdb.h /usr/local/include/
+          sudo cp libtrexsql.so /usr/local/lib/
           sudo ldconfig
 
       - name: Setup Rust
@@ -273,6 +273,15 @@ jobs:
         working-directory: d2e
         run: npm install
 
+      - name: Create CI compose override
+        run: |
+          cat > d2e/docker-compose-ci.yml << 'EOF'
+          services:
+            alp-caddy:
+              ports: !override
+                - ${CADDY_PORT:-${PORT:-443}}:443
+          EOF
+
       - name: Start D2E services
         uses: nick-fields/retry@v3
         with:
@@ -281,7 +290,7 @@ jobs:
           max_attempts: 2
           command: |
             cd d2e
-            ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions start
+            ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml start
             docker ps --format "{{.Names}},{{.Status}}"
 
       - name: Run setupdemo
@@ -291,7 +300,7 @@ jobs:
           max_attempts: 1
           command: |
             cd d2e
-            ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions setupdemo
+            ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml setupdemo
 
       - name: Run checkflow
         uses: nick-fields/retry@v3
@@ -300,13 +309,13 @@ jobs:
           max_attempts: 1
           command: |
             cd d2e
-            ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions checkflow
+            ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml checkflow
 
       - name: Logs after checkflow
         if: success() || failure()
         working-directory: d2e
         run: |
-          ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions logs
+          ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml logs
 
       - name: Check app status (informational)
         continue-on-error: true
@@ -349,13 +358,13 @@ jobs:
         if: failure()
         working-directory: d2e
         run: |
-          ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions logs
+          ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml logs
 
       - name: Stop D2E services
         if: always()
         working-directory: d2e
         run: |
-          ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions stop
+          ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml stop
 
       - name: Prune system
         if: always()

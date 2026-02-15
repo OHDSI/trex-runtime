@@ -64,14 +64,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
-      - name: Install DuckDB library
+      - name: Install TrexSQL library
         run: |
-          wget -O /tmp/libduckdb-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.4.0/libduckdb-linux-amd64.zip
-          unzip /tmp/libduckdb-linux-amd64.zip -d /tmp/duckdb
-          sudo cp /tmp/duckdb/libduckdb.so /usr/local/lib/
-          sudo cp /tmp/duckdb/duckdb.h /usr/local/include/
+          wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip
+          unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql
+          sudo cp /tmp/trexsql/libtrexsql.so /usr/local/lib/
+          sudo cp /tmp/trexsql/duckdb.h /usr/local/include/
           sudo ldconfig
-          rm -rf /tmp/libduckdb-linux-amd64.zip /tmp/duckdb
+          rm -rf /tmp/libtrexsql-linux-amd64.zip /tmp/trexsql
       - run: rustup show
       - run: rustup component add clippy
       - uses: Swatinem/rust-cache@v2
@@ -96,14 +96,14 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
 
-      - name: Install DuckDB library
+      - name: Install TrexSQL library
         run: |
-          wget -O /tmp/libduckdb-linux-amd64.zip https://github.com/duckdb/duckdb/releases/download/v1.4.0/libduckdb-linux-amd64.zip
-          unzip /tmp/libduckdb-linux-amd64.zip -d /tmp/duckdb
-          sudo cp /tmp/duckdb/libduckdb.so /usr/local/lib/
-          sudo cp /tmp/duckdb/duckdb.h /usr/local/include/
+          wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip
+          unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql
+          sudo cp /tmp/trexsql/libtrexsql.so /usr/local/lib/
+          sudo cp /tmp/trexsql/duckdb.h /usr/local/include/
           sudo ldconfig
-          rm -rf /tmp/libduckdb-linux-amd64.zip /tmp/duckdb
+          rm -rf /tmp/libtrexsql-linux-amd64.zip /tmp/trexsql
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -156,7 +156,7 @@ jobs:
 
       - name: Create MinIO test bucket
         run: |
-          wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /tmp/mc
+          wget --tries=3 --retry-connrefused --waitretry=5 -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /tmp/mc
           chmod +x /tmp/mc
           /tmp/mc alias set myminio http://localhost:9000 minioadmin minioadmin
           /tmp/mc mb myminio/testbucket

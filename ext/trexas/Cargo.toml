@@ -13,8 +13,8 @@ strip = true
 
 [dependencies]
 duckdb = { workspace = true, features = ["vtab-loadable", "vscalar"] }
-duckdb-loadable-macros = "0.1.9"
-libduckdb-sys = { version = "1.4.1", features = ["loadable-extension"] }
+duckdb-loadable-macros = "0.1.14"
+libduckdb-sys = { version = "1.4.4", features = ["loadable-extension"] }
 deno_facade = { path = "../../crates/deno_facade" }
 deno = { path = "../../deno" }
 ext_workers = { path = "../workers" }
