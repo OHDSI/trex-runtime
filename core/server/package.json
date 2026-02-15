@@ -1,8 +1,0 @@
-{
-  "name": "core-server",
-  "private": true,
-  "dependencies": {
-    "postgraphile": "^5.0.0-rc.4",
-    "express": "^4.21.2"
-  }
-}

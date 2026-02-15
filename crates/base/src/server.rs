@@ -189,6 +189,22 @@ impl Service<Request<Body>> for WorkerService {
     let metric_src = self.metric_src.clone();
     let worker_req_tx = self.worker_req_tx.clone();
     let fut = async move {
+      #[cfg(feature = "trex")]
+      if let Some(static_resp) =
+        trex_core::try_serve_static(req.uri().path())
+      {
+        metric_src.incl_received_requests();
+        metric_src.incl_handled_requests();
+        return Ok(
+          Response::builder()
+            .status(200)
+            .header("content-type", static_resp.content_type)
+            .header("cache-control", "public, max-age=3600")
+            .body(Body::from(static_resp.body))
+            .unwrap(),
+        );
+      }
+
       let (res_tx, res_rx) =
         oneshot::channel::<Result<Response<Body>, hyper_v014::Error>>();
 
