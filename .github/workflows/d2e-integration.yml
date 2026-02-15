@@ -35,7 +35,7 @@ on:
 
 env:
   D2E_BRANCH: ${{ github.event.inputs.d2e_branch || 'develop' }}
-  DUCKDB_VERSION: v1.4.1
+  TREXSQL_VERSION: v1.4.4-trex
   VERSION: develop
   PLUGINS_SEED: '["d2e-flows", "d2e-ui", "d2e-atlas", "data-transformation-flow", "hades-flow", "trex-hana", "trex-pgwire", "d2e-fhir-server", "i2b2-flow", "data-management-flow"]'
 
@@ -54,12 +54,12 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install curl unzip libopenblas-dev libglib2.0-dev
 
-      - name: Install DuckDB library
+      - name: Install TrexSQL library
         run: |
-          curl -L -O https://github.com/duckdb/duckdb/releases/download/${{ env.DUCKDB_VERSION }}/libduckdb-linux-amd64.zip
-          unzip libduckdb-linux-amd64.zip
-          sudo cp duckdb.h* /usr/local/include/
-          sudo cp libduckdb.so /usr/local/lib/
+          curl -L -O https://github.com/p-hoffmann/trexsql-rs/releases/download/${{ env.TREXSQL_VERSION }}/libtrexsql-linux-amd64.zip
+          unzip libtrexsql-linux-amd64.zip
+          sudo cp duckdb.h /usr/local/include/
+          sudo cp libtrexsql.so /usr/local/lib/
           sudo ldconfig
 
       - name: Setup Rust
