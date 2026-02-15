@@ -27,7 +27,7 @@ RUN rustup component add rustfmt
 
 # Download and install TrexSQL library
 RUN mkdir -p /usr/local/lib && \
-    wget -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip && \
+    wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip && \
     unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql && \
     cp /tmp/trexsql/libtrexsql.so /usr/local/lib/ && \
     cp /tmp/trexsql/duckdb.h /usr/local/include/ && \
