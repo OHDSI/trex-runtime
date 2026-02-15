@@ -10,19 +10,32 @@ import {
   METRICS_ENABLED,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
-import { TrexHttpClient, req, createRequestListener, PluginManager, TrexDB, DatabaseManager, UserDatabaseManager } from "ext:trex/trex_lib.js";
 import { exit as osExit } from "ext:os/exit.js";
 
 const ops = core.ops;
 const { ObjectDefineProperty } = primordials;
 
+let trexMod;
+function loadTrex() {
+	if (trexMod === undefined) {
+		try {
+			trexMod = ops.op_lazy_load_esm("ext:trex/trex_lib.js");
+		} catch {
+			trexMod = null;
+		}
+	}
+	return trexMod;
+}
+
 /**
- * @param {"user" | "main" | "event"} kind 
- * @param {number} terminationRequestTokenRid 
+ * @param {"user" | "main" | "event"} kind
+ * @param {number} terminationRequestTokenRid
  */
 function installTrexNamespace(kind, terminationRequestTokenRid) {
 
 	/** TREX */
+
+	const mod = loadTrex();
 
 	let propsTrex = {
 		scheduleTermination: () => ops.op_cancel_drop_token(terminationRequestTokenRid)
@@ -37,13 +50,15 @@ function installTrexNamespace(kind, terminationRequestTokenRid) {
 				applySupabaseTag: (src, dest) => applySupabaseTag(src, dest),
 				systemMemoryInfo: () => ops.op_system_memory_info(),
 				raiseSegfault: () => ops.op_raise_segfault(),
-				PluginManager: PluginManager,
-				DatabaseManager: DatabaseManager,
-				userDatabaseManager: () => { return new UserDatabaseManager(SUPABASE_USER_WORKERS)},
-				TrexDB: TrexDB,
-				req: req,
-				createRequestListener: createRequestListener,
-        httpClient: (service) => { return new TrexHttpClient(service) },
+				...(mod ? {
+					PluginManager: mod.PluginManager,
+					DatabaseManager: mod.DatabaseManager,
+					userDatabaseManager: () => { return new mod.UserDatabaseManager(SUPABASE_USER_WORKERS)},
+					TrexDB: mod.TrexDB,
+					req: mod.req,
+					createRequestListener: mod.createRequestListener,
+					httpClient: (service) => { return new mod.TrexHttpClient(service) },
+				} : {}),
 				exit: (c) => osExit(c),
 				...propsTrex,
 			};
@@ -58,10 +73,12 @@ function installTrexNamespace(kind, terminationRequestTokenRid) {
 		case "user":
 			propsTrex = {
 				waitUntil,
-				req: req,
-        httpClient: (service) => { return new TrexHttpClient(service) },
-        tokioChannel: (service) => { return new TrexHttpClient(service) },
-				databaseManager: () => { return new UserDatabaseManager(SUPABASE_USER_WORKERS)},
+				...(mod ? {
+					req: mod.req,
+					httpClient: (service) => { return new mod.TrexHttpClient(service) },
+					tokioChannel: (service) => { return new mod.TrexHttpClient(service) },
+					databaseManager: () => { return new mod.UserDatabaseManager(SUPABASE_USER_WORKERS)},
+				} : {}),
 			};
 			break;
 	}
