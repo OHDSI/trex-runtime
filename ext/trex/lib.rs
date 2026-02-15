@@ -84,6 +84,7 @@ static REQUEST_CHANNEL: LazyLock<RequestChannelType> =
 static PENDING_REQUESTS: LazyLock<PendingRequestsMap> =
   LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
+#[allow(clippy::type_complexity)]
 static STATIC_ROUTES: LazyLock<Arc<RwLock<Vec<(String, PathBuf)>>>> =
   LazyLock::new(|| Arc::new(RwLock::new(Vec::new())));
 
@@ -122,15 +123,9 @@ pub fn try_serve_static(uri_path: &str) -> Option<StaticFileResponse> {
       if file_path.is_file() {
         if let Ok(body) = std::fs::read(&file_path) {
           let content_type = mime_from_ext(
-            file_path
-              .extension()
-              .and_then(|e| e.to_str())
-              .unwrap_or(""),
+            file_path.extension().and_then(|e| e.to_str()).unwrap_or(""),
           );
-          return Some(StaticFileResponse {
-            body,
-            content_type,
-          });
+          return Some(StaticFileResponse { body, content_type });
         }
       }
       return None;
