@@ -293,6 +293,17 @@ jobs:
             ENV_TYPE=remote CADDY__CONFIG=./deploy/caddy-config node ./scripts/dist/cli.js -e -v ${{ env.VERSION }} -d ./functions -c ./docker-compose-ci.yml start
             docker ps --format "{{.Names}},{{.Status}}"
 
+      - name: Wait for services to be healthy
+        timeout-minutes: 5
+        run: |
+          echo "Waiting for d2e-trex to become healthy..."
+          until [ "$(docker inspect -f '{{.State.Health.Status}}' d2e-trex 2>/dev/null)" = "healthy" ]; do
+            echo "  d2e-trex: $(docker inspect -f '{{.State.Health.Status}}' d2e-trex 2>/dev/null || echo 'not found')"
+            sleep 5
+          done
+          echo "d2e-trex is healthy"
+          docker ps --format "{{.Names}},{{.Status}}"
+
       - name: Run setupdemo
         uses: nick-fields/retry@v3
         with:
