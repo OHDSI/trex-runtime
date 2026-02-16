@@ -19,6 +19,7 @@ plugins/
 scripts/debug.sh
 
 node_modules/
+dist/
 .DS_Store
 eszip.bin
 

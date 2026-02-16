@@ -16,7 +16,9 @@
     "logs:d2e": "PROJECT_NAME=trex PORT=41100 ENV_TYPE=local npx d2e -e -c docker-compose.yml logs",
     "watchtest": "RUST_LOG=info RUST_BACKTRACE=full npx nodemon --watch test -e ts --exec ./target/debug/trex start --main-service ./test/main --event-worker ./test/event-manager --sql 25432",
     "test": "bash ./scripts/trextest.sh",
-    "testdb": "docker compose -f docker-compose-test.yml up"
+    "testdb": "docker compose -f docker-compose-test.yml up",
+    "dev:core": "DATABASE_URL=postgres://postgres:mypass@localhost:65432/testdb ./target/debug/trex start -p 8001 --main-service ./core/server --event-worker ./core/event",
+    "test:core": "bash test/integration/test_graphql.sh"
   },
   "keywords": [],
   "author": "",

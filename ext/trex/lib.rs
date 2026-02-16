@@ -35,7 +35,8 @@ use std::cell::RefCell;
 use std::env;
 use std::error::Error as StdError;
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -82,6 +83,79 @@ static REQUEST_CHANNEL: LazyLock<RequestChannelType> =
 
 static PENDING_REQUESTS: LazyLock<PendingRequestsMap> =
   LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+#[allow(clippy::type_complexity)]
+static STATIC_ROUTES: LazyLock<Arc<RwLock<Vec<(String, PathBuf)>>>> =
+  LazyLock::new(|| Arc::new(RwLock::new(Vec::new())));
+
+pub struct StaticFileResponse {
+  pub body: Vec<u8>,
+  pub content_type: String,
+}
+
+#[op2(fast)]
+fn op_register_static_route(
+  #[string] url_prefix: String,
+  #[string] fs_path: String,
+) {
+  let mut routes = STATIC_ROUTES.write().unwrap();
+  routes.push((url_prefix, PathBuf::from(fs_path)));
+  routes.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+}
+
+pub fn try_serve_static(uri_path: &str) -> Option<StaticFileResponse> {
+  let routes = STATIC_ROUTES.read().unwrap();
+  for (prefix, fs_root) in routes.iter() {
+    if uri_path.starts_with(prefix) {
+      let relative = &uri_path[prefix.len()..];
+      let relative = relative.trim_start_matches('/');
+
+      if relative.split('/').any(|seg| seg == "..") {
+        return None;
+      }
+
+      let file_path = if relative.is_empty() {
+        fs_root.join("index.html")
+      } else {
+        fs_root.join(relative)
+      };
+
+      if file_path.is_file() {
+        if let Ok(body) = std::fs::read(&file_path) {
+          let content_type = mime_from_ext(
+            file_path.extension().and_then(|e| e.to_str()).unwrap_or(""),
+          );
+          return Some(StaticFileResponse { body, content_type });
+        }
+      }
+      return None;
+    }
+  }
+  None
+}
+
+fn mime_from_ext(ext: &str) -> String {
+  match ext {
+    "html" | "htm" => "text/html",
+    "css" => "text/css",
+    "js" | "mjs" => "application/javascript",
+    "json" => "application/json",
+    "png" => "image/png",
+    "jpg" | "jpeg" => "image/jpeg",
+    "gif" => "image/gif",
+    "svg" => "image/svg+xml",
+    "ico" => "image/x-icon",
+    "woff" => "font/woff",
+    "woff2" => "font/woff2",
+    "ttf" => "font/ttf",
+    "eot" => "application/vnd.ms-fontobject",
+    "txt" => "text/plain",
+    "xml" => "application/xml",
+    "wasm" => "application/wasm",
+    _ => "application/octet-stream",
+  }
+  .to_string()
+}
 
 fn get_active_connection() -> Arc<Mutex<Connection>> {
   connection::get_connection().unwrap_or_else(|| TREX_DB.clone())
@@ -866,7 +940,8 @@ deno_core::extension!(
         op_req,
         op_req_listen,
         op_req_next,
-        op_req_respond
+        op_req_respond,
+        op_register_static_route
     ],
     esm_entry_point = "ext:trex/trex_lib.js",
     esm = [

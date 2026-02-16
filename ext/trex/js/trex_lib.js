@@ -20,7 +20,8 @@ const {
 	op_req,
 	op_req_listen,
 	op_req_next,
-	op_req_respond
+	op_req_respond,
+	op_register_static_route
 } = ops;
 
 export { op_exit };
