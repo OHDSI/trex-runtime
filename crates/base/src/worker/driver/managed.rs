@@ -124,6 +124,7 @@ impl WorkerDriver for Managed {
     let Managed { inner, cx } = self.clone();
     let mut cx = cx.try_lock().ok()?;
     let runtime_drop_token = runtime.drop_token.clone();
+    let runtime_disposed_token = runtime.disposed_token.clone();
     let isolate_lifecycle = runtime.mem_check_lifecycle();
     let termination_request_token = runtime.termination_request_token.clone();
     let termination_token = inner.termination_token.clone()?;
@@ -184,7 +185,7 @@ impl WorkerDriver for Managed {
         drop(unsafe { Box::from_raw(data_ptr_mut) });
       }
 
-      if (timeout(SUPERVISE_DEADLINE_SEC, runtime_drop_token.cancelled()).await)
+      if (timeout(SUPERVISE_DEADLINE_SEC, runtime_disposed_token.cancelled()).await)
         .is_err()
       {
         warn!(
@@ -196,7 +197,7 @@ impl WorkerDriver for Managed {
         );
 
         tokio::select! {
-          _ = runtime_drop_token.cancelled() => {},
+          _ = runtime_disposed_token.cancelled() => {},
           Ok(_) = tokio::signal::ctrl_c() => {
             warn!("interrupt signal received");
           }

@@ -419,6 +419,7 @@ pub struct DenoRuntime<RuntimeContext = DefaultRuntimeContext> {
   pub js_runtime: ManuallyDrop<JsRuntime>,
 
   pub drop_token: CancellationToken,
+  pub disposed_token: CancellationToken,
   pub(crate) termination_request_token: CancellationToken,
 
   pub conf: WorkerRuntimeOpts,
@@ -457,6 +458,7 @@ impl<RuntimeContext> Drop for DenoRuntime<RuntimeContext> {
     unsafe {
       ManuallyDrop::drop(&mut self.js_runtime);
     }
+    self.disposed_token.cancel();
   }
 }
 
@@ -542,6 +544,7 @@ where
 
     let waker = Arc::<AtomicWaker>::default();
     let drop_token = CancellationToken::default();
+    let disposed_token = CancellationToken::default();
     let is_user_worker = conf.is_user_worker();
     let is_some_entry_point = maybe_entrypoint.is_some();
     let termination_request_token = CancellationToken::default();
@@ -1398,6 +1401,7 @@ where
       js_runtime: ManuallyDrop::new(js_runtime),
 
       drop_token,
+      disposed_token,
       termination_request_token,
 
       conf,

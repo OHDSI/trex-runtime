@@ -319,8 +319,7 @@ impl Worker {
               let err_msg = apply_source_maps(&format!("{err:#}"));
               let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
               let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
-              // Cancel the supervisor since we're exiting
-              new_runtime.drop_token.cancel();
+              drop(new_runtime);
               let _ = supervise_fut.await;
               return imp.on_boot_error(err.into()).await;
             }
@@ -360,11 +359,8 @@ impl Worker {
               exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
             }
 
-            // Cancel drop_token to signal supervisors to stop, then wait for them
-            // BEFORE dropping the runtime to avoid V8 access during disposal.
-            new_runtime.drop_token.cancel();
-            let _ = supervise_fut.await;
             drop(new_runtime);
+            let _ = supervise_fut.await;
 
             result
           }
@@ -513,8 +509,7 @@ impl Worker {
               let err_msg = apply_source_maps(&format!("{err:#}"));
               let err_msg = translate_vfs_paths(&err_msg, boot_service_path.as_deref());
               let err = CloneableError::from(anyhow::anyhow!("{}", err_msg).context("worker boot error"));
-              // Cancel the supervisor since we're exiting
-              new_runtime.drop_token.cancel();
+              drop(new_runtime);
               let _ = supervise_fut.await;
               return Err(err.into());
             }
@@ -553,11 +548,8 @@ impl Worker {
               exit.set(WorkerExitStatus::WithUncaughtException(ev)).await;
             }
 
-            // Cancel drop_token to signal supervisors to stop, then wait for them
-            // BEFORE dropping the runtime to avoid V8 access during disposal.
-            new_runtime.drop_token.cancel();
-            let _ = supervise_fut.await;
             drop(new_runtime);
+            let _ = supervise_fut.await;
 
             result
           }
