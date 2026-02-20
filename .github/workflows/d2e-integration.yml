@@ -15,22 +15,22 @@ on:
   push:
     branches: [develop]
     paths:
-      - 'crates/**'
-      - 'ext/**'
-      - 'deno/**'
-      - 'vendor/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
+      - 'ext/runtime/edge-runtime/crates/**'
+      - 'ext/runtime/edge-runtime/ext/**'
+      - 'ext/runtime/edge-runtime/deno/**'
+      - 'ext/runtime/edge-runtime/vendor/**'
+      - 'ext/runtime/edge-runtime/Cargo.lock'
+      - 'ext/runtime/edge-runtime/Cargo.toml'
       - '.github/workflows/d2e-integration.yml'
   pull_request:
     types: [opened, ready_for_review, reopened, synchronize]
     paths:
-      - 'crates/**'
-      - 'ext/**'
-      - 'deno/**'
-      - 'vendor/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
+      - 'ext/runtime/edge-runtime/crates/**'
+      - 'ext/runtime/edge-runtime/ext/**'
+      - 'ext/runtime/edge-runtime/deno/**'
+      - 'ext/runtime/edge-runtime/vendor/**'
+      - 'ext/runtime/edge-runtime/Cargo.lock'
+      - 'ext/runtime/edge-runtime/Cargo.toml'
       - '.github/workflows/d2e-integration.yml'
 
 env:
@@ -63,24 +63,25 @@ jobs:
           sudo ldconfig
 
       - name: Setup Rust
+        working-directory: ext/runtime/edge-runtime
         run: rustup show
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ext/trexas
+          workspaces: ext/runtime/edge-runtime/ext/trexas
 
       - name: Clean V8 cache
-        working-directory: ext/trexas
+        working-directory: ext/runtime/edge-runtime/ext/trexas
         run: rm -rf target/*/gn_out target/*/obj/librusty_v8.a || true
 
       - name: Build extension
-        working-directory: ext/trexas
+        working-directory: ext/runtime/edge-runtime/ext/trexas
         run: |
           make configure
           make release
 
       - name: Sign extension
-        working-directory: ext/trexas
+        working-directory: ext/runtime/edge-runtime/ext/trexas
         env:
           DUCKDB_EXTENSION_SIGNING_KEY: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY }}
         run: |
@@ -90,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trexas-extension
-          path: ext/trexas/build/release/trexas.trex
+          path: ext/runtime/edge-runtime/ext/trexas/build/release/trexas.trex
           retention-days: 1
           if-no-files-found: error
 

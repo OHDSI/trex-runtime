@@ -8,17 +8,17 @@ on:
       - synchronize
       - ready_for_review
     paths: &watch
-      - '.cargo/**'
+      - 'ext/runtime/edge-runtime/.cargo/**'
       - '.github/workflows/**'
-      - 'cli/**'
-      - 'crates/**'
-      - 'deno/**'
-      - 'ext/**'
-      - 'vendor/**'
-      - '.env'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'rust-toolchain.toml'
+      - 'ext/runtime/edge-runtime/cli/**'
+      - 'ext/runtime/edge-runtime/crates/**'
+      - 'ext/runtime/edge-runtime/deno/**'
+      - 'ext/runtime/edge-runtime/ext/**'
+      - 'ext/runtime/edge-runtime/vendor/**'
+      - 'ext/runtime/edge-runtime/.env'
+      - 'ext/runtime/edge-runtime/Cargo.lock'
+      - 'ext/runtime/edge-runtime/Cargo.toml'
+      - 'ext/runtime/edge-runtime/rust-toolchain.toml'
   push:
     branches:
       - main
@@ -44,6 +44,9 @@ jobs:
     if: github.event.pull_request.draft == false
     name: 'fmt'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ext/runtime/edge-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -58,6 +61,9 @@ jobs:
     if: github.event.pull_request.draft == false
     name: 'cargo clippy'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ext/runtime/edge-runtime
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
@@ -75,14 +81,20 @@ jobs:
       - run: rustup show
       - run: rustup component add clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ext/runtime/edge-runtime
       - run: ./scripts/clippy.sh
 
   cargo-test:
     if: github.event.pull_request.draft == false
     name: 'cargo test'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ext/runtime/edge-runtime
     steps:
       - name: Start MinIO
+        working-directory: .
         run: |
           docker run -d --name minio \
             -p 9000:9000 \
@@ -92,11 +104,13 @@ jobs:
           until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
 
       - name: Install deps
+        working-directory: .
         run: |
           sudo apt-get update
           sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
 
       - name: Install TrexSQL library
+        working-directory: .
         run: |
           wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip
           unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql
@@ -109,6 +123,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Remove unwanted software
+        working-directory: .
         run: |
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
@@ -122,10 +137,12 @@ jobs:
       - uses: actions/checkout@v4
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ext/runtime/edge-runtime
 
       - uses: cardinalby/export-env-action@v2
         with:
-          envFile: '.env'
+          envFile: 'ext/runtime/edge-runtime/.env'
 
       - name: Install ONNX Runtime Library
         run: ./scripts/install_onnx.sh "${{ env.ONNXRUNTIME_VERSION }}" linux x64 /tmp/onnxruntime
@@ -155,6 +172,7 @@ jobs:
       #     mv ./edge-runtime-test-eszip/testdata/*.out crates/base/tests/fixture/testdata
 
       - name: Create MinIO test bucket
+        working-directory: .
         run: |
           wget --tries=3 --retry-connrefused --waitretry=5 -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /tmp/mc
           chmod +x /tmp/mc
@@ -185,5 +203,5 @@ jobs:
         with:
           fail-on-error: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: lcov.info
+          path-to-lcov: ext/runtime/edge-runtime/lcov.info
           debug: true

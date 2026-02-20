@@ -37,8 +37,8 @@ jobs:
       matrix:
         include:
           - AZ_REGISTRY_REPOSITORY: d2e-trex-base
-            context: .
-            dockerfile: ./Dockerfile.trex
+            context: ./ext/runtime/edge-runtime
+            dockerfile: ./ext/runtime/edge-runtime/Dockerfile.trex
 
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -114,6 +114,7 @@ jobs:
      #     delete-only-untagged-versions: "true"
 
       - name: npm install
+        working-directory: ext/runtime/edge-runtime
         run: npm install
 
       #- name: Generate dotenv

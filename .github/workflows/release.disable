@@ -62,7 +62,7 @@ jobs:
 
       - uses: cardinalby/export-env-action@v2
         with:
-          envFile: '.env'
+          envFile: 'ext/runtime/edge-runtime/.env'
       - id: build
         uses: docker/build-push-action@v3
         with:
@@ -109,11 +109,11 @@ jobs:
 
       - uses: cardinalby/export-env-action@v2
         with:
-          envFile: '.env'
+          envFile: 'ext/runtime/edge-runtime/.env'
       - id: build
         uses: docker/build-push-action@v3
         with:
-          context: .
+          context: ./ext/runtime/edge-runtime
           push: true
           platforms: linux/${{ env.arch }}
           tags: ${{ steps.meta.outputs.tags }}

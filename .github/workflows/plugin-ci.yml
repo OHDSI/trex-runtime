@@ -71,7 +71,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - PKGPATH: ./ext/trexas
+          - PKGPATH: ./ext/runtime/edge-runtime/ext/trexas
 
     runs-on: ${{ matrix.RUNNER || needs.pick_runner.outputs.random_runner }}
 
