@@ -26,6 +26,10 @@ const {
 
 export { op_exit };
 
+export function registerStaticRoute(urlPrefix, fsPath) {
+	op_register_static_route(urlPrefix, fsPath);
+}
+
 
 function map_params(params) {
 		const nparams= params.map(v => {
