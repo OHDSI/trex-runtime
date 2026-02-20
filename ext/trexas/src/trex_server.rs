@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use base::server::{RequestIdleTimeout, ServerFlags, WorkerEntrypoints};
+use base::server::{RequestIdleTimeout, ServerFlags};
 use base::worker::pool::{SupervisorPolicy, WorkerPoolPolicy};
 use base::InspectorOption;
 use serde::{Deserialize, Serialize};
@@ -150,12 +150,6 @@ impl ServerConfig {
     }
   }
 
-  pub fn to_worker_entrypoints(&self) -> WorkerEntrypoints {
-    WorkerEntrypoints {
-      main: Some(self.main_service_path.clone()),
-      events: self.event_worker_path.clone(),
-    }
-  }
 }
 
 pub struct ServerManager {
@@ -612,8 +606,7 @@ impl TrexServerConfig {
       .parse()
       .map_err(|e| anyhow::anyhow!("Invalid address format: {}", e))?;
 
-    let main_service_path_normalized =
-      normalize_path(&self.main_service_path);
+    let main_service_path_normalized = normalize_path(&self.main_service_path);
 
     let event_worker_path_normalized =
       self.event_worker_path.and_then(|path| {
