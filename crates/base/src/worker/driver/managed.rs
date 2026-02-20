@@ -185,7 +185,8 @@ impl WorkerDriver for Managed {
         drop(unsafe { Box::from_raw(data_ptr_mut) });
       }
 
-      if (timeout(SUPERVISE_DEADLINE_SEC, runtime_disposed_token.cancelled()).await)
+      if (timeout(SUPERVISE_DEADLINE_SEC, runtime_disposed_token.cancelled())
+        .await)
         .is_err()
       {
         warn!(
