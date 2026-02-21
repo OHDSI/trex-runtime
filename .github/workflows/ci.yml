@@ -8,17 +8,17 @@ on:
       - synchronize
       - ready_for_review
     paths: &watch
-      - 'ext/runtime/edge-runtime/.cargo/**'
+      - 'plugins/runtime/edge-runtime/.cargo/**'
       - '.github/workflows/**'
-      - 'ext/runtime/edge-runtime/cli/**'
-      - 'ext/runtime/edge-runtime/crates/**'
-      - 'ext/runtime/edge-runtime/deno/**'
-      - 'ext/runtime/edge-runtime/ext/**'
-      - 'ext/runtime/edge-runtime/vendor/**'
-      - 'ext/runtime/edge-runtime/.env'
-      - 'ext/runtime/edge-runtime/Cargo.lock'
-      - 'ext/runtime/edge-runtime/Cargo.toml'
-      - 'ext/runtime/edge-runtime/rust-toolchain.toml'
+      - 'plugins/runtime/edge-runtime/cli/**'
+      - 'plugins/runtime/edge-runtime/crates/**'
+      - 'plugins/runtime/edge-runtime/deno/**'
+      - 'plugins/runtime/edge-runtime/ext/**'
+      - 'plugins/runtime/edge-runtime/vendor/**'
+      - 'plugins/runtime/edge-runtime/.env'
+      - 'plugins/runtime/edge-runtime/Cargo.lock'
+      - 'plugins/runtime/edge-runtime/Cargo.toml'
+      - 'plugins/runtime/edge-runtime/rust-toolchain.toml'
   push:
     branches:
       - main
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ext/runtime/edge-runtime
+        working-directory: plugins/runtime/edge-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ext/runtime/edge-runtime
+        working-directory: plugins/runtime/edge-runtime
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
@@ -82,7 +82,7 @@ jobs:
       - run: rustup component add clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ext/runtime/edge-runtime
+          workspaces: plugins/runtime/edge-runtime
       - run: ./scripts/clippy.sh
 
   cargo-test:
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ext/runtime/edge-runtime
+        working-directory: plugins/runtime/edge-runtime
     steps:
       - name: Start MinIO
         working-directory: .
@@ -138,11 +138,11 @@ jobs:
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ext/runtime/edge-runtime
+          workspaces: plugins/runtime/edge-runtime
 
       - uses: cardinalby/export-env-action@v2
         with:
-          envFile: 'ext/runtime/edge-runtime/.env'
+          envFile: 'plugins/runtime/edge-runtime/.env'
 
       - name: Install ONNX Runtime Library
         run: ./scripts/install_onnx.sh "${{ env.ONNXRUNTIME_VERSION }}" linux x64 /tmp/onnxruntime
@@ -203,5 +203,5 @@ jobs:
         with:
           fail-on-error: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: ext/runtime/edge-runtime/lcov.info
+          path-to-lcov: plugins/runtime/edge-runtime/lcov.info
           debug: true

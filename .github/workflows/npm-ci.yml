@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ext/runtime/edge-runtime
+        working-directory: plugins/runtime/edge-runtime
     steps:
       - uses: actions/checkout@v4
         with:
