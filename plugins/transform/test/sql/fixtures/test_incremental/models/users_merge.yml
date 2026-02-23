@@ -1,0 +1,5 @@
+materialized: incremental
+incremental_strategy: merge
+unique_key: id
+merge_exclude_columns:
+  - created_at

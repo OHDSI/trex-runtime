@@ -1,0 +1,30 @@
+#!/bin/bash
+set -e
+
+# Resolve symlinks to get the real script location
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+if [[ -n "$TREXSQL_JAR" && -f "$TREXSQL_JAR" ]]; then
+    JAR_FILE="$TREXSQL_JAR"
+elif [[ -f "$PROJECT_DIR/lib/trexsql.jar" ]]; then
+    JAR_FILE="$PROJECT_DIR/lib/trexsql.jar"
+elif [[ -f "/usr/local/lib/trexsql.jar" ]]; then
+    JAR_FILE="/usr/local/lib/trexsql.jar"
+else
+    echo "Error: trexsql.jar not found"
+    exit 1
+fi
+
+if ! command -v java &> /dev/null; then
+    echo "Error: Java is required"
+    exit 1
+fi
+
+exec java -jar "$JAR_FILE" "$@"

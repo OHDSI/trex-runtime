@@ -1,0 +1,35 @@
+{:paths ["src" "resources"]
+
+ :mvn/repos {"jitpack" {:url "https://jitpack.io"}}
+
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+        com.github.p-hoffmann/trexsql-java {:mvn/version "v0.1.5"}
+        org.clojure/tools.cli {:mvn/version "1.1.230"}
+        org.clojure/tools.logging {:mvn/version "1.3.0"}
+        org.clojure/data.json {:mvn/version "2.5.0"}
+        com.github.seancorfield/honeysql {:mvn/version "2.6.1203"}
+        com.zaxxer/HikariCP {:mvn/version "5.1.0"}
+        metosin/reitit-ring {:mvn/version "0.7.2"}
+        org.slf4j/slf4j-simple {:mvn/version "2.0.16"}
+        jakarta.servlet/jakarta.servlet-api {:mvn/version "6.0.0"}
+        org.ring-clojure/ring-jakarta-servlet {:mvn/version "1.14.1"}
+        ring/ring-json {:mvn/version "0.5.1"}
+        clj-http/clj-http {:mvn/version "3.12.3"}}
+
+ :aliases {:dev {:extra-paths ["test"]
+                 :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}}
+
+           :run {:main-opts ["-m" "trexsql.core"]}
+
+           :test {:extra-paths ["test"]
+                  :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}
+                  :main-opts ["-m" "clojure.test" "trexsql.core-test"]}
+
+           :build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}}
+                   :ns-default build}
+
+           :uberjar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
+                     :exec-fn hf.depstar/uberjar
+                     :exec-args {:aot true
+                                 :main-class trexsql.core
+                                 :jar "target/trexsql-standalone.jar"}}}}

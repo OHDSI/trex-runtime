@@ -1,0 +1,4 @@
+name: example_sales
+models_path: models
+seeds_path: seeds
+tests_path: tests

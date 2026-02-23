@@ -1,0 +1,21 @@
+target/
+.git/
+.github/
+node_modules/
+**/build/
+**/target/
+**/node_modules/
+
+# Extension source (extensions come from npm packages or CI artifacts)
+plugins/
+
+# Misc
+.claude/
+.specify/
+*.md
+*.yml
+*.yaml
+!Dockerfile
+.gitmodules
+integration-tests/
+specs/

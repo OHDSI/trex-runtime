@@ -1,0 +1,12 @@
+build/
+cmake_build/
+configure/
+cql2elm-be/target/
+cql2elm-be/native-libs/
+*.so
+*.dylib
+*.o
+venv/
+.idea/
+.DS_Store
+duckdb_unittest_tempdir/

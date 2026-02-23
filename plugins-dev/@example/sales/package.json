@@ -1,0 +1,44 @@
+{
+  "name": "@example/sales",
+  "version": "1.0.0",
+  "description": "Example plugin showcasing all trex plugin types",
+  "trex": {
+    "functions": {
+      "api": [
+        {
+          "source": "/sales-api",
+          "function": "/functions/index.ts"
+        }
+      ]
+    },
+    "ui": {
+      "routes": [
+        {
+          "path": "/sales",
+          "dir": "dist"
+        }
+      ]
+    },
+    "migrations": {
+      "schema": "example_sales",
+      "database": "_config"
+    },
+    "transform": {},
+    "flow": {
+      "image": "example/sales",
+      "flows": [
+        {
+          "name": "refresh-sales-transforms",
+          "entrypoint": "flows/refresh.py:refresh_sales",
+          "tags": ["example", "sales"],
+          "parameter_openapi_schema": {
+            "type": "object",
+            "properties": {
+              "dest_schema": { "type": "string", "default": "sales" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

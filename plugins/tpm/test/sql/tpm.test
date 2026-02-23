@@ -1,0 +1,20 @@
+# name: test/sql/tpm.test
+# description: test tpm extension
+# group: [tpm]
+
+# Before we load the extension, this will fail
+statement error
+SELECT trex_plugin('Sam');
+----
+Catalog Error: Scalar Function with name trex_plugin does not exist!
+
+# Require statement will ensure the extension is loaded from now on
+require tpm
+
+require icu
+
+# Confirm the extension works
+query I
+SELECT * from trex_plugin('Sam');
+----
+TPM Sam 📦

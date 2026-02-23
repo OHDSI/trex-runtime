@@ -1,0 +1,14 @@
+materialized: table
+pre_hooks:
+  - "CREATE TABLE IF NOT EXISTS __hook_log__ (model VARCHAR, phase VARCHAR)"
+  - "INSERT INTO __hook_log__ VALUES ('stg_orders', 'pre')"
+post_hooks:
+  - "INSERT INTO __hook_log__ VALUES ('{{this}}', 'post')"
+columns:
+  - name: id
+    tests:
+      - not_null
+      - unique
+  - name: order_number
+    tests:
+      - not_null

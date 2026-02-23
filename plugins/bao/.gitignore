@@ -1,0 +1,11 @@
+node_modules/
+lib/
+.nrepl-port
+.shadow-cljs/
+.cpcache/
+target/
+java/target/
+java/.lein-*
+.DS_Store
+*.log
+.nbb

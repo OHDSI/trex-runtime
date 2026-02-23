@@ -1,0 +1,11 @@
+# name: test/sql/cql2elm.test
+# description: test trex_fhir_cql_translate function
+# group: [cql2elm]
+
+statement ok
+SELECT trex_fhir_cql_translate('library Test version ''1.0.0'' using FHIR version ''4.0.1'' context Patient define AllPatients: [Patient]');
+
+query I
+SELECT json_extract_string(trex_fhir_cql_translate('library Test version ''1.0.0'' using FHIR version ''4.0.1'' context Patient define AllPatients: [Patient]'), '$.identifier.id');
+----
+Test

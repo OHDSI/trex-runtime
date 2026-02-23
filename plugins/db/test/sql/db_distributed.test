@@ -1,0 +1,81 @@
+# name: test/sql/db_distributed.test
+# description: Test distributed engine feature flag, admission control, and workload management
+# group: [db]
+
+require db
+
+# ---------------------------------------------------------------------------
+# trex_db_set_distributed: feature flag toggle
+# ---------------------------------------------------------------------------
+
+# Enable distributed engine
+query I
+SELECT trex_db_set_distributed(true);
+----
+Distributed engine enabled (queries will route through DataFusion)
+
+# Disable distributed engine
+query I
+SELECT trex_db_set_distributed(false);
+----
+Distributed engine disabled (queries will use legacy coordinator)
+
+# ---------------------------------------------------------------------------
+# trex_db_set_priority: session priority levels
+# ---------------------------------------------------------------------------
+
+query I
+SELECT trex_db_set_priority('batch');
+----
+Session priority set to 'batch'
+
+query I
+SELECT trex_db_set_priority('interactive');
+----
+Session priority set to 'interactive'
+
+query I
+SELECT trex_db_set_priority('system');
+----
+Session priority set to 'system'
+
+# Invalid priority returns error message (not crash)
+query I
+SELECT trex_db_set_priority('invalid');
+----
+Invalid priority 'invalid'. Valid values: batch, interactive, system
+
+# ---------------------------------------------------------------------------
+# trex_db_set_user_quota: per-user concurrency limits
+# ---------------------------------------------------------------------------
+
+query I
+SELECT trex_db_set_user_quota('testuser', 5);
+----
+User 'testuser' quota set to 5 concurrent queries
+
+# Invalid quota (< 1)
+query I
+SELECT trex_db_set_user_quota('testuser', 0);
+----
+max_concurrent must be >= 1, got 0
+
+# ---------------------------------------------------------------------------
+# trex_db_cluster_status: cluster-wide resource status
+# ---------------------------------------------------------------------------
+
+# With no gossip running, total_nodes defaults to 1, no active/queued queries
+query IIII
+SELECT * FROM trex_db_cluster_status();
+----
+1	0	0	0.0
+
+# ---------------------------------------------------------------------------
+# trex_db_query_status: per-query admission status
+# ---------------------------------------------------------------------------
+
+# Returns empty when no queries are tracked
+query IIIII
+SELECT * FROM trex_db_query_status();
+----
+

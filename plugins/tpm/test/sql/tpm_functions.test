@@ -1,0 +1,134 @@
+# name: test/sql/tpm_functions.test
+# description: test tpm functions in tpm extension
+# group: [tpm]
+
+# Require the extension
+require tpm
+
+# Test trex_plugin_info with a real package
+query I
+SELECT
+  json_extract_string(package_info, '$.name') as name
+FROM trex_plugin_info('is-number');
+----
+is-number
+
+# Test trex_plugin_info returns correct fields
+query I
+SELECT
+  json_extract_string(package_info, '$.latest_version') IS NOT NULL as has_latest
+FROM trex_plugin_info('lodash');
+----
+true
+
+# Test trex_plugin_info error handling for non-existent package
+query I
+SELECT
+  json_extract_string(package_info, '$.error') LIKE 'Package not found%' as is_error
+FROM trex_plugin_info('this-package-does-not-exist-xyz123');
+----
+true
+
+# Test trex_plugin_info returns version list
+query I
+SELECT
+  json_array_length(json_extract(package_info, '$.versions')) > 0 as has_versions
+FROM trex_plugin_info('is-number');
+----
+true
+
+# Test trex_plugin_resolve with exact version
+query I
+SELECT
+  json_extract_string(resolve_info, '$.resolved_version') as version
+FROM trex_plugin_resolve('is-number@7.0.0');
+----
+7.0.0
+
+# Test trex_plugin_resolve with latest
+query I
+SELECT
+  json_extract_string(resolve_info, '$.package') as package
+FROM trex_plugin_resolve('lodash');
+----
+lodash
+
+# Test trex_plugin_resolve returns tarball URL
+query I
+SELECT
+  json_extract_string(resolve_info, '$.tarball_url') LIKE 'https://registry.npmjs.org/%' as has_tarball
+FROM trex_plugin_resolve('is-number');
+----
+true
+
+# Test semver resolution with caret range
+query I
+SELECT
+  json_extract_string(resolve_info, '$.resolved_version') as version
+FROM trex_plugin_resolve('is-number@^7.0.0');
+----
+7.0.0
+
+# Test semver resolution with tilde range
+query I
+SELECT
+  json_extract_string(resolve_info, '$.package') as package
+FROM trex_plugin_resolve('chalk@~4.1.0');
+----
+chalk
+
+# Test shasum is included in resolve response
+query I
+SELECT
+  json_extract_string(resolve_info, '$.shasum') IS NOT NULL as has_shasum
+FROM trex_plugin_resolve('is-number@7.0.0');
+----
+true
+
+# Test scoped packages
+query I
+SELECT
+  json_extract_string(package_info, '$.name') as name
+FROM trex_plugin_info('@types/node');
+----
+@types/node
+
+# Test dependency tree visualization
+query I
+SELECT
+  json_extract_string(tree_info, '$.package') as package
+FROM trex_plugin_tree('is-number@7.0.0')
+LIMIT 1;
+----
+is-number
+
+# Test tree_line formatting
+query I
+SELECT
+  json_extract_string(tree_info, '$.tree_line') LIKE '%is-number%' as has_package_in_tree
+FROM trex_plugin_tree('is-number@7.0.0')
+LIMIT 1;
+----
+true
+
+# Test trex_plugin_seed with no PLUGINS_SEED env var returns empty
+query I
+SELECT count(*) as cnt FROM trex_plugin_seed('/tmp/tpm_test_seed_empty');
+----
+0
+
+# Test trex_plugin_delete with non-existent package
+query I
+SELECT
+  json_extract_string(delete_results, '$.deleted') as deleted
+FROM trex_plugin_delete('nonexistent-package', '/tmp/tpm_test_delete_empty');
+----
+false
+
+# Test trex_plugin_delete error message for missing package
+query I
+SELECT
+  json_extract_string(delete_results, '$.error') LIKE 'Package directory not found%' as has_error
+FROM trex_plugin_delete('nonexistent-package', '/tmp/tpm_test_delete_empty');
+----
+true

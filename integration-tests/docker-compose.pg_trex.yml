@@ -1,0 +1,20 @@
+services:
+  pg-trex:
+    build:
+      context: ..
+      dockerfile: plugins/pg_trex/Dockerfile
+    container_name: trex-pg-trex
+    ports:
+      - "45432:5432"
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_trex
+      -c pg_trex.extension_dir=/usr/lib/trexsql/extensions
+      -c pg_trex.gossip_addr=0.0.0.0:7946
+      -c pg_trex.flight_addr=0.0.0.0:50051
+      -c log_min_messages=log
+    stop_grace_period: 10s
+    shm_size: 256mb

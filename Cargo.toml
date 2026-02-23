@@ -1,0 +1,20 @@
+[package]
+name = "trexsql"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "trexsql_engine"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "trex"
+path = "src/main.rs"
+
+[dependencies]
+duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
+signal-hook = "0.3"
+hex = "0.4"
+[profile.release]
+lto = true
+strip = true

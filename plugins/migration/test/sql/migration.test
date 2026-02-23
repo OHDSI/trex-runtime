@@ -1,0 +1,143 @@
+# name: test/sql/migration.test
+# description: test migration extension
+# group: [migration]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM trex_migration_run('test/sql/migrations');
+----
+Catalog Error
+
+# Require statement will ensure the extension is loaded from now on
+require migration
+
+# Test: apply all pending migrations
+query ITT
+SELECT * FROM trex_migration_run('test/sql/migrations');
+----
+1	create_users	applied
+2	add_email	applied
+
+# Verify the migration actually created the table and altered it
+statement ok
+INSERT INTO users VALUES (1, 'Alice', 'alice@example.com');
+
+# Test: re-run should show all as skipped
+query ITT
+SELECT * FROM trex_migration_run('test/sql/migrations');
+----
+1	create_users	skipped
+2	add_email	skipped
+
+# Test: verify refinery_schema_history has correct entries
+query IT
+SELECT version, name FROM refinery_schema_history ORDER BY version;
+----
+1	create_users
+2	add_email
+
+# Test: migration_status shows applied status
+query ITT
+SELECT version, name, status FROM trex_migration_status('test/sql/migrations');
+----
+1	create_users	applied
+2	add_email	applied
+
+# Test: checksum mismatch blocks migrate
+statement error
+SELECT * FROM trex_migration_run('test/sql/migrations_tampered');
+----
+Checksum mismatch for migration V1__create_users
+
+# Test: migration_status shows checksum_mismatch
+query ITT
+SELECT version, name, status FROM trex_migration_status('test/sql/migrations_tampered');
+----
+1	create_users	checksum_mismatch
+
+# Test: invalid SQL in migration file
+statement error
+SELECT * FROM trex_migration_run('test/sql/migrations_bad_sql');
+----
+Migration V99__bad_migration failed
+
+# Test: directory not found error
+statement error
+SELECT * FROM trex_migration_run('/nonexistent/path/to/migrations');
+----
+Directory not found
+
+# Test: directory not found in migration_status
+statement error
+SELECT * FROM trex_migration_status('/nonexistent/path/to/migrations');
+----
+Directory not found
+
+# Test: performance smoke test — apply 100 migrations (V1001-V1100)
+query I
+SELECT COUNT(*) FROM trex_migration_run('test/sql/migrations_perf') WHERE status = 'applied';
+----
+100
+
+# Test: re-run 100 migrations should all be skipped
+query I
+SELECT COUNT(*) FROM trex_migration_run('test/sql/migrations_perf') WHERE status = 'skipped';
+----
+100
+
+# Test: migration_status shows all 100 as applied
+query I
+SELECT COUNT(*) FROM trex_migration_status('test/sql/migrations_perf') WHERE status = 'applied';
+----
+100
+
+# ── Schema-scoped migration tests (using memory database) ─────────────────
+
+# Test: apply migrations to a custom schema in memory database
+query ITT
+SELECT * FROM trex_migration_run_schema('test/sql/migrations', 'test_schema', 'memory');
+----
+1	create_users	applied
+2	add_email	applied
+
+# Verify refinery_schema_history exists in the target schema
+query IT
+SELECT version, name FROM memory.test_schema.refinery_schema_history ORDER BY version;
+----
+1	create_users
+2	add_email
+
+# Test: re-run schema-scoped migrations should skip all
+query ITT
+SELECT * FROM trex_migration_run_schema('test/sql/migrations', 'test_schema', 'memory');
+----
+1	create_users	skipped
+2	add_email	skipped
+
+# Test: schema-scoped status check
+query ITT
+SELECT version, name, status FROM trex_migration_status_schema('test/sql/migrations', 'test_schema', 'memory');
+----
+1	create_users	applied
+2	add_email	applied
+
+# Test: default refinery_schema_history is unaffected by schema-scoped run
+# (the original tests already populated the default history with version 1 and 2)
+query IT
+SELECT version, name FROM refinery_schema_history ORDER BY version;
+----
+1	create_users
+2	add_email
+
+# Test: schema-scoped migration to a second schema is independent
+query ITT
+SELECT * FROM trex_migration_run_schema('test/sql/migrations', 'other_schema', 'memory');
+----
+1	create_users	applied
+2	add_email	applied
+
+query IT
+SELECT version, name FROM memory.other_schema.refinery_schema_history ORDER BY version;
+----
+1	create_users
+2	add_email

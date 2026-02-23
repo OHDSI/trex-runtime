@@ -1,0 +1,31 @@
+# name: test/sql/db_query.test
+# description: test db extension distributed queries
+# group: [db]
+
+require db
+
+# Verify trex_db_tables returns empty when gossip is not running
+query IIII
+SELECT * FROM trex_db_tables();
+----
+
+# Start gossip for testing
+query I
+SELECT trex_db_start('127.0.0.1', 17947, 'query-test-cluster');
+----
+Swarm started on 127.0.0.1:17947 (cluster: query-test-cluster)
+
+# Create a local test table
+statement ok
+CREATE TABLE orders AS SELECT i as id, 'region-' || (i % 3) as region, (i * 10.5) as price FROM range(100) t(i);
+
+# Verify trex_db_tables still empty (no catalog advertising yet)
+query IIII
+SELECT * FROM trex_db_tables();
+----
+
+# Stop gossip
+query I
+SELECT trex_db_stop();
+----
+Swarm stopped

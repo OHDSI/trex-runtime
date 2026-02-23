@@ -1,0 +1,28 @@
+[package]
+name = "fhir"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+strip = true
+
+[[example]]
+name = "fhir"
+path = "src/wasm_lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex", features = ["vtab-loadable", "vscalar", "vtab-arrow"] }
+duckdb-loadable-macros = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
+libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex", features = ["loadable-extension"] }
+tokio = { version = "1.19", features = ["rt", "net", "macros", "time", "sync"] }
+axum = { version = "0.8", default-features = false, features = ["json", "matched-path", "query", "tokio", "http1"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+crossbeam-channel = "0.5"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }

@@ -1,0 +1,9 @@
+sources:
+  - name: raw_users
+    loaded_at_field: updated_at
+    warn_after:
+      count: 1
+      period: hour
+    error_after:
+      count: 24
+      period: hour

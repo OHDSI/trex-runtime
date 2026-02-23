@@ -1,0 +1,58 @@
+# name: test/sql/db.test
+# description: test db extension cluster basics
+# group: [db]
+
+# Before we load the extension, this will fail
+statement error
+SELECT trex_db_start('127.0.0.1', 7946, 'test-cluster');
+----
+Catalog Error: Scalar Function with name trex_db_start does not exist!
+
+# Require statement will ensure the extension is loaded from now on
+require db
+
+# Confirm trex_db_nodes returns empty when gossip is not running
+query IIIII
+SELECT * FROM trex_db_nodes();
+----
+
+# Confirm trex_db_config returns empty when gossip is not running
+query II
+SELECT * FROM trex_db_config();
+----
+
+# Start gossip on this node
+query I
+SELECT trex_db_start('127.0.0.1', 17946, 'test-cluster');
+----
+Swarm started on 127.0.0.1:17946 (cluster: test-cluster)
+
+# Verify trex_db_nodes shows this node
+query IIIII
+SELECT node_name, gossip_addr, data_node, status FROM trex_db_nodes();
+----
+node-127.0.0.1:17946	127.0.0.1:17946	true	active
+
+# Verify trex_db_config shows configuration
+query II
+SELECT key, value FROM trex_db_config() WHERE key = 'cluster_id';
+----
+cluster_id	test-cluster
+
+# Test trex_db_set
+query I
+SELECT trex_db_set('data_node', 'false');
+----
+Set data_node = false (propagating to cluster)
+
+# Verify the set took effect
+query II
+SELECT key, value FROM trex_db_config() WHERE key = 'data_node';
+----
+data_node	false
+
+# Stop gossip
+query I
+SELECT trex_db_stop();
+----
+Swarm stopped

@@ -1,0 +1,4 @@
+name: test_project
+models_path: models
+seeds_path: seeds
+tests_path: tests

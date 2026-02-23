@@ -1,0 +1,3 @@
+# Exclude embedded extensions from npm package
+# Extensions are only embedded in the standalone JAR release
+java/resources/extensions/

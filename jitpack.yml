@@ -1,0 +1,22 @@
+jdk:
+  - openjdk21
+
+before_install:
+  - rm -f pom.xml
+  - echo "VERSION=$VERSION"
+
+install:
+  - |
+    VER_NUM=$(echo "$VERSION" | sed 's/^v//')
+    URL="https://github.com/p-hoffmann/trexsql-ext/releases/download/${VERSION}/trexsql-${VER_NUM}.jar"
+    echo "Waiting for release artifact: $URL"
+    for i in $(seq 1 40); do
+      if curl -sfL -o /tmp/trexsql.jar "$URL"; then
+        echo "Downloaded successfully"
+        break
+      fi
+      echo "Attempt $i/40 failed, waiting 30s..."
+      sleep 30
+    done
+    test -f /tmp/trexsql.jar || exit 1
+  - mvn install:install-file -Dfile=/tmp/trexsql.jar -DgroupId=com.github.p-hoffmann -DartifactId=trexsql-ext -Dversion=$VERSION -Dpackaging=jar

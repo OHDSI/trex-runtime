@@ -1,0 +1,4 @@
+materialized: view
+endpoint_path: /daily-revenue
+endpoint_roles: admin,user
+endpoint_formats: json,csv

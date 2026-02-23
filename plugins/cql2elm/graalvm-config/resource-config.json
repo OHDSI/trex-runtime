@@ -1,0 +1,15 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": ".*\\.json$"},
+      {"pattern": ".*\\.xml$"},
+      {"pattern": ".*\\.cql$"},
+      {"pattern": ".*\\.xsd$"},
+      {"pattern": ".*\\.properties$"},
+      {"pattern": "META-INF/services/.*"},
+      {"pattern": "org/hl7/fhir/.*"},
+      {"pattern": "org/cqframework/.*"},
+      {"pattern": "org/hl7/cql/.*"}
+    ]
+  }
+}

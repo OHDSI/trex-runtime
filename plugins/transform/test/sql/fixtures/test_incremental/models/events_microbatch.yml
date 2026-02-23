@@ -1,0 +1,5 @@
+materialized: incremental
+incremental_strategy: microbatch
+updated_at: created_at
+batch_size: day
+lookback: 1

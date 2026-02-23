@@ -1,0 +1,9 @@
+materialized: table
+columns:
+  - name: order_id
+    tests:
+      - not_null
+      - unique
+  - name: product_id
+    tests:
+      - not_null

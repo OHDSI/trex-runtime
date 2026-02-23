@@ -1,0 +1,42 @@
+# name: test/sql/etl.test
+# description: test etl extension
+# group: [etl]
+
+# Before we load the extension, this will fail
+statement error
+SELECT trex_etl_start('test', 'host=localhost');
+----
+Catalog Error: Scalar Function with name trex_etl_start does not exist!
+
+# Require statement will ensure the extension is loaded from now on
+require etl
+
+# Confirm trex_etl_start exists and validates input (2-param, publication required)
+statement error
+SELECT trex_etl_start('test', 'host=localhost dbname=test user=test');
+----
+connection string must include 'publication=<name>'
+
+# Confirm 3-param signature validates mode
+statement error
+SELECT trex_etl_start('test', 'host=localhost dbname=test user=test', 'invalid_mode');
+----
+Invalid mode 'invalid_mode'. Must be one of: copy_and_cdc, cdc_only, copy_only
+
+# Confirm CDC mode requires publication
+statement error
+SELECT trex_etl_start('test', 'host=localhost dbname=test user=test', 'cdc_only');
+----
+connection string must include 'publication=<name>'
+
+# Confirm trex_etl_stop returns error for nonexistent pipeline
+statement error
+SELECT trex_etl_stop('nonexistent');
+----
+Pipeline 'nonexistent' not found
+
+# Confirm trex_etl_status returns empty result set (9 columns with mode)
+query IIIIIIIII
+SELECT * FROM trex_etl_status();
+----
+

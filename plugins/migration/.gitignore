@@ -1,0 +1,8 @@
+/build
+/target
+configure
+venv
+duckdb
+duckdb_unittest_tempdir
+/test/bin
+.idea

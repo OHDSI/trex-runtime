@@ -1,0 +1,13 @@
+{
+  "name": "auth-e2e-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "pg": "^8.13.0",
+    "@types/pg": "^8.11.0"
+  }
+}

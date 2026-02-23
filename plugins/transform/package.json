@@ -1,0 +1,15 @@
+{
+    "name": "@trex/transform",
+    "version": "0.1.0",
+    "description": "transform",
+    "scripts": {
+      "prepack": "make configure && make release && mv build/release/extension/*/*.trex . && ../extension-ci-tools/extension_signing/sign-if-key.sh"
+    },
+    "author": "",
+    "license": "Apache-2.0",
+    "trex": {
+        "core": {
+            "name": "transform"
+        }
+    }
+}

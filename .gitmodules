@@ -1,3 +1,10 @@
-[submodule "plugins/trexas/extension-ci-tools"]
-	path = plugins/runtime/edge-runtime/ext/trexas/extension-ci-tools
-	url = https://github.com/p-hoffmann/extension-ci-tools.git
+[submodule "extension-ci-tools"]
+        path = plugins/extension-ci-tools
+        url = https://github.com/p-hoffmann/extension-ci-tools.git
+[submodule "atlas/circe-be"]
+        path = plugins/atlas/circe-be
+        url = https://github.com/p-hoffmann/circe-be.git
+[submodule "ai/llama.cpp"]
+        path = plugins/ai/llama.cpp
+        url = https://github.com/ggml-org/llama.cpp.git
+

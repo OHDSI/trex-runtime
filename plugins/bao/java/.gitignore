@@ -1,0 +1,10 @@
+# Build outputs
+target/
+*.class
+
+# IDE
+.idea/
+*.iml
+
+# Downloaded extensions (embedded at build time by CI)
+resources/extensions/*.trex

@@ -1,0 +1,25 @@
+# name: test/sql/hana_scan.test
+# description: Test HANA scan functionality
+# group: [hana_scan]
+
+# Load the extension
+statement ok
+LOAD hana_scan;
+
+# Test basic functionality (placeholder test)
+query I
+SELECT 1 as test_placeholder;
+----
+1
+
+# Verify trex_hana_attach is registered (will fail with connection error, not "unknown function")
+statement error
+SELECT * FROM trex_hana_attach('hdbsql://user:pass@localhost:30015/HDB', 'dev', 'SYS');
+----
+Connection
+
+# Verify trex_hana_tables is registered and returns empty when nothing attached
+query IIII
+SELECT * FROM trex_hana_tables();
+----
+

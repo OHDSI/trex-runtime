@@ -1,0 +1,23 @@
+# name: test/sql/ai.test
+# description: test llama extension
+# group: [sql]
+
+# Before we load the extension, this will fail
+statement error
+SELECT trex_ai('Sam');
+----
+Catalog Error: Scalar Function with name trex_ai does not exist!
+
+# Require statement will ensure this test is run with this extension loaded
+require ai
+
+# Confirm the extension works
+query I
+SELECT trex_ai('Sam');
+----
+Llama Sam 🦙
+
+query I
+SELECT trex_ai_openssl_version('Michael') ILIKE 'Llama Michael, my linked OpenSSL version is OpenSSL%';
+----
+true

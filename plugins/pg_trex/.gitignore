@@ -1,0 +1,9 @@
+/target
+/lib
+build
+configure
+.idea
+duckdb_unittest_tempdir
+/test/bin
+venv
+extensions/*.trex

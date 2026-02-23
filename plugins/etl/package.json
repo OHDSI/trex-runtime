@@ -1,0 +1,15 @@
+{
+    "name": "@trex/etl",
+    "version": "0.5.0",
+    "description": "etl",
+    "scripts": {
+      "prepack": "make configure && make release && mv build/release/extension/*/*.trex . && ../extension-ci-tools/extension_signing/sign-if-key.sh"
+    },
+    "author": "",
+    "license": "Apache-2.0",
+    "trex": {
+        "core": {
+            "name": "etl"
+        }
+    }
+}

@@ -1,0 +1,45 @@
+volumes:
+  core-pgdata:
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: trexsql-postgres
+    ports:
+      - 65433:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypass
+      POSTGRES_DB: testdb
+    volumes:
+      - core-pgdata:/var/lib/postgresql/data
+      - ./core/seed.sql:/docker-entrypoint-initdb.d/seed.sql
+      - ./core/schema:/docker-entrypoint-initdb.d/schema
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  trex:
+    build: .
+    ports:
+      - 8001:8001
+    volumes:
+      - ./core/server:/usr/src/core/server
+      - ./functions:/usr/src/functions
+      - ./plugins-dev:/usr/src/plugins-dev
+      - ./core/docs:/usr/src/core/docs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:mypass@postgres:5432/testdb
+      BETTER_AUTH_SECRET: dev-secret-at-least-32-characters-long!!
+      BASE_PATH: /trex
+      BETTER_AUTH_URL: http://localhost:8001/trex
+      PLUGINS_INFORMATION_URL: "https://feeds.dev.azure.com/data2evidence/d2e/_apis/packaging/Feeds/d2e/packages?api-version=7.1&includeDescription=true"
+      TPM_REGISTRY_URL: "https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/d2e/npm/registry"
+      SCHEMA_DIR: /usr/src/core/schema
+      SWARM_CONFIG: '{"cluster_id":"local","nodes":{"local":{"gossip_addr":"0.0.0.0:4200","extensions":[{"name":"trexas","config":{"host":"0.0.0.0","port":8001,"main_service_path":"./core/server","event_worker_path":"./core/event"}},{"name":"flight","config":{"host":"0.0.0.0","port":8815}},{"name":"pgwire","config":{"host":"0.0.0.0","port":5432}}]}}}'
+      SWARM_NODE: local

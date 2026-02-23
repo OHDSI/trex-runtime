@@ -1,0 +1,295 @@
+# name: test/sql/transform.test
+# description: test transform extension
+# group: [transform]
+
+# Before we load the extension, this will fail
+statement error
+SELECT * FROM trex_transform_compile('test/sql/fixtures/test_project');
+----
+Catalog Error
+
+# Require statement will ensure the extension is loaded from now on
+require transform
+
+# Test: compile project — validate DAG and dependencies (includes ephemeral model)
+query TTIT
+SELECT name, materialized, "order", status FROM trex_transform_compile('test/sql/fixtures/test_project');
+----
+countries	seed	0	ok
+stg_orders	table	1	ok
+stg_countries	ephemeral	2	ok
+fct_orders	view	3	ok
+
+# Test: seed project — load CSV files
+query TTTT
+SELECT * FROM trex_transform_seed('test/sql/fixtures/test_project', 'test_transform');
+----
+countries	create	(empty)	ok
+
+# Verify seed data was loaded
+query ITT
+SELECT * FROM test_transform.countries ORDER BY id;
+----
+1	United States	US
+2	Germany	DE
+3	Japan	JP
+
+# Test: plan shows non-ephemeral models as create (first run, ephemeral skipped)
+query TTTT
+SELECT * FROM trex_transform_plan('test/sql/fixtures/test_project', 'test_transform');
+----
+stg_orders	create	table	new model
+fct_orders	create	view	new model
+
+# Test: run project — materialize all models (ephemeral not materialized)
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_project', 'test_transform');
+----
+stg_orders	create	table
+fct_orders	create	view
+
+# Verify materialized table data
+query ITRT
+SELECT * FROM test_transform.stg_orders ORDER BY id;
+----
+1	order_001	100.00	US
+2	order_002	200.00	DE
+
+# Verify materialized view data (ephemeral stg_countries inlined as CTE)
+query ITRT
+SELECT * FROM test_transform.fct_orders ORDER BY id;
+----
+1	order_001	100.00	United States
+2	order_002	200.00	Germany
+
+# Verify ephemeral model was NOT created as a table or view
+statement error
+SELECT * FROM test_transform.stg_countries;
+----
+Catalog Error
+
+# Test: hooks executed — verify __hook_log__ table was created by pre-hook
+query TT
+SELECT model, phase FROM __hook_log__ ORDER BY phase;
+----
+"test_transform"."stg_orders"	post
+stg_orders	pre
+
+# Test: plan shows no_change on second run
+query TTTT
+SELECT * FROM trex_transform_plan('test/sql/fixtures/test_project', 'test_transform');
+----
+stg_orders	no_change	table	(empty)
+fct_orders	no_change	view	(empty)
+
+# Test: re-run should show no_change
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_project', 'test_transform');
+----
+stg_orders	no_change	table
+fct_orders	no_change	view
+
+# Test: seed re-run should show no_change
+query TT
+SELECT name, action FROM trex_transform_seed('test/sql/fixtures/test_project', 'test_transform');
+----
+countries	no_change
+
+# Test: run tests — file tests and column tests
+query TTT
+SELECT name, status, rows_returned FROM trex_transform_test('test/sql/fixtures/test_project', 'test_transform');
+----
+orders_not_empty	pass	0
+stg_orders_id_not_null	pass	0
+stg_orders_id_unique	pass	0
+stg_orders_order_number_not_null	pass	0
+
+# Test: state table was populated (no ephemeral entry)
+query TT
+SELECT model_name, materialized FROM test_transform._transform_state ORDER BY model_name;
+----
+countries	seed
+fct_orders	view
+stg_orders	table
+
+# Test: compile with non-existent project
+statement error
+SELECT * FROM trex_transform_compile('/nonexistent/path');
+----
+Project directory not found
+
+# Test: deploy to a second independent schema
+query TT
+SELECT name, action FROM trex_transform_seed('test/sql/fixtures/test_project', 'test_transform_2');
+----
+countries	create
+
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_project', 'test_transform_2');
+----
+stg_orders	create	table
+fct_orders	create	view
+
+# Verify second schema is independent
+query TT
+SELECT model_name, materialized FROM test_transform_2._transform_state ORDER BY model_name;
+----
+countries	seed
+fct_orders	view
+stg_orders	table
+
+# ========================================================================
+# Incremental strategy tests
+# ========================================================================
+
+# Seed incremental test project
+query TT
+SELECT name, action FROM trex_transform_seed('test/sql/fixtures/test_incremental', 'test_inc');
+----
+raw_events	create
+
+# First run — creates all models
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_incremental', 'test_inc');
+----
+events_append	create	incremental
+events_microbatch	create	incremental
+is_incremental_test	create	incremental
+orders_di	create	incremental
+users_merge	create	incremental
+
+# Verify append model has 3 rows after first run
+query I
+SELECT count(*) FROM test_inc.events_append;
+----
+3
+
+# Verify microbatch model has 3 rows after first run
+query I
+SELECT count(*) FROM test_inc.events_microbatch;
+----
+3
+
+# Verify delete_insert composite key model has 3 rows
+query I
+SELECT count(*) FROM test_inc.orders_di;
+----
+3
+
+# Verify merge model has 3 rows
+query I
+SELECT count(*) FROM test_inc.users_merge;
+----
+3
+
+# Verify is_incremental_test has 3 rows (first run: marker block stripped, all data loaded)
+query I
+SELECT count(*) FROM test_inc.is_incremental_test;
+----
+3
+
+# Verify microbatch stored a watermark
+query I
+SELECT count(*) FROM test_inc._transform_state WHERE model_name = 'events_microbatch' AND last_watermark IS NOT NULL;
+----
+1
+
+# Second run — append and microbatch always run, others skip
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_incremental', 'test_inc');
+----
+events_append	update	incremental
+events_microbatch	update	incremental
+is_incremental_test	update	incremental
+orders_di	no_change	incremental
+users_merge	no_change	incremental
+
+# Append: rows should be doubled (3 original + 3 appended)
+query I
+SELECT count(*) FROM test_inc.events_append;
+----
+6
+
+# Microbatch: seed data is in 2024, batch window is today — no rows in range, count stays 3
+query I
+SELECT count(*) FROM test_inc.events_microbatch;
+----
+3
+
+# is_incremental_test: second run uses the filter block, max(id) = 3, no new rows > 3
+query I
+SELECT count(*) FROM test_inc.is_incremental_test;
+----
+3
+
+# Verify state table has incremental_strategy stored
+query TT
+SELECT model_name, incremental_strategy FROM test_inc._transform_state WHERE materialized = 'incremental' ORDER BY model_name;
+----
+events_append	append
+events_microbatch	microbatch
+is_incremental_test	append
+orders_di	delete_insert
+users_merge	merge
+
+# ========================================================================
+# Snapshot (SCD Type 2) tests
+# ========================================================================
+
+# Seed snapshot test project
+query TT
+SELECT name, action FROM trex_transform_seed('test/sql/fixtures/test_snapshot', 'test_snap');
+----
+raw_users	create
+
+# First snapshot run — creates snapshot table with SCD2 columns
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_snapshot', 'test_snap');
+----
+users_snapshot	create	snapshot
+
+# Verify all 3 rows are active (valid_to IS NULL)
+query I
+SELECT count(*) FROM test_snap.users_snapshot WHERE _snapshot_valid_to IS NULL;
+----
+3
+
+# Verify snapshot columns exist
+query I
+SELECT count(*) FROM test_snap.users_snapshot WHERE _snapshot_valid_from IS NOT NULL;
+----
+3
+
+# Verify total row count (no history yet)
+query I
+SELECT count(*) FROM test_snap.users_snapshot;
+----
+3
+
+# Second run with same data — no changes, so no new rows inserted
+query TTT
+SELECT name, action, materialized FROM trex_transform_run('test/sql/fixtures/test_snapshot', 'test_snap');
+----
+users_snapshot	update	snapshot
+
+# Total rows should still be 3 (no changes detected)
+query I
+SELECT count(*) FROM test_snap.users_snapshot WHERE _snapshot_valid_to IS NULL;
+----
+3
+
+# Verify state table has snapshot entry
+query TT
+SELECT model_name, materialized FROM test_snap._transform_state WHERE model_name = 'users_snapshot';
+----
+users_snapshot	snapshot
+
+# ========================================================================
+# Source freshness tests
+# ========================================================================
+
+# Freshness check on snapshot project (raw_users has updated_at = 2024-01-01)
+query TT
+SELECT name, status FROM trex_transform_freshness('test/sql/fixtures/test_snapshot', 'test_snap');
+----
+raw_users	error

@@ -1,0 +1,124 @@
+name: Build TrexSQL JAR
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.6)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  TREXSQL_VERSION: v1.4.4-trex
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/bao/java
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download libtrexsql
+        working-directory: .
+        run: |
+          mkdir -p /tmp/trexsql
+          wget -q -O /tmp/libtrexsql.zip \
+            https://github.com/p-hoffmann/trexsql-rs/releases/download/${{ env.TREXSQL_VERSION }}/libtrexsql-linux-amd64.zip
+          unzip -o /tmp/libtrexsql.zip -d /tmp/trexsql
+          ln -sf /tmp/trexsql/libtrexsql.so /tmp/trexsql/libduckdb.so
+
+      - name: Build native library
+        working-directory: .
+        run: |
+          TREXSQL_LIB_DIR=/tmp/trexsql cargo build --release
+          ls -lh target/release/libtrexsql_engine.so
+
+      - name: Bundle native libraries in resources
+        run: |
+          mkdir -p resources/linux-x86-64
+          cp ../../../target/release/libtrexsql_engine.so resources/linux-x86-64/
+          cp /tmp/trexsql/libtrexsql.so resources/linux-x86-64/libduckdb.so
+
+      - name: Install Leiningen
+        run: |
+          sudo curl -sL https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein -o /usr/local/bin/lein
+          sudo chmod +x /usr/local/bin/lein
+          lein version
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Node.js for extension download
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          registry-url: 'https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/d2e/npm/registry/'
+          scope: '@trex'
+
+      - name: Download and embed circe extension
+        run: |
+          mkdir -p resources/extensions
+          cd resources/extensions
+          npm pack @trex/circe 2>/dev/null || echo "Warning: Could not download @trex/circe"
+          if ls trex-circe-*.tgz 1>/dev/null 2>&1; then
+            tar -xzf trex-circe-*.tgz
+            if [ -f package/circe.trex ]; then
+              cp package/circe.trex .
+              echo "Embedded circe.trex ($(du -h circe.trex | cut -f1))"
+            fi
+            rm -rf package trex-circe-*.tgz
+          fi
+          ls -la
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PROJECT_TOKEN }}
+
+      - name: Build uberjar
+        run: lein uberjar
+
+      - name: Run tests
+        run: lein test
+        continue-on-error: true
+
+      - name: Rename JAR with version
+        run: |
+          STANDALONE_JAR=$(ls target/trexsql-*-standalone.jar | head -1)
+          cp "$STANDALONE_JAR" target/trexsql-${{ steps.version.outputs.version }}.jar
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trexsql
+          path: plugins/bao/java/target/trexsql-${{ steps.version.outputs.version }}.jar
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: plugins/bao/java/target/trexsql-${{ steps.version.outputs.version }}.jar
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

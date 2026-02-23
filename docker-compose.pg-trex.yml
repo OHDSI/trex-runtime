@@ -1,0 +1,44 @@
+volumes:
+  pg-trex-data:
+
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: plugins/pg_trex/Dockerfile
+    ports:
+      - 65433:5432
+      - 8001:8001
+      - 50051:50051
+      - 7946:7946
+    command: >
+      postgres
+      -c shared_preload_libraries=pg_trex
+      -c pg_trex.extension_dir=/usr/lib/trexsql/extensions
+      -c log_min_messages=log
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mypass
+      POSTGRES_DB: testdb
+      DATABASE_URL: postgres://postgres:mypass@localhost:5432/testdb
+      BETTER_AUTH_SECRET: dev-secret-at-least-32-characters-long!!
+      BASE_PATH: /trex
+      BETTER_AUTH_URL: http://localhost:8001/trex
+      PLUGINS_INFORMATION_URL: "https://feeds.dev.azure.com/data2evidence/d2e/_apis/packaging/Feeds/d2e/packages?api-version=7.1&includeDescription=true"
+      TPM_REGISTRY_URL: "https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/d2e/npm/registry"
+      SCHEMA_DIR: /usr/src/core/schema
+      SWARM_CONFIG: >-
+        {"cluster_id":"local","nodes":{"local":{"gossip_addr":"0.0.0.0:7946","extensions":[{"name":"trexas","config":{"host":"0.0.0.0","port":8001,"main_service_path":"/usr/src/core/server","event_worker_path":"/usr/src/core/event"}},{"name":"flight","config":{"host":"0.0.0.0","port":50051}}]}}}
+      SWARM_NODE: local
+    volumes:
+      - pg-trex-data:/var/lib/postgresql/data
+      - ./core/schema:/usr/src/core/schema
+      - ./core/server:/usr/src/core/server
+      - ./functions:/usr/src/functions
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+    stop_grace_period: 10s

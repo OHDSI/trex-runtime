@@ -1,0 +1,5 @@
+comment = 'pg_trex: PostgreSQL extension for distributed trexsql'
+default_version = '0.1.0'
+module_pathname = '$libdir/pg_trex'
+relocatable = false
+superuser = true

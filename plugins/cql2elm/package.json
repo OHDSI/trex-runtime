@@ -1,0 +1,15 @@
+{
+    "name": "@trex/cql2elm",
+    "version": "0.0.1",
+    "description": "cql2elm",
+    "scripts": {
+      "prepack": "bash ./build.sh"
+    },
+    "author": "",
+    "license": "Apache-2.0",
+    "trex": {
+        "core": {
+            "name": "cql2elm"
+        }
+      }
+  }

@@ -1,0 +1,3 @@
+name: test_snapshot
+models_path: models
+seeds_path: seeds

@@ -1,0 +1,5 @@
+materialized: incremental
+incremental_strategy: delete_insert
+unique_key:
+  - id
+  - event_type

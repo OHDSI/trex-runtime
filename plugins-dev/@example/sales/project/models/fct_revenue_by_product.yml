@@ -1,0 +1,4 @@
+materialized: table
+endpoint_path: /revenue-by-product
+endpoint_roles: admin,user
+endpoint_formats: json,csv,arrow

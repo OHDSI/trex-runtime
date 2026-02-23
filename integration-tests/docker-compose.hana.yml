@@ -1,0 +1,22 @@
+services:
+  hana:
+    image: saplabs/hanaexpress:2.00.082.00.20250528.1
+    platform: linux/amd64
+    container_name: trex-hana
+    hostname: hana
+    ports:
+      - "39041:39041"
+    volumes:
+      - hana-data:/hana/mounts
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command:
+      - --agree-to-sap-license
+      - --dont-check-system
+      - --dont-check-mount-points
+      - --master-password
+      - Toor1234
+
+volumes:
+  hana-data:

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Analytics — trex Example Plugin</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a26;--border:#2a2a3a;
+  --text:#e4e4ef;--muted:#8888a0;--accent:#6c5ce7;--accent2:#a29bfe;
+  --green:#00b894;--orange:#fdcb6e;--red:#e17055;
+  --radius:8px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.6;padding:0}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+
+header{
+  background:linear-gradient(135deg,#12121a 0%,#1e1e32 100%);
+  border-bottom:1px solid var(--border);padding:2rem 2rem 1.5rem;
+}
+header h1{font-size:1.5rem;font-weight:700;letter-spacing:-.02em}
+header p{color:var(--muted);font-size:.9rem;margin-top:.25rem}
+
+.container{max-width:1200px;margin:0 auto;padding:2rem}
+
+/* ── Plugin type cards ── */
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:2.5rem}
+.type-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.25rem;position:relative;overflow:hidden;
+}
+.type-card::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--accent);
+}
+.type-card h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.08em;color:var(--accent2);margin-bottom:.5rem}
+.type-card p{font-size:.8rem;color:var(--muted);line-height:1.5}
+.type-card code{
+  display:inline-block;margin-top:.5rem;font-size:.7rem;
+  background:var(--surface2);padding:.15rem .4rem;border-radius:4px;color:var(--text);
+}
+
+/* ── Sections ── */
+section{margin-bottom:2.5rem}
+section h2{font-size:1.15rem;font-weight:600;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.badge{
+  font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;
+  padding:.2rem .5rem;border-radius:4px;font-weight:600;
+}
+.badge-green{background:rgba(0,184,148,.15);color:var(--green)}
+.badge-orange{background:rgba(253,203,110,.15);color:var(--orange)}
+.badge-red{background:rgba(225,112,85,.15);color:var(--red)}
+
+/* ── Tables ── */
+.table-wrap{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  overflow-x:auto;
+}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+thead{background:var(--surface2)}
+th{text-align:left;padding:.75rem 1rem;font-weight:600;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+td{padding:.65rem 1rem;border-top:1px solid var(--border);white-space:nowrap}
+tr:hover td{background:rgba(108,92,231,.04)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ── API panel ── */
+.api-panel{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;
+}
+.api-bar{
+  display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;
+  background:var(--surface2);border-bottom:1px solid var(--border);font-size:.85rem;
+}
+.api-method{
+  background:var(--accent);color:#fff;font-size:.7rem;font-weight:700;
+  padding:.2rem .5rem;border-radius:4px;
+}
+.api-url{color:var(--muted);font-family:monospace;font-size:.8rem}
+.api-btn{
+  margin-left:auto;background:var(--accent);color:#fff;border:none;
+  padding:.35rem .85rem;border-radius:4px;cursor:pointer;font-size:.8rem;font-weight:600;
+}
+.api-btn:hover{background:var(--accent2)}
+.api-body{padding:1rem;font-family:monospace;font-size:.8rem;color:var(--muted);white-space:pre-wrap;max-height:300px;overflow:auto}
+
+/* ── Pipeline diagram ── */
+.pipeline{
+  display:flex;align-items:center;gap:0;flex-wrap:wrap;
+  padding:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:1.5rem;overflow-x:auto;
+}
+.pipe-node{
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.6rem 1rem;font-size:.8rem;text-align:center;min-width:100px;
+}
+.pipe-node strong{display:block;font-size:.7rem;text-transform:uppercase;color:var(--accent2);letter-spacing:.06em;margin-bottom:.15rem}
+.pipe-arrow{color:var(--muted);font-size:1.2rem;padding:0 .4rem;flex-shrink:0}
+
+/* ── Empty / loading state ── */
+.state-msg{padding:2rem;text-align:center;color:var(--muted);font-size:.85rem}
+
+/* ── Footer ── */
+footer{
+  border-top:1px solid var(--border);padding:1.5rem 2rem;
+  color:var(--muted);font-size:.75rem;text-align:center;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sales Analytics</h1>
+  <p>trex example plugin &mdash; showcasing all five plugin types</p>
+</header>
+
+<div class="container">
+
+  <!-- Plugin types overview -->
+  <div class="types">
+    <div class="type-card">
+      <h3>Transform</h3>
+      <p>SQL models transform seed CSVs through staging into analytics-ready mart tables, served as HTTP endpoints.</p>
+      <code>seeds &rarr; staging &rarr; marts</code>
+    </div>
+    <div class="type-card">
+      <h3>Function</h3>
+      <p>Deno worker exposing a REST API with health, summary, and region lookup endpoints.</p>
+      <code>Deno.serve()</code>
+    </div>
+    <div class="type-card">
+      <h3>Migration</h3>
+      <p>Versioned PostgreSQL schema migration creating report configuration tables.</p>
+      <code>V1__report_config.sql</code>
+    </div>
+    <div class="type-card">
+      <h3>UI</h3>
+      <p>This standalone dashboard — static HTML served by the plugin's route registration.</p>
+      <code>dist/index.html</code>
+    </div>
+    <div class="type-card">
+      <h3>Flow</h3>
+      <p>Prefect workflow definition for scheduled transform refreshes (requires Prefect runtime).</p>
+      <code>refresh-sales-transforms</code>
+    </div>
+  </div>
+
+  <!-- Pipeline visualization -->
+  <section>
+    <h2>Transform Pipeline</h2>
+    <div class="pipeline">
+      <div class="pipe-node"><strong>Seed</strong>products.csv</div>
+      <span class="pipe-arrow">&rarr;</span>
+      <div class="pipe-node"><strong>Staging</strong>stg_products</div>
+      <span class="pipe-arrow">&searr;</span>
+      <div class="pipe-node"><strong>Mart</strong>fct_revenue_by_product</div>
+      <span class="pipe-arrow">&rarr;</span>
+      <div class="pipe-node"><strong>Endpoint</strong>/revenue-by-product</div>
+    </div>
+    <div class="pipeline">
+      <div class="pipe-node"><strong>Seed</strong>orders.csv</div>
+      <span class="pipe-arrow">&rarr;</span>
+      <div class="pipe-node"><strong>Staging</strong>stg_orders</div>
+      <span class="pipe-arrow">&searr;</span>
+      <div class="pipe-node"><strong>Mart</strong>fct_daily_revenue</div>
+      <span class="pipe-arrow">&rarr;</span>
+      <div class="pipe-node"><strong>Endpoint</strong>/daily-revenue</div>
+    </div>
+  </section>
+
+  <!-- Revenue by product -->
+  <section>
+    <h2>Revenue by Product <span id="rbp-badge" class="badge badge-orange">not deployed</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Category</th>
+            <th class="num">Unit Price</th>
+            <th class="num">Units Sold</th>
+            <th class="num">Total Revenue</th>
+          </tr>
+        </thead>
+        <tbody id="rbp-body">
+          <tr><td colspan="5" class="state-msg">Deploy the transform to see live data</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Daily revenue -->
+  <section>
+    <h2>Daily Revenue <span id="dr-badge" class="badge badge-orange">not deployed</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th class="num">Orders</th>
+            <th class="num">Units</th>
+            <th class="num">Revenue</th>
+          </tr>
+        </thead>
+        <tbody id="dr-body">
+          <tr><td colspan="4" class="state-msg">Deploy the transform to see live data</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Function API -->
+  <section>
+    <h2>Function API</h2>
+    <div class="api-panel">
+      <div class="api-bar">
+        <span class="api-method">GET</span>
+        <span class="api-url" id="api-url"></span>
+        <button class="api-btn" onclick="callApi()">Send</button>
+      </div>
+      <div class="api-body" id="api-response">Click "Send" to call the function endpoint</div>
+    </div>
+  </section>
+
+  <!-- How to deploy -->
+  <section>
+    <h2>Getting Started</h2>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.85rem;color:var(--muted);line-height:1.8">
+      <strong style="color:var(--text)">1. Seed</strong> &mdash; Load CSV data via the Transforms admin page or GraphQL mutation <code>transformSeed</code><br>
+      <strong style="color:var(--text)">2. Run</strong> &mdash; Execute models via <code>transformRun</code> to materialize tables and register endpoints<br>
+      <strong style="color:var(--text)">3. Test</strong> &mdash; Validate data quality via <code>transformTest</code><br>
+      <strong style="color:var(--text)">4. Query</strong> &mdash; Fetch results as JSON, CSV, or Arrow from the transform endpoints above
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  trex &middot; @example/sales plugin v1.0.0
+</footer>
+
+<script>
+(function() {
+  const base = window.location.pathname.replace(/\/plugins\/example\/sales\/?.*$/, '');
+  const transformBase = base + '/plugins/transform/sales';
+  const apiBase = base + '/plugins/example/sales-api';
+
+  document.getElementById('api-url').textContent = apiBase + '/summary';
+
+  function fmt(n) {
+    return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function loadTable(url, tbodyId, badgeId, renderRow) {
+    try {
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        document.getElementById(badgeId).textContent = 'empty';
+        return;
+      }
+      const tbody = document.getElementById(tbodyId);
+      tbody.innerHTML = data.map(renderRow).join('');
+      const badge = document.getElementById(badgeId);
+      badge.textContent = data.length + ' rows';
+      badge.className = 'badge badge-green';
+    } catch (e) {
+      const badge = document.getElementById(badgeId);
+      if (String(e).includes('404')) {
+        badge.textContent = 'not deployed';
+      } else {
+        badge.textContent = 'error';
+        badge.className = 'badge badge-red';
+      }
+    }
+  }
+
+  loadTable(
+    transformBase + '/revenue-by-product?format=json',
+    'rbp-body', 'rbp-badge',
+    function(r) {
+      return '<tr>'
+        + '<td>' + (r.product_name || '') + '</td>'
+        + '<td>' + (r.category || '') + '</td>'
+        + '<td class="num">$' + fmt(r.unit_price) + '</td>'
+        + '<td class="num">' + (r.total_units_sold || 0) + '</td>'
+        + '<td class="num">$' + fmt(r.total_revenue) + '</td>'
+        + '</tr>';
+    }
+  );
+
+  loadTable(
+    transformBase + '/daily-revenue?format=json',
+    'dr-body', 'dr-badge',
+    function(r) {
+      return '<tr>'
+        + '<td>' + (r.order_date || '') + '</td>'
+        + '<td class="num">' + (r.num_orders || 0) + '</td>'
+        + '<td class="num">' + (r.total_units || 0) + '</td>'
+        + '<td class="num">$' + fmt(r.daily_revenue) + '</td>'
+        + '</tr>';
+    }
+  );
+
+  window.callApi = async function() {
+    const el = document.getElementById('api-response');
+    el.textContent = 'Loading...';
+    try {
+      const res = await fetch(apiBase + '/summary', { credentials: 'same-origin' });
+      const data = await res.json();
+      el.textContent = JSON.stringify(data, null, 2);
+    } catch (e) {
+      el.textContent = 'Error: ' + e.message;
+    }
+  };
+})();
+</script>
+</body>
+</html>

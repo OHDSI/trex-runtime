@@ -1,0 +1,1 @@
+CREATE TABLE perf_table_75(id INTEGER, val VARCHAR);

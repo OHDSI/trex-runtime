@@ -1,0 +1,23 @@
+# name: test/sql/fhir.test
+# description: test fhir extension
+# group: [fhir]
+
+# Before we load the extension, this will fail
+statement error
+SELECT trex_fhir_version();
+----
+Catalog Error: Scalar Function with name trex_fhir_version does not exist!
+
+# Require statement will ensure the extension is loaded from now on
+require fhir
+
+# Confirm trex_fhir_version returns version string
+query I
+SELECT trex_fhir_version();
+----
+fhir extension v0.1.0 (FHIR R4 4.0.1)
+
+# Confirm trex_fhir_status returns empty result set when no servers are running
+query III
+SELECT * FROM trex_fhir_status();
+----
