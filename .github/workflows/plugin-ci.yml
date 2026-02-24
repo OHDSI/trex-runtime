@@ -152,27 +152,34 @@ jobs:
           CI: true
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Use Node.js - OSS Develop
+      - name: Configure @trex publish registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+          registry-url: "https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/trex/npm/registry/"
+          scope: "@trex"
+
+      - name: Configure @data2evidence registry - OSS Develop
         uses: actions/setup-node@v4
         if: env.NPM_ARTIFACT_TYPE == 'OSS-develop'
         with:
           node-version: "18.x"
           registry-url: "https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/d2e/npm/registry/"
-          scope: "@trex"
-      - name: Use Node.js - OSS Release
+          scope: "@data2evidence"
+      - name: Configure @data2evidence registry - OSS Release
         uses: actions/setup-node@v4
         if: env.NPM_ARTIFACT_TYPE == 'OSS-release'
         with:
           node-version: "18.x"
           registry-url: "https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/stable/npm/registry/"
-          scope: "@trex"
-      - name: Use Node.js - Project
+          scope: "@data2evidence"
+      - name: Configure @data2evidence registry - Project
         uses: actions/setup-node@v4
         if: env.NPM_ARTIFACT_TYPE == 'Project'
         with:
           node-version: "18.x"
           registry-url: "https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/ms/npm/registry/"
-          scope: "@trex"
+          scope: "@data2evidence"
 
       - name: Publish
         env:

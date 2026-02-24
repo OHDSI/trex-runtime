@@ -16,7 +16,7 @@ echo "Downloading extensions to $RESOURCES_DIR"
 mkdir -p "$RESOURCES_DIR"
 
 # Configure npm for Azure DevOps registry
-NPM_REGISTRY="${NPM_REGISTRY:-https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/d2e/npm/registry/}"
+NPM_REGISTRY="${NPM_REGISTRY:-https://pkgs.dev.azure.com/data2evidence/d2e/_packaging/trex/npm/registry/}"
 
 cd "$TEMP_DIR"
 
