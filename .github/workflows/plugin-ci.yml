@@ -269,10 +269,10 @@ jobs:
       - name: Push to GHCR
         if: github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch'
         run: |
-          docker tag trexsql-test ghcr.io/p-hoffmann/trexsql:latest
-          docker tag trexsql-test ghcr.io/p-hoffmann/trexsql:sha-${{ github.sha }}
-          docker push ghcr.io/p-hoffmann/trexsql:latest
-          docker push ghcr.io/p-hoffmann/trexsql:sha-${{ github.sha }}
+          docker tag trexsql-test ghcr.io/ohdsi/trexsql:latest
+          docker tag trexsql-test ghcr.io/ohdsi/trexsql:sha-${{ github.sha }}
+          docker push ghcr.io/ohdsi/trexsql:latest
+          docker push ghcr.io/ohdsi/trexsql:sha-${{ github.sha }}
 
   build-pg-trex:
     needs: [build]
@@ -356,10 +356,10 @@ jobs:
       - name: Push to GHCR
         if: github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch'
         run: |
-          docker tag pg-trex-test ghcr.io/p-hoffmann/pg-trex:latest
-          docker tag pg-trex-test ghcr.io/p-hoffmann/pg-trex:sha-${{ github.sha }}
-          docker push ghcr.io/p-hoffmann/pg-trex:latest
-          docker push ghcr.io/p-hoffmann/pg-trex:sha-${{ github.sha }}
+          docker tag pg-trex-test ghcr.io/ohdsi/pg-trex:latest
+          docker tag pg-trex-test ghcr.io/ohdsi/pg-trex:sha-${{ github.sha }}
+          docker push ghcr.io/ohdsi/pg-trex:latest
+          docker push ghcr.io/ohdsi/pg-trex:sha-${{ github.sha }}
 
   success:
     needs: [build, build-docker, build-pg-trex, create-release]
