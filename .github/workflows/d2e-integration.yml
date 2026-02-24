@@ -47,25 +47,25 @@ jobs:
           sudo ldconfig
 
       - name: Setup Rust
-        working-directory: plugins/runtime/edge-runtime
+        working-directory: plugins/runtime
         run: rustup show
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: plugins/runtime/edge-runtime/ext/trexas
+          workspaces: plugins/runtime
 
       - name: Clean V8 cache
-        working-directory: plugins/runtime/edge-runtime/ext/trexas
+        working-directory: plugins/runtime
         run: rm -rf target/*/gn_out target/*/obj/librusty_v8.a || true
 
       - name: Build extension
-        working-directory: plugins/runtime/edge-runtime/ext/trexas
+        working-directory: plugins/runtime
         run: |
           make configure
           make release
 
       - name: Sign extension
-        working-directory: plugins/runtime/edge-runtime/ext/trexas
+        working-directory: plugins/runtime
         env:
           DUCKDB_EXTENSION_SIGNING_KEY: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY }}
         run: |
@@ -75,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trexas-extension
-          path: plugins/runtime/edge-runtime/ext/trexas/build/release/trexas.trex
+          path: plugins/runtime/build/release/trexas.trex
           retention-days: 1
           if-no-files-found: error
 

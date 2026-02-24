@@ -76,7 +76,7 @@ jobs:
             RUNNER: ubuntu-24.04
           - PKGPATH: ./plugins/bao
             RUNNER: ubuntu-24.04
-          - PKGPATH: ./plugins/runtime/edge-runtime/ext/trexas
+          - PKGPATH: ./plugins/runtime
 
     runs-on: ${{ matrix.RUNNER || needs.pick_runner.outputs.random_runner }}
 
@@ -140,7 +140,7 @@ jobs:
           lein version
 
       - name: Clean V8 cache
-        if: matrix.PKGPATH == './plugins/runtime/edge-runtime/ext/trexas'
+        if: matrix.PKGPATH == './plugins/runtime'
         working-directory: ${{ matrix.PKGPATH }}
         run: rm -rf target/*/gn_out target/*/obj/librusty_v8.a || true
 

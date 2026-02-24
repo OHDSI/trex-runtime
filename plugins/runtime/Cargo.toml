@@ -1,0 +1,68 @@
+[package]
+name = "trexas"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+strip = true
+
+[dependencies]
+duckdb = { version = "1.4.4", features = ["vtab-loadable", "vscalar"] }
+duckdb-loadable-macros = "0.1.14"
+libduckdb-sys = { version = "1.4.4", features = ["loadable-extension"] }
+deno_facade = { path = "edge-runtime/crates/deno_facade" }
+deno = { path = "edge-runtime/deno" }
+ext_workers = { path = "edge-runtime/ext/workers" }
+trex_core = { path = "edge-runtime/ext/trex" }
+base = { path = "edge-runtime/crates/base", features = ["trex"] }
+anyhow = "1.0.57"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.85"
+tokio = { version = "1.36.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+env_logger = "0.11"
+tracing = "0.1"
+
+[features]
+default = []
+
+[patch.crates-io]
+# DuckDB Rust bindings fork
+duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
+libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
+duckdb-loadable-macros = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
+
+# Standalone forks
+deno_core = { git = "https://github.com/p-hoffmann/deno_core", branch = "supabase-v0.363.0" }
+eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.104.0-edge-runtime" }
+v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v140.2.0" }
+timezone_provider = { git = "https://github.com/boa-dev/temporal", tag = "v0.0.14" }
+
+# Deno monorepo fork — patched crates
+deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_io = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_net = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_console = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_telemetry = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+ext_node = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_npm_installer = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+# Deno monorepo fork — unmodified transitive deps (must come from same monorepo to avoid version conflicts)
+deno_config = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_crypto_provider = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_features = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_fetch = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_maybe_sync = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_npm_cache = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_package_json = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_permissions = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_process = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_signals = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_subprocess_windows = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+deno_tls = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+node_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }

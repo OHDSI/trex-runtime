@@ -19,7 +19,6 @@ members = [
   "ext/trex",
   "ext/runtime",
   "ext/workers",
-  "ext/trexas",
 ]
 
 [workspace.package]
