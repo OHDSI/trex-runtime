@@ -86,18 +86,15 @@ RUN curl -sLO https://github.com/posit-dev/shinylive/releases/download/v${SHINYL
     mv shinylive-${SHINYLIVE_VERSION} shinylive && \
     rm shinylive-${SHINYLIVE_VERSION}.tar.gz
 
-# Create plugins directory for plugin installs
-RUN mkdir -p ./plugins
+# Create plugins directory and symlink @trex npm packages for plugin scanner
+RUN mkdir -p ./plugins && \
+    ln -sf $(pwd)/node_modules/@trex ./plugins/@trex
 
 # Copy core (overridden by volume mount in development)
 COPY core/ ./core/
 
 # Copy functions (overridden by volume mount in development)
 COPY functions/ ./functions/
-
-# Build documentation site
-COPY core/docs/ ./core/docs/
-RUN cd core/docs && npm ci && npm run build
 
 ENV SCHEMA_DIR=/usr/src/core/schema
 ENV DUCKDB_EXTENSION_DIRECTORY=/usr/share/trexsql/extensions

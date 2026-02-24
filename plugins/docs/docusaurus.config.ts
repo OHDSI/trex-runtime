@@ -8,7 +8,7 @@ const config: Config = {
   favicon: "img/favicon.ico",
 
   url: "http://localhost:8001",
-  baseUrl: "/trex/docs/",
+  baseUrl: "/plugins/trex/docs/",
 
   markdown: {
     mermaid: true,

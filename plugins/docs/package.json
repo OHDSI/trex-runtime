@@ -1,15 +1,20 @@
 {
-  "name": "trexsql-docs",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@trex/docs",
+  "version": "1.0.0",
+  "description": "trexsql documentation site",
+  "files": ["build/"],
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start --port 3003",
     "build": "docusaurus build",
-    "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
-    "clear": "docusaurus clear",
-    "serve": "docusaurus serve"
+    "prepack": "npm run build"
+  },
+  "trex": {
+    "ui": {
+      "routes": [
+        { "path": "/docs", "dir": "build" }
+      ]
+    }
   },
   "dependencies": {
     "@docusaurus/core": "3.7.0",
