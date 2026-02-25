@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM rust:1.84.0-bookworm AS builder
+FROM rust:1.91.0-bookworm AS builder
 
 ARG TARGETPLATFORM
 ARG ONNXRUNTIME_VERSION=1.17.0
@@ -33,6 +33,8 @@ RUN mkdir -p /usr/local/lib && \
     cp /tmp/trexsql/duckdb.h /usr/local/include/ && \
     rm -rf /tmp/libtrexsql-linux-amd64.zip /tmp/trexsql && \
     ldconfig
+
+ENV LIBRARY_PATH=/usr/local/lib
 
 #WORKDIR /usr/src/
 
