@@ -19,6 +19,11 @@ on:
       - 'plugins/runtime/edge-runtime/Cargo.lock'
       - 'plugins/runtime/edge-runtime/Cargo.toml'
       - 'plugins/runtime/edge-runtime/rust-toolchain.toml'
+      - 'plugins/runtime/src/**'
+      - 'plugins/runtime/Cargo.toml'
+      - 'plugins/runtime/Cargo.lock'
+      - 'plugins/runtime/.cargo/**'
+      - 'plugins/runtime/rust-toolchain.toml'
   push:
     branches:
       - main

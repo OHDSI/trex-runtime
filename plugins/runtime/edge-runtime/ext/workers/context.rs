@@ -29,16 +29,11 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum WorkerExitStatus {
+  #[default]
   Normal,
   WithUncaughtException(UncaughtExceptionEvent),
-}
-
-impl Default for WorkerExitStatus {
-  fn default() -> Self {
-    Self::Normal
-  }
 }
 
 #[derive(Debug, Clone, Default)]
