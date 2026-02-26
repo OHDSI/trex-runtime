@@ -25,7 +25,7 @@ export class Plugins {
     source: "dev" | "npm"
   ) {
     try {
-      if (!pkg.trex) {
+      if (!pkg.trex || typeof pkg.trex !== "object") {
         console.log(
           `Plugin ${fullName} has no trex config — skipping registration`
         );

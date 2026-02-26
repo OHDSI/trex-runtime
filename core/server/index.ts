@@ -536,19 +536,6 @@ app.use(`${FUNCTIONS_BASE_PATH}/:service_name`, async (req, res, next) => {
   }
 });
 
-try {
-  const docsDistPath = join(Deno.cwd(), "docs", "build");
-  await Deno.stat(docsDistPath);
-  const serveDocsStatic = (await import("express")).default.static;
-  app.use(`${BASE_PATH}/docs`, serveDocsStatic(docsDistPath));
-  app.get(`${BASE_PATH}/docs/*`, (_req, res) => {
-    res.sendFile(join(docsDistPath, "index.html"));
-  });
-  console.log("Serving docs from docs/build/");
-} catch (_e) {
-  console.warn("Docs not found — /trex/docs disabled");
-}
-
 // Serve self-hosted Shinylive assets (must be before SPA catch-all)
 try {
   const shinyliveDistPath = join(Deno.cwd(), "shinylive");
@@ -566,7 +553,7 @@ try {
   const serveStatic = (await import("express")).default.static;
   app.use(BASE_PATH, serveStatic(webDistPath));
   app.get(`${BASE_PATH}/*`, (_req, res, next) => {
-    if (_req.path.startsWith(`${BASE_PATH}/api/`) || _req.path.startsWith(`${BASE_PATH}/graphql`) || _req.path.startsWith(`${BASE_PATH}/graphiql`) || _req.path.startsWith(`${BASE_PATH}/_internal`) || _req.path.startsWith(`${BASE_PATH}/docs`)) {
+    if (_req.path.startsWith(`${BASE_PATH}/api/`) || _req.path.startsWith(`${BASE_PATH}/graphql`) || _req.path.startsWith(`${BASE_PATH}/graphiql`) || _req.path.startsWith(`${BASE_PATH}/_internal`)) {
       return next();
     }
     res.sendFile(join(webDistPath, "index.html"));

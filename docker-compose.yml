@@ -29,7 +29,7 @@ services:
       - ./core/server:/usr/src/core/server
       - ./functions:/usr/src/functions
       - ./plugins-dev:/usr/src/plugins-dev
-      - ./core/docs:/usr/src/core/docs
+      - ./plugins/docs:/usr/src/plugins/@trex/docs
     depends_on:
       postgres:
         condition: service_healthy

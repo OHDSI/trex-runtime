@@ -94,14 +94,7 @@ RUN mkdir -p /root/.duckdb/extensions/v${DUCKDB_VERSION}/linux_amd64 && \
 # CI override (no-op locally since dir only has .gitkeep)
 COPY extensions/ /usr/lib/trexsql/extensions/
 
-# ── Stage 4: Build documentation site ─────────────────────────────────────
-FROM node:20-trixie-slim AS docs-builder
-
-WORKDIR /usr/src/docs
-COPY core/docs/ .
-RUN npm ci && npm run build
-
-# ── Stage 5: Runtime (postgres:17 + everything) ───────────────────────────
+# ── Stage 4: Runtime (postgres:17 + everything) ──────────────────────────
 FROM postgres:17
 
 # ── System dependencies ──
@@ -159,8 +152,7 @@ RUN cd /usr/src && \
 WORKDIR /usr/src
 COPY core/ ./core/
 COPY functions/ ./functions/
-COPY --from=docs-builder /usr/src/docs/build ./docs/build
-RUN mkdir -p ./plugins
+COPY --from=npm-deps /usr/src/node_modules/@trex ./plugins/@trex
 
 # ── Pre-initialize the database to avoid the initdb→restart cycle.
 # The entrypoint detects existing PGDATA and skips initdb+init scripts,

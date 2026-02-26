@@ -15,6 +15,7 @@
     "@trex/migration": "latest",
     "@trex/pgwire": "latest",
     "@trex/tpm": "latest",
+    "@trex/docs": "latest",
     "@trex/transform": "latest"
   }
 }
