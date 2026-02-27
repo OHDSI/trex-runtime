@@ -1,13 +1,22 @@
 {
-  "name": "web",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@trex/web",
+  "version": "1.0.0",
+  "description": "trex admin web UI",
   "type": "module",
+  "files": ["dist/"],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "prepack": "npm run build",
     "lint": "eslint .",
     "preview": "vite preview"
+  },
+  "trex": {
+    "ui": {
+      "routes": [
+        { "path": "/web", "dir": "dist", "spa": true }
+      ]
+    }
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",

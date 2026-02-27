@@ -4,9 +4,10 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 const basePath = process.env.VITE_BASE_PATH || "/trex"
+const uiBasePath = process.env.VITE_UI_BASE_PATH || "/plugins/trex/web"
 
 export default defineConfig({
-  base: `${basePath}/`,
+  base: `${uiBasePath}/`,
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -19,6 +20,7 @@ export default defineConfig({
       [`${basePath}/graphql`]: { target: "http://localhost:8000", ws: true },
       [`${basePath}/graphiql`]: "http://localhost:8000",
       [`${basePath}/docs`]: "http://localhost:8000",
+      "/plugins": "http://localhost:8000",
     },
   },
 })

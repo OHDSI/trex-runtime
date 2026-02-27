@@ -545,26 +545,8 @@ try {
   console.log("Serving Shinylive assets from shinylive/");
 } catch { /* shinylive assets not present — skip */ }
 
-try {
-  const schemaDir = Deno.env.get("SCHEMA_DIR");
-  const coreRoot = schemaDir ? join(schemaDir, "..") : join(Deno.cwd(), "core");
-  const webDistPath = join(coreRoot, "web", "dist");
-  await Deno.stat(webDistPath);
-  const serveStatic = (await import("express")).default.static;
-  app.use(BASE_PATH, serveStatic(webDistPath));
-  app.get(`${BASE_PATH}/*`, (_req, res, next) => {
-    if (_req.path.startsWith(`${BASE_PATH}/api/`) || _req.path.startsWith(`${BASE_PATH}/graphql`) || _req.path.startsWith(`${BASE_PATH}/graphiql`) || _req.path.startsWith(`${BASE_PATH}/_internal`)) {
-      return next();
-    }
-    res.sendFile(join(webDistPath, "index.html"));
-  });
-  console.log("Serving static files from core/web/dist/");
-} catch (e) {
-  console.warn("Static file serving disabled:", e);
-}
-
 app.get("/", (_req, res) => {
-  res.redirect(`${BASE_PATH}/`);
+  res.redirect("/plugins/trex/web/");
 });
 
 await initAuthFromDB();

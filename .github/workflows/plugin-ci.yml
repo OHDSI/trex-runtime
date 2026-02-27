@@ -77,6 +77,7 @@ jobs:
           - PKGPATH: ./plugins/bao
             RUNNER: ubuntu-24.04
           - PKGPATH: ./plugins/docs
+          - PKGPATH: ./plugins/web
           - PKGPATH: ./plugins/runtime
 
     runs-on: ${{ matrix.RUNNER || needs.pick_runner.outputs.random_runner }}

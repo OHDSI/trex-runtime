@@ -30,6 +30,7 @@ services:
       - ./functions:/usr/src/functions
       - ./plugins-dev:/usr/src/plugins-dev
       - ./plugins/docs:/usr/src/plugins/@trex/docs
+      - ./plugins/web/dist:/usr/src/plugins/@trex/web/dist
     depends_on:
       postgres:
         condition: service_healthy

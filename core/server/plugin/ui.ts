@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { join } from "jsr:@std/path@^1.0";
 import { PLUGINS_BASE_PATH } from "../config.ts";
 import { scopeUrlPrefix } from "./utils.ts";
 
@@ -14,7 +15,7 @@ export function getPluginsJson(): string {
   return pluginsJson;
 }
 
-export function addPlugin(_app: Express, value: any, dir: string, fullName: string = "") {
+export function addPlugin(app: Express, value: any, dir: string, fullName: string = "") {
   const scopePrefix = scopeUrlPrefix(fullName);
   if (value.routes) {
     for (const r of value.routes) {
@@ -22,12 +23,25 @@ export function addPlugin(_app: Express, value: any, dir: string, fullName: stri
       const fsPath = `${dir}/${r.dir || r.target}`;
       const fullPrefix = `${PLUGINS_BASE_PATH}${scopePrefix}${urlPrefix}`;
       console.log(`Registering static route: ${fullPrefix} -> ${fsPath}`);
-      REGISTERED_UI_ROUTES.push({ pluginName: name, urlPrefix: fullPrefix, fsPath });
+      REGISTERED_UI_ROUTES.push({ pluginName: fullName, urlPrefix: fullPrefix, fsPath });
       try {
         // deno-lint-ignore no-explicit-any
         (Deno as any).core.ops.op_register_static_route(fullPrefix, fsPath);
       } catch (e) {
         console.error(`Failed to register static route ${fullPrefix}: ${e}`);
+      }
+
+      // SPA fallback: serve index.html for non-file paths
+      if (r.spa) {
+        const indexPath = join(fsPath, "index.html");
+        app.use(fullPrefix, (_req, res, next) => {
+          try {
+            res.sendFile(indexPath);
+          } catch {
+            next();
+          }
+        });
+        console.log(`Registered SPA fallback: ${fullPrefix}/* -> ${indexPath}`);
       }
     }
   }
