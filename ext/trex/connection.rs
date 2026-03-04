@@ -3,10 +3,54 @@
 use crate::query_executor::{QueryExecutor, EXECUTOR_POOL_SIZE};
 use duckdb::Connection;
 use std::sync::{Arc, Mutex, OnceLock};
+use tracing::warn;
 
 static QUERY_EXECUTOR: OnceLock<Arc<QueryExecutor>> = OnceLock::new();
 static CONNECTION_PROVIDER: OnceLock<Arc<dyn ConnectionProvider>> =
   OnceLock::new();
+static STREAMING_POOL: OnceLock<StreamingPool> = OnceLock::new();
+
+const STREAMING_POOL_SIZE: usize = 4;
+
+pub struct StreamingPool {
+  connections: Mutex<Vec<Connection>>,
+}
+
+impl StreamingPool {
+  fn new(connection: &Connection, pool_size: usize) -> Result<Self, String> {
+    let mut connections = Vec::with_capacity(pool_size);
+    for i in 0..pool_size {
+      connections.push(
+        connection
+          .try_clone()
+          .map_err(|e| format!("streaming pool clone {i}: {e}"))?,
+      );
+    }
+    Ok(Self {
+      connections: Mutex::new(connections),
+    })
+  }
+
+  pub fn acquire(&self) -> Option<Connection> {
+    match self.connections.lock() {
+      Ok(mut pool) => pool.pop(),
+      Err(poisoned) => {
+        warn!("streaming pool lock poisoned on acquire, recovering");
+        poisoned.into_inner().pop()
+      }
+    }
+  }
+
+  pub fn release(&self, conn: Connection) {
+    match self.connections.lock() {
+      Ok(mut pool) => pool.push(conn),
+      Err(poisoned) => {
+        warn!("streaming pool lock poisoned on release, recovering");
+        poisoned.into_inner().push(conn);
+      }
+    }
+  }
+}
 
 pub fn init_query_executor(connection: &Connection) -> Result<(), String> {
   let executor = QueryExecutor::new(connection, EXECUTOR_POOL_SIZE)?;
@@ -17,6 +61,17 @@ pub fn init_query_executor(connection: &Connection) -> Result<(), String> {
 
 pub fn get_query_executor() -> Option<Arc<QueryExecutor>> {
   QUERY_EXECUTOR.get().cloned()
+}
+
+pub fn init_streaming_pool(connection: &Connection) -> Result<(), String> {
+  let pool = StreamingPool::new(connection, STREAMING_POOL_SIZE)?;
+  STREAMING_POOL
+    .set(pool)
+    .map_err(|_| "streaming pool already initialized".into())
+}
+
+pub fn get_streaming_pool() -> Option<&'static StreamingPool> {
+  STREAMING_POOL.get()
 }
 
 pub trait ConnectionProvider: Send + Sync {
@@ -119,6 +174,21 @@ mod tests {
     let row = rows.next().unwrap().unwrap();
     let val: i32 = row.get(0).unwrap();
     assert_eq!(val, 42);
+  }
+
+  #[test]
+  fn test_streaming_pool_acquire_release() {
+    let conn = Connection::open_in_memory().unwrap();
+    let pool = StreamingPool::new(&conn, 2).unwrap();
+
+    let c1 = pool.acquire();
+    let c2 = pool.acquire();
+    assert!(c1.is_some());
+    assert!(c2.is_some());
+    assert!(pool.acquire().is_none());
+
+    pool.release(c1.unwrap());
+    assert!(pool.acquire().is_some());
   }
 
   #[test]
