@@ -28,6 +28,9 @@ fn store_shared_connection(
   if let Err(e) = trex_core::connection::init_query_executor(connection) {
     warn!(error = %e, "query executor init failed (may already exist)");
   }
+  if let Err(e) = trex_core::connection::init_streaming_pool(connection) {
+    warn!(error = %e, "streaming pool init failed (may already exist)");
+  }
 
   let cloned = connection
     .try_clone()
