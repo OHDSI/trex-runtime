@@ -16,10 +16,7 @@ pub struct StreamingPool {
 }
 
 impl StreamingPool {
-  fn new(
-    connection: &Connection,
-    pool_size: usize,
-  ) -> Result<Self, String> {
+  fn new(connection: &Connection, pool_size: usize) -> Result<Self, String> {
     let mut connections = Vec::with_capacity(pool_size);
     for i in 0..pool_size {
       connections.push(

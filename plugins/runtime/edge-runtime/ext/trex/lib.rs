@@ -861,12 +861,10 @@ fn op_execute_query_stream(
         }
         {
           if let Ok(mut stmt) = conn.prepare(&sql) {
-            if let Ok(iter) =
-              stmt.query_arrow(params_from_iter(params.iter()))
+            if let Ok(iter) = stmt.query_arrow(params_from_iter(params.iter()))
             {
               for batch in iter {
-                let json =
-                  record_batches_to_json(std::slice::from_ref(&batch));
+                let json = record_batches_to_json(std::slice::from_ref(&batch));
                 if sender.blocking_send(json).is_err() {
                   break;
                 }
@@ -888,8 +886,7 @@ fn op_execute_query_stream(
           let error_json = serde_json::json!({
             "error": format!("Query execution panicked: {}", msg)
           });
-          let _ =
-            sender_for_panic.blocking_send(error_json.to_string());
+          let _ = sender_for_panic.blocking_send(error_json.to_string());
         }
       }
     });
