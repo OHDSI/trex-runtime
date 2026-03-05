@@ -400,7 +400,10 @@ export class TrexConnection  {
                 `${duckdbNativeSchemName}.COHORT`
             );
         }*/
-        const replacement = schemaName === "" ? "" : `${schemaName}.`;
+        // Use fully qualified 3-part name (catalog.schema.table) to avoid DuckDB
+        // "Ambiguous reference to catalog or schema" error when databaseCode equals schemaName
+        const databaseName = this.connection.getdatabase();
+        const replacement = schemaName === "" ? "" : `${databaseName}.${schemaName}.`;
         return sql.replace(/\$\$SCHEMA\$\$./g, replacement);
     }
 }
