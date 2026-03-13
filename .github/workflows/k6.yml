@@ -1,0 +1,128 @@
+name: k6 Performance Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: 'Specific spec to run (e.g. "simple"). Leave empty to run all specs.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CARGO_TERM_COLOR: always
+  RUSTUP_MAX_RETRIES: 10
+  ORT_DYLIB_PATH: /tmp/onnxruntime/lib/libonnxruntime.so
+
+jobs:
+  k6:
+    name: 'k6 benchmarks'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libblas-dev liblapack-dev libopenblas-dev libglib2.0-dev unzip wget
+
+      - name: Install TrexSQL library
+        run: |
+          wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip
+          unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql
+          sudo cp /tmp/trexsql/libtrexsql.so /usr/local/lib/
+          sudo cp /tmp/trexsql/duckdb.h /usr/local/include/
+          sudo ldconfig
+          rm -rf /tmp/libtrexsql-linux-amd64.zip /tmp/trexsql
+
+      - uses: cardinalby/export-env-action@v2
+        with:
+          envFile: '.env'
+
+      - name: Install ONNX Runtime
+        run: ./scripts/install_onnx.sh "${{ env.ONNXRUNTIME_VERSION }}" linux x64 /tmp/onnxruntime
+
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build trex binary
+        run: cargo build --release --features cli/tracing
+        env:
+          LIBRARY_PATH: /usr/local/lib
+
+      - name: Install k6
+        run: |
+          K6_VERSION="v0.52.0"
+          K6_ARCH="amd64"
+          curl -OL "https://github.com/grafana/k6/releases/download/${K6_VERSION}/k6-${K6_VERSION}-linux-${K6_ARCH}.tar.gz" --output-dir /tmp
+          tar -xzf "/tmp/k6-${K6_VERSION}-linux-${K6_ARCH}.tar.gz" -C /tmp
+          sudo mv "/tmp/k6-${K6_VERSION}-linux-${K6_ARCH}/k6" /usr/local/bin/
+          chmod +x /usr/local/bin/k6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build k6 specs
+        run: |
+          cd k6
+          npm install
+
+      - name: Start server
+        run: |
+          RUST_BACKTRACE=full ./target/release/trex start \
+            --main-service ./examples/main \
+            --event-worker ./examples/event-manager &
+        env:
+          EDGE_RUNTIME_PORT: 9998
+          LD_LIBRARY_PATH: /usr/local/lib
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -so /dev/null -w '%{http_code}' http://127.0.0.1:9998 2>/dev/null | grep -q '^[0-9]'; then
+              echo "Server is ready"
+              exit 0
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 2
+          done
+          echo "Server failed to start"
+          exit 1
+
+      - name: Run k6 specs
+        run: |
+          mkdir -p /tmp/k6-results
+          K6_TARGET="http://127.0.0.1:9998"
+          K6_RUN_PROFILE="performance"
+          export K6_TARGET K6_RUN_PROFILE
+
+          if [ -n "${{ inputs.spec }}" ]; then
+            SPEC_FILE="k6/dist/specs/${{ inputs.spec }}.js"
+            if [ ! -f "$SPEC_FILE" ]; then
+              echo "Spec not found: $SPEC_FILE"
+              exit 1
+            fi
+            echo "=== Running spec: ${{ inputs.spec }} ==="
+            k6 run "$SPEC_FILE" --summary-export "/tmp/k6-results/${{ inputs.spec }}.json" 2>&1 | tee "/tmp/k6-results/${{ inputs.spec }}.log"
+          else
+            for spec in k6/dist/specs/*.js; do
+              SPEC_NAME=$(basename "$spec" .js)
+              echo "=== Running spec: $SPEC_NAME ==="
+              k6 run "$spec" --summary-export "/tmp/k6-results/${SPEC_NAME}.json" 2>&1 | tee "/tmp/k6-results/${SPEC_NAME}.log"
+              echo ""
+            done
+          fi
+
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: /tmp/k6-results/
+          retention-days: 30
