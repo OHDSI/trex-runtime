@@ -160,32 +160,35 @@ export class DatabaseManager {
 
 	#updatePublications() {
 		for(const c of this.getCredentials()) {
-			const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
+			try {
+				const adminCredentials = c.credentials.filter(c => c.userScope === 'Admin')[0];
 
-			if (c.dialect == 'postgres') {
-				console.log(`TREX NO PUB FOUND ${c.id}`)
-				const key = `${c.id}`
-				if(!(key in this.getPublications)) {
-					this.#add_postgres(`${key}_trexpg`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
-					this.#add_postgres(`${key}__srcdb`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
-					const pub = this.getPublications();
-					pub[key] = true;
-					this.#setPublications(pub);
+				if (c.dialect == 'postgres') {
+					console.log(`TREX NO PUB FOUND ${c.id}`)
+					const key = `${c.id}`
+					if(!(key in this.getPublications)) {
+						this.#add_postgres(`${key}__srcdb`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
+						const pub = this.getPublications();
+						pub[key] = true;
+						this.#setPublications(pub);
+					}
+				} else if (c.dialect == 'bigquery') {
+					console.log(`TREX ADD BQ ${c.id}`)
+					const key = `${c.id}`
+					if(!(key in this.getPublications)) {
+						this.#add_bigquery(`${key}__srcdb`, {project: c.host, dataset: c.name});
+						const pub = this.getPublications();
+						pub[key] = true;
+						this.#setPublications(pub);
+					}
+				} else {
+					console.log(`TREX DB NOT SUPPORTED ${c.id}`)
+					continue;
 				}
-			} else if (c.dialect == 'bigquery') {
-				console.log(`TREX ADD BQ ${c.id}`)
-				const key = `${c.id}`
-				if(!(key in this.getPublications)) {
-					this.#add_bigquery(`${key}__srcdb`, {project: c.host, dataset: c.name});
-					const pub = this.getPublications();
-					pub[key] = true;
-					this.#setPublications(pub);
-				}
-			} else {
-				console.log(`TREX DB NOT SUPPORTED ${c.id}`)
-				continue;
+				this.#add_duckdb(`${c.id}`);
+			} catch(e) {
+				console.log(`TREX WARN: failed to attach database ${c.id}: ${e.message}`);
 			}
-			this.#add_duckdb(`${c.id}`);
 		}
 	}
 
@@ -269,10 +272,7 @@ export class TrexDB {
 		if(database in dbm.getPublications()) {
 			this.__database = database;
 		} else {
-			this.__database = dbm.getFirstPublication(database.replace("_trexpg", ""));
-			if(database.endsWith("_trexpg")){
-				this.__database = this.__database+"_trexpg";
-			}
+			this.__database = dbm.getFirstPublication(database);
 		}
 		this.__worker_id = worker_id !== undefined ? worker_id : op_acquire_worker();
 	}

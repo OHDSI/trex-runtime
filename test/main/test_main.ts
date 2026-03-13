@@ -165,7 +165,7 @@ const tests = {
     },
     "dbquery #7 (pg conn insert)": async () => {
         try {
-            const connx = new Trex.TrexDB("demo_database_trexpg");
+            const connx = new Trex.TrexDB("demo_database__srcdb");
 
             let resx = await connx.execute("delete from demo_cdm.person where person_id > ?", [10000]);
             console.log(resx);
