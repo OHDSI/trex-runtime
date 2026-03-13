@@ -68,6 +68,9 @@ static TREX_DB: LazyLock<Arc<Mutex<Connection>>> = LazyLock::new(|| {
   }
 
   let _ = connection::init_query_executor(&conn);
+  if let Err(e) = connection::init_streaming_pool(&conn) {
+    warn!(error = %e, "failed to initialize streaming pool");
+  }
   let conn_arc = Arc::new(Mutex::new(conn));
   let _ = connection::init_owned_connection(conn_arc.clone());
   conn_arc
@@ -843,49 +846,50 @@ fn op_execute_query_stream(
   #[serde] params: Vec<TrexType>,
 ) -> Result<ResourceId, TrexError> {
   let (sender, receiver) = mpsc::channel::<String>(1000);
-  let conn_arc = get_active_connection();
+
+  let pool = connection::get_streaming_pool().ok_or_else(|| {
+    TrexError::Generic("streaming pool not initialized".into())
+  })?;
+  let conn = pool.acquire().ok_or_else(|| {
+    TrexError::Generic("no streaming connections available".into())
+  })?;
+
+  let sender_for_panic = sender.clone();
   tokio::spawn(async move {
     tokio::task::spawn_blocking(move || {
-      // Wrap DuckDB operations in catch_unwind to prevent panics from crashing V8
-      let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        let guard = match conn_arc.lock() {
-          Ok(g) => g,
-          Err(poisoned) => {
-            warn!("lock was poisoned in streaming query, recovering");
-            poisoned.into_inner()
-          }
-        };
-        let conn = match guard.try_clone() {
-          Ok(c) => c,
-          Err(e) => {
-            let _ = sender.blocking_send(format!(
-              "{{\"error\":\"connection clone: {e}\"}}"
-            ));
-            return;
-          }
-        };
-        drop(guard);
+      let result = panic::catch_unwind(AssertUnwindSafe(move || {
         if conn.execute(&format!("USE {database}"), []).is_err() {
-          return;
+          return conn;
         }
-        if let Ok(mut stmt) = conn.prepare(&sql) {
-          if let Ok(iter) = stmt.query_arrow(params_from_iter(params.iter())) {
-            for batch in iter {
-              let json = record_batches_to_json(std::slice::from_ref(&batch));
-              if sender.blocking_send(json).is_err() {
-                break;
+        {
+          if let Ok(mut stmt) = conn.prepare(&sql) {
+            if let Ok(iter) = stmt.query_arrow(params_from_iter(params.iter()))
+            {
+              for batch in iter {
+                let json = record_batches_to_json(std::slice::from_ref(&batch));
+                if sender.blocking_send(json).is_err() {
+                  break;
+                }
               }
             }
           }
         }
+        conn
       }));
-      if let Err(e) = result {
-        let msg = extract_panic_message(e);
-        warn!("Streaming query panicked: {msg}");
-        let error_json = serde_json::json!({
-          "error": format!("Query execution panicked: {}", msg)
-        });
-        let _ = sender.blocking_send(error_json.to_string());
+      match result {
+        Ok(conn) => {
+          if let Some(pool) = connection::get_streaming_pool() {
+            pool.release(conn);
+          }
+        }
+        Err(e) => {
+          let msg = extract_panic_message(e);
+          warn!("Streaming query panicked, connection lost from pool: {msg}");
+          let error_json = serde_json::json!({
+            "error": format!("Query execution panicked: {}", msg)
+          });
+          let _ = sender_for_panic.blocking_send(error_json.to_string());
+        }
       }
     });
   });
