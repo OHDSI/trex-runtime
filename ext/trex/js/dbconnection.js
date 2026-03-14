@@ -400,7 +400,8 @@ export class TrexConnection  {
                 `${duckdbNativeSchemName}.COHORT`
             );
         }*/
-        const replacement = schemaName === "" ? "" : `${schemaName}.`;
+        const databaseName = this.connection.getdatabase();
+        const replacement = schemaName === "" ? "" : `${databaseName}.${schemaName}.`;
         return sql.replace(/\$\$SCHEMA\$\$./g, replacement);
     }
 }
