@@ -55,7 +55,9 @@ use crate::worker::WorkerSurfaceBuilder;
 pub enum SupervisorPolicy {
   #[default]
   PerWorker,
-  PerRequest { oneshot: bool },
+  PerRequest {
+    oneshot: bool,
+  },
 }
 
 impl FromStr for SupervisorPolicy {
