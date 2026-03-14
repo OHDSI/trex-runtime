@@ -166,7 +166,7 @@ export class DatabaseManager {
 				if (c.dialect == 'postgres') {
 					console.log(`TREX NO PUB FOUND ${c.id}`)
 					const key = `${c.id}`
-					if(!(key in this.getPublications)) {
+					if(!(key in this.getPublications())) {
 						this.#add_postgres(`${key}__srcdb`, {host: c.host, port: c.port, databaseName: c.name, user: adminCredentials.username, password: adminCredentials.password});
 						const pub = this.getPublications();
 						pub[key] = true;
@@ -175,7 +175,7 @@ export class DatabaseManager {
 				} else if (c.dialect == 'bigquery') {
 					console.log(`TREX ADD BQ ${c.id}`)
 					const key = `${c.id}`
-					if(!(key in this.getPublications)) {
+					if(!(key in this.getPublications())) {
 						this.#add_bigquery(`${key}__srcdb`, {project: c.host, dataset: c.name});
 						const pub = this.getPublications();
 						pub[key] = true;
