@@ -14,24 +14,9 @@ on:
         type: string
   push:
     branches: [develop]
-    paths:
-      - 'crates/**'
-      - 'ext/**'
-      - 'deno/**'
-      - 'vendor/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - '.github/workflows/d2e-integration.yml'
   pull_request:
     types: [opened, ready_for_review, reopened, synchronize]
-    paths:
-      - 'crates/**'
-      - 'ext/**'
-      - 'deno/**'
-      - 'vendor/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - '.github/workflows/d2e-integration.yml'
+  merge_group:
 
 env:
   D2E_BRANCH: ${{ github.event.inputs.d2e_branch || 'develop' }}
