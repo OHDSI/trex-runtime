@@ -402,13 +402,13 @@ export class TrexConnection  {
         }*/
         const databaseName = this.connection.getdatabase();
         const replacement = schemaName === "" ? "" : `${databaseName}.${schemaName}.`;
-        sql = sql.replace(/\$\$SCHEMA\$\$./g, replacement);
+        sql = sql.replace(/\$\$SCHEMA\$\$\./g, replacement);
 
         const vocabReplacement = this.vocabSchemaName === "" ? "" : `${databaseName}.${this.vocabSchemaName}.`;
-        sql = sql.replace(/\$\$VOCAB_SCHEMA\$\$./g, vocabReplacement);
+        sql = sql.replace(/\$\$VOCAB_SCHEMA\$\$\./g, vocabReplacement);
 
         const resultReplacement = this.resultSchemaName === "" ? "" : `${databaseName}.${this.resultSchemaName}.`;
-        sql = sql.replace(/\$\$RESULT_SCHEMA\$\$./g, resultReplacement);
+        sql = sql.replace(/\$\$RESULT_SCHEMA\$\$\./g, resultReplacement);
 
         return sql;
     }
