@@ -890,49 +890,45 @@ fn op_execute_query_stream(
 
   let sender_for_panic = sender.clone();
   tokio::spawn(async move {
-    tokio::task::spawn_blocking(move || {
-      match stream_conn {
-        StreamConn::Pooled(conn) => {
-          let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            stream_query_ref(&conn, &database, &sql, &params, &sender);
-          }));
-          match result {
-            Ok(()) => {
-              if let Some(pool) = connection::get_streaming_pool() {
-                pool.release(conn);
-              }
-            }
-            Err(e) => {
-              let msg = extract_panic_message(e);
-              warn!(
-                "Streaming query panicked, connection lost from pool: {msg}"
-              );
-              let error_json = serde_json::json!({
-                "error": format!("Query execution panicked: {}", msg)
-              });
-              let _ = sender_for_panic.blocking_send(error_json.to_string());
+    tokio::task::spawn_blocking(move || match stream_conn {
+      StreamConn::Pooled(conn) => {
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+          stream_query_ref(&conn, &database, &sql, &params, &sender);
+        }));
+        match result {
+          Ok(()) => {
+            if let Some(pool) = connection::get_streaming_pool() {
+              pool.release(conn);
             }
           }
-        }
-        StreamConn::Shared(conn_arc) => {
-          let guard = match conn_arc.lock() {
-            Ok(g) => g,
-            Err(poisoned) => {
-              warn!("streaming fallback: lock was poisoned, recovering");
-              poisoned.into_inner()
-            }
-          };
-          let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            stream_query_ref(&guard, &database, &sql, &params, &sender);
-          }));
-          if let Err(e) = result {
+          Err(e) => {
             let msg = extract_panic_message(e);
-            warn!("Streaming query panicked: {msg}");
+            warn!("Streaming query panicked, connection lost from pool: {msg}");
             let error_json = serde_json::json!({
               "error": format!("Query execution panicked: {}", msg)
             });
             let _ = sender_for_panic.blocking_send(error_json.to_string());
           }
+        }
+      }
+      StreamConn::Shared(conn_arc) => {
+        let guard = match conn_arc.lock() {
+          Ok(g) => g,
+          Err(poisoned) => {
+            warn!("streaming fallback: lock was poisoned, recovering");
+            poisoned.into_inner()
+          }
+        };
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+          stream_query_ref(&guard, &database, &sql, &params, &sender);
+        }));
+        if let Err(e) = result {
+          let msg = extract_panic_message(e);
+          warn!("Streaming query panicked: {msg}");
+          let error_json = serde_json::json!({
+            "error": format!("Query execution panicked: {}", msg)
+          });
+          let _ = sender_for_panic.blocking_send(error_json.to_string());
         }
       }
     });
