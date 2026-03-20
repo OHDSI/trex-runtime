@@ -67,9 +67,19 @@ static TREX_DB: LazyLock<Arc<Mutex<Connection>>> = LazyLock::new(|| {
     let _ = conn.execute("LOAD circe", []);
   }
 
-  let _ = connection::init_query_executor(&conn);
-  if let Err(e) = connection::init_streaming_pool(&conn) {
-    warn!(error = %e, "failed to initialize streaming pool");
+  let pool_size: usize = match env::var("TREX_CONNECTION_POOL_SIZE") {
+    Ok(v) => v.parse().unwrap_or_else(|_| {
+      warn!(value = %v, "invalid TREX_CONNECTION_POOL_SIZE, defaulting to 0");
+      0
+    }),
+    Err(_) => 0,
+  };
+
+  if pool_size > 0 {
+    let _ = connection::init_query_executor(&conn, pool_size);
+    if let Err(e) = connection::init_streaming_pool(&conn, pool_size) {
+      warn!(error = %e, "failed to initialize streaming pool");
+    }
   }
   let conn_arc = Arc::new(Mutex::new(conn));
   let _ = connection::init_owned_connection(conn_arc.clone());
@@ -614,17 +624,13 @@ fn execute_query_fallback_inner(
   params: Vec<TrexType>,
 ) -> Result<String, TrexError> {
   let conn_arc = get_active_connection();
-  let guard = match conn_arc.lock() {
+  let conn = match conn_arc.lock() {
     Ok(g) => g,
     Err(poisoned) => {
       warn!("lock was poisoned, recovering");
       poisoned.into_inner()
     }
   };
-  let conn = guard
-    .try_clone()
-    .map_err(|e| TrexError::Generic(format!("connection clone: {e}")))?;
-  drop(guard);
 
   if let Err(e) = conn.execute(&format!("USE {database}"), []) {
     warn!(database, error = %e, "failed to switch database");
@@ -837,6 +843,28 @@ fn respond_to_request_inner(
   }
 }
 
+fn stream_query_ref(
+  conn: &Connection,
+  database: &str,
+  sql: &str,
+  params: &[TrexType],
+  sender: &mpsc::Sender<String>,
+) {
+  if conn.execute(&format!("USE {database}"), []).is_err() {
+    return;
+  }
+  if let Ok(mut stmt) = conn.prepare(sql) {
+    if let Ok(iter) = stmt.query_arrow(params_from_iter(params.iter())) {
+      for batch in iter {
+        let json = record_batches_to_json(std::slice::from_ref(&batch));
+        if sender.blocking_send(json).is_err() {
+          break;
+        }
+      }
+    }
+  }
+}
+
 #[op2]
 #[serde]
 fn op_execute_query_stream(
@@ -847,44 +875,56 @@ fn op_execute_query_stream(
 ) -> Result<ResourceId, TrexError> {
   let (sender, receiver) = mpsc::channel::<String>(1000);
 
-  let pool = connection::get_streaming_pool().ok_or_else(|| {
-    TrexError::Generic("streaming pool not initialized".into())
-  })?;
-  let conn = pool.acquire().ok_or_else(|| {
-    TrexError::Generic("no streaming connections available".into())
-  })?;
+  enum StreamConn {
+    Pooled(Connection),
+    Shared(Arc<Mutex<Connection>>),
+  }
+
+  let stream_conn = if let Some(pool) = connection::get_streaming_pool() {
+    StreamConn::Pooled(pool.acquire().ok_or_else(|| {
+      TrexError::Generic("no streaming connections available".into())
+    })?)
+  } else {
+    StreamConn::Shared(get_active_connection())
+  };
 
   let sender_for_panic = sender.clone();
   tokio::spawn(async move {
-    tokio::task::spawn_blocking(move || {
-      let result = panic::catch_unwind(AssertUnwindSafe(move || {
-        if conn.execute(&format!("USE {database}"), []).is_err() {
-          return conn;
-        }
-        {
-          if let Ok(mut stmt) = conn.prepare(&sql) {
-            if let Ok(iter) = stmt.query_arrow(params_from_iter(params.iter()))
-            {
-              for batch in iter {
-                let json = record_batches_to_json(std::slice::from_ref(&batch));
-                if sender.blocking_send(json).is_err() {
-                  break;
-                }
-              }
+    tokio::task::spawn_blocking(move || match stream_conn {
+      StreamConn::Pooled(conn) => {
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+          stream_query_ref(&conn, &database, &sql, &params, &sender);
+        }));
+        match result {
+          Ok(()) => {
+            if let Some(pool) = connection::get_streaming_pool() {
+              pool.release(conn);
             }
           }
-        }
-        conn
-      }));
-      match result {
-        Ok(conn) => {
-          if let Some(pool) = connection::get_streaming_pool() {
-            pool.release(conn);
+          Err(e) => {
+            let msg = extract_panic_message(e);
+            warn!("Streaming query panicked, connection lost from pool: {msg}");
+            let error_json = serde_json::json!({
+              "error": format!("Query execution panicked: {}", msg)
+            });
+            let _ = sender_for_panic.blocking_send(error_json.to_string());
           }
         }
-        Err(e) => {
+      }
+      StreamConn::Shared(conn_arc) => {
+        let guard = match conn_arc.lock() {
+          Ok(g) => g,
+          Err(poisoned) => {
+            warn!("streaming fallback: lock was poisoned, recovering");
+            poisoned.into_inner()
+          }
+        };
+        let result = panic::catch_unwind(AssertUnwindSafe(|| {
+          stream_query_ref(&guard, &database, &sql, &params, &sender);
+        }));
+        if let Err(e) = result {
           let msg = extract_panic_message(e);
-          warn!("Streaming query panicked, connection lost from pool: {msg}");
+          warn!("Streaming query panicked: {msg}");
           let error_json = serde_json::json!({
             "error": format!("Query execution panicked: {}", msg)
           });

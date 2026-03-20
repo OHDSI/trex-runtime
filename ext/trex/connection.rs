@@ -1,6 +1,6 @@
 //! DuckDB connection management and query executor initialization.
 
-use crate::query_executor::{QueryExecutor, EXECUTOR_POOL_SIZE};
+use crate::query_executor::QueryExecutor;
 use duckdb::Connection;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::warn;
@@ -9,8 +9,6 @@ static QUERY_EXECUTOR: OnceLock<Arc<QueryExecutor>> = OnceLock::new();
 static CONNECTION_PROVIDER: OnceLock<Arc<dyn ConnectionProvider>> =
   OnceLock::new();
 static STREAMING_POOL: OnceLock<StreamingPool> = OnceLock::new();
-
-const STREAMING_POOL_SIZE: usize = 4;
 
 pub struct StreamingPool {
   connections: Mutex<Vec<Connection>>,
@@ -52,8 +50,11 @@ impl StreamingPool {
   }
 }
 
-pub fn init_query_executor(connection: &Connection) -> Result<(), String> {
-  let executor = QueryExecutor::new(connection, EXECUTOR_POOL_SIZE)?;
+pub fn init_query_executor(
+  connection: &Connection,
+  pool_size: usize,
+) -> Result<(), String> {
+  let executor = QueryExecutor::new(connection, pool_size)?;
   QUERY_EXECUTOR
     .set(Arc::new(executor))
     .map_err(|_| "executor already initialized".into())
@@ -63,8 +64,11 @@ pub fn get_query_executor() -> Option<Arc<QueryExecutor>> {
   QUERY_EXECUTOR.get().cloned()
 }
 
-pub fn init_streaming_pool(connection: &Connection) -> Result<(), String> {
-  let pool = StreamingPool::new(connection, STREAMING_POOL_SIZE)?;
+pub fn init_streaming_pool(
+  connection: &Connection,
+  pool_size: usize,
+) -> Result<(), String> {
+  let pool = StreamingPool::new(connection, pool_size)?;
   STREAMING_POOL
     .set(pool)
     .map_err(|_| "streaming pool already initialized".into())

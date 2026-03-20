@@ -7,8 +7,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
 use tracing::warn;
 
-pub const EXECUTOR_POOL_SIZE: usize = 4;
-
 pub struct QueryRequest {
   pub database: String,
   pub sql: String,
