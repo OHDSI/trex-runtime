@@ -21,6 +21,7 @@ on:
         type: string
   push:
     branches:
+      - main
       - develop
 
   pull_request:

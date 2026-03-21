@@ -31,6 +31,7 @@ on:
     types: [opened, ready_for_review, reopened, synchronize]
   push:
     branches:
+      - main
       - develop
       - deno2.5.6
 
