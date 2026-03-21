@@ -71,7 +71,7 @@ jobs:
             npm publish --dry-run
           fi
         env:
-          SHOULD_PUBLISH: ${{ github.ref_name == 'develop' || github.event_name == 'workflow_dispatch' }}
+          SHOULD_PUBLISH: ${{ github.ref_name == 'develop' || github.ref_name == 'main' || github.event_name == 'workflow_dispatch' }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/delete-package-versions@v5
         if: github.ref_name == 'develop'
