@@ -43,6 +43,7 @@ on:
   merge_group:
   push:
     branches:
+      - main
       - develop
       - deno2.5.6
       - 'release/v*'
@@ -56,7 +57,7 @@ jobs:
 
   pick_runner:
     runs-on: ubuntu-latest
-    if: (github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch') || ( github.event_name == 'pull_request' && !github.event.pull_request.draft ) # Should run if branch is develop/deno2.5.6/release/workflow_dispatch and doesnt have a PR
+    if: (github.ref_name == 'main' || github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch') || ( github.event_name == 'pull_request' && !github.event.pull_request.draft ) # Should run if branch is develop/deno2.5.6/release/workflow_dispatch and doesnt have a PR
     outputs:
       random_runner: ${{ steps.shuffle.outputs.random_runner }}
     steps:
@@ -65,7 +66,7 @@ jobs:
 
   build:
     needs: [pick_runner]
-    if: (github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch') || ( github.event_name == 'pull_request' && !github.event.pull_request.draft  ) # Should run if branch is develop/deno2.5.6/release/workflow_dispatch and doesnt have a PR
+    if: (github.ref_name == 'main' || github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch') || ( github.event_name == 'pull_request' && !github.event.pull_request.draft  ) # Should run if branch is develop/deno2.5.6/release/workflow_dispatch and doesnt have a PR
 
     strategy:
       fail-fast: false
@@ -162,7 +163,7 @@ jobs:
       - name: Publish
         env:
           CI: ${{ matrix.NPM != 'yarn' }}
-          SHOULD_PUBLISH: ${{ github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch' }}
+          SHOULD_PUBLISH: ${{ github.ref_name == 'main' || github.ref_name == 'develop' || github.ref_name == 'deno2.5.6' || startsWith(github.ref_name, 'release/') || github.event_name == 'workflow_dispatch' }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PROJECT_TOKEN }}
           DUCKDB_EXTENSION_SIGNING_KEY: ${{ secrets.DUCKDB_EXTENSION_SIGNING_KEY }}
         run: |
