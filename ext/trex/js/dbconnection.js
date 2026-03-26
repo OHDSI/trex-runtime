@@ -37,8 +37,9 @@ export class TrexConnection  {
         vocabSchemaName,
         resultSchemaName,
         dialect,
-        translatefn, 
+        translatefn,
     ) {
+        console.log("[LOCAL BUILD 2026-03-26] TrexConnection constructor called", { schemaName, vocabSchemaName, resultSchemaName, dialect });
         this.connection = conn
         this.writeConn = writeConn
         this.schemaName = schemaName;
@@ -183,7 +184,7 @@ export class TrexConnection  {
         callback
     ) {
         try {
-            console.log(`Sql: ${sql}`);
+            console.log(`[LOCAL BUILD] execute: ${sql.substring(0, 100)}...`);
             console.log(
                 `parameters: ${JSON.stringify(flattenParameter(parameters))}`
             );
@@ -207,7 +208,7 @@ export class TrexConnection  {
         callback
     ) {
         try {
-            console.log(`Sql: ${sql}`);
+            console.log(`[LOCAL BUILD] execute_write: ${sql.substring(0, 100)}...`);
             console.log(
                 `parameters: ${JSON.stringify(flattenParameter(parameters))}`
             );
@@ -267,7 +268,7 @@ export class TrexConnection  {
         schemaName = ""
     ) {
         try {
-            console.log(`Stream Sql: ${sql}`);
+            console.log(`[LOCAL BUILD] executeStreamQuery: ${sql.substring(0, 100)}...`);
             console.log(
                 `Stream parameters: ${JSON.stringify(flattenParameter(parameters))}`
             );
@@ -340,7 +341,7 @@ export class TrexConnection  {
 
     async close() {
         //await this.database.close();
-        console.log(`Duckdb database connection has been closed`);
+        console.log(`[LOCAL BUILD] close: Duckdb database connection has been closed`);
     }
 
     executeBulkUpdate(
