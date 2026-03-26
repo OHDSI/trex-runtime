@@ -18,7 +18,7 @@ use std::{
     Arc, Mutex, OnceLock as OnceCell,
   },
 };
-use tracing::{info, warn};
+use tracing::warn;
 
 static SHARED_CONNECTION: OnceCell<Arc<Mutex<Connection>>> = OnceCell::new();
 
@@ -80,7 +80,7 @@ impl VScalar for TrexVersionScalar {
     if !input.is_empty() {
       let version = TREX_MANAGER.get_version();
       let flat_vector = output.flat_vector();
-      flat_vector.insert(0, &format!("trex extension v{} (LOCAL BUILD 2026-03-26)", version));
+      flat_vector.insert(0, &format!("trex extension v{}", version));
     }
     Ok(())
   }
@@ -541,8 +541,6 @@ impl VScalar for TrexCreateBundleScalar {
 pub unsafe fn extension_entrypoint(
   con: Connection,
 ) -> Result<(), Box<dyn Error>> {
-  eprintln!(">>> TREXAS LOCAL BUILD (jerome4life) loaded — built 2026-03-26 <<<");
-
   store_shared_connection(&con)?;
 
   if let Some(shared_conn) = get_shared_connection() {
