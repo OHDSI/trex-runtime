@@ -152,7 +152,7 @@ export class DatabaseManager {
     const duckdb_file_path = `${CDW_BUILT_IN_DIR}/${CDW_DUCKDB_FILE_DATABASE_CODE}_${CDW_DUCKDB_FILE_SCHEMA_NAME}`;
     op_execute_query(
       "memory",
-      `ATTACH IF NOT EXISTS '${duckdb_file_path}' AS ${CDW_DUCKDB_FILE_SCHEMA_NAME} (READ_ONLY)`,
+      `ATTACH IF NOT EXISTS '${duckdb_file_path}' AS ${CDW_DUCKDB_FILE_DATABASE_CODE} (READ_ONLY)`,
       []
     );
   }
