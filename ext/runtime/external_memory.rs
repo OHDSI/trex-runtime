@@ -99,7 +99,8 @@ unsafe extern "C" fn free(
   allocator.wake();
 
   unsafe {
-    let _ = Box::from_raw(std::slice::from_raw_parts_mut(data as *mut u8, n));
+    let _ =
+      Box::from_raw(std::ptr::slice_from_raw_parts_mut(data as *mut u8, n));
   }
 }
 
@@ -122,8 +123,10 @@ unsafe extern "C" fn reallocate(
   }
 
   unsafe {
-    let old_store =
-      Box::from_raw(std::slice::from_raw_parts_mut(prev as *mut u8, oldlen));
+    let old_store = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+      prev as *mut u8,
+      oldlen,
+    ));
     let mut new_store = Vec::with_capacity(newlen);
     let copy_len = oldlen.min(newlen);
 

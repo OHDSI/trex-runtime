@@ -51,16 +51,13 @@ use crate::inspector_server::Inspector;
 use crate::server::ServerFlags;
 use crate::worker::WorkerSurfaceBuilder;
 
-#[derive(Debug, Clone, Copy, EnumAsInner)]
+#[derive(Debug, Clone, Copy, Default, EnumAsInner)]
 pub enum SupervisorPolicy {
+  #[default]
   PerWorker,
-  PerRequest { oneshot: bool },
-}
-
-impl Default for SupervisorPolicy {
-  fn default() -> Self {
-    Self::PerWorker
-  }
+  PerRequest {
+    oneshot: bool,
+  },
 }
 
 impl FromStr for SupervisorPolicy {

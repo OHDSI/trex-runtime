@@ -33,7 +33,7 @@ ext_node.workspace = true
 ext_os.workspace = true
 ext_runtime.workspace = true
 ext_workers.workspace = true
-trex_core = { workspace = true, optional = true }
+trex_core = { version = "0.1.0", optional = true }
 
 anyhow.workspace = true
 async-trait.workspace = true
@@ -136,7 +136,7 @@ url.workspace = true
 sys_traits.workspace = true
 
 [features]
-default = ["trex"]
+default = []
 tracing = ["dep:tracing-subscriber"]
 trex = ["dep:trex_core"]
 termination-signal-ext = []

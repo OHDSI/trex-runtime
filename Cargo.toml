@@ -16,10 +16,8 @@ members = [
   "ext/env",
   "ext/event_worker",
   "ext/os",
-  "ext/trex",
   "ext/runtime",
   "ext/workers",
-  "ext/trexas",
 ]
 
 [workspace.package]
@@ -103,7 +101,6 @@ ext_node = "0.1.0"
 ext_os = { version = "0.1.0", path = "./ext/os" }
 ext_runtime = { version = "0.1.0", path = "./ext/runtime" }
 ext_workers = { version = "0.1.0", path = "./ext/workers" }
-trex_core = { version = "0.1.0", path = "./ext/trex" }
 
 # local deps
 clap = { version = "4.5.16", features = ["cargo", "string", "env"] }
@@ -286,6 +283,9 @@ winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
 
 [patch.crates-io]
+# trex_core — lives in the parent monorepo; patch so standalone CI can resolve the optional dep
+trex_core = { git = "https://github.com/OHDSI/trexsql", branch = "develop" }
+
 # DuckDB Rust bindings fork
 duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
 libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
