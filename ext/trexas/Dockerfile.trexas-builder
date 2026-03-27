@@ -1,0 +1,24 @@
+# Minimal build environment for trexas extension only
+# Does NOT compile the full trex workspace - just sets up tools + deps
+FROM rust:1.84.0-bookworm
+
+# Install build dependencies (same as Dockerfile.trex builder stage)
+RUN apt-get update && apt-get install -y \
+    binutils llvm-dev libclang-dev clang cmake ninja-build \
+    libgomp1 libopenblas-dev unzip wget python3 python3-venv python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup component add rustfmt
+
+# Download and install TrexSQL library (needed for DuckDB linking)
+RUN mkdir -p /usr/local/lib && \
+    wget --tries=3 --retry-connrefused --waitretry=5 \
+      -O /tmp/libtrexsql-linux-amd64.zip \
+      https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip && \
+    unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql && \
+    cp /tmp/trexsql/libtrexsql.so /usr/local/lib/ && \
+    cp /tmp/trexsql/duckdb.h /usr/local/include/ && \
+    rm -rf /tmp/libtrexsql-linux-amd64.zip /tmp/trexsql && \
+    ldconfig
+
+WORKDIR /usr/src/trex
