@@ -74,6 +74,7 @@ use deno_facade::EszipPayloadKind;
 use deno_facade::Metadata;
 use deno_resolver::npm;
 use ext_event_worker::events::WorkerEventWithMetadata;
+use ext_runtime::WasmMemoryTracker;
 use ext_runtime::external_memory::CustomAllocator;
 use ext_runtime::MemCheckWaker;
 use ext_runtime::PromiseMetrics;
@@ -193,6 +194,7 @@ struct MemCheck {
   limit: Option<usize>,
   waker: Arc<AtomicWaker>,
   state: Arc<RwLock<MemCheckState>>,
+  wasm_tracker: WasmMemoryTracker,
 }
 
 impl Default for MemCheck {
@@ -205,6 +207,7 @@ impl Default for MemCheck {
       limit: None,
       waker: Arc::new(AtomicWaker::new()),
       state: Arc::new(RwLock::new(MemCheckState::default())),
+      wasm_tracker: WasmMemoryTracker::default(),
     }
   }
 }
@@ -230,10 +233,14 @@ impl MemCheck {
     // committed heap? (but it can be bloated)
     let used_heap_bytes = stats.used_heap_size();
     let external_bytes = stats.external_memory();
+    // WebAssembly linear memory is invisible to HeapStatistics on v8 147;
+    // see ext/runtime/js/wasm_memory_tracker.js for how it gets here.
+    let wasm_bytes = self.wasm_tracker.bytes() as usize;
 
     let total_bytes = malloced_bytes
       .saturating_add(used_heap_bytes)
-      .saturating_add(external_bytes);
+      .saturating_add(external_bytes)
+      .saturating_add(wasm_bytes);
 
     let heap_stats = WorkerHeapStatistics::from(&stats);
     let mut state = self.state.write().unwrap();
@@ -1060,7 +1067,13 @@ where
               Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
             }, sys)
           },
-          deno_cache::deno_cache::args(Default::default()),
+          deno_cache::deno_cache::args(Some(deno_cache::CreateCache(
+            Arc::new(|| {
+              let storage_dir = std::env::temp_dir().join("trex-cache");
+              let sqlite = deno_cache::SqliteBackedCache::new(storage_dir)?;
+              Ok(deno_cache::CacheImpl::Sqlite(sqlite))
+            }),
+          ))),
         ]).map_err(|e| anyhow::anyhow!("Failed to lazy init extensions: {:#}", e))?;
 
         let dispatch_fns = {
@@ -1143,10 +1156,12 @@ where
             GCType::kGCTypeAll,
           );
 
-          js_runtime
-            .op_state()
-            .borrow_mut()
-            .put(MemCheckWaker::from(mem_check.waker.clone()));
+          {
+            let op_state = js_runtime.op_state();
+            let mut op_state = op_state.borrow_mut();
+            op_state.put(MemCheckWaker::from(mem_check.waker.clone()));
+            op_state.put(mem_check.wasm_tracker.clone());
+          }
         }
 
         // V8 isolate stays entered on this thread.
@@ -3504,15 +3519,14 @@ mod test {
     .await;
   }
 
-  // WASM memory-limit tests disabled on deno 2.7.12 upgrade: V8's HeapStatistics
-  // no longer reports WASM linear memory in `external_memory` (stays flat while
-  // WASM grows), and rusty_v8 140 exposes no wasm-memory-grow callback. mem_check
-  // cannot detect WASM allocations without a redesign (e.g. walking globals for
-  // WasmMemoryObject byte_lengths, or patching v8 to re-enable external accounting).
+  // WASM memory-limit tests on v8 147. HeapStatistics no longer surfaces
+  // WasmMemoryObject, so wasm linear memory is tracked via a JS shim
+  // (ext/runtime/js/wasm_memory_tracker.js) that monkey-patches
+  // WebAssembly.Memory/Instance/instantiate* and sums buffer.byteLength when
+  // polled from the event-loop mem_check path.
   #[tokio::test]
   #[serial]
-  #[ignore = "wasm mem_check broken on v8 140 — see comment above"]
-  async fn test_mem_checker_above_limit_wasm() {
+async fn test_mem_checker_above_limit_wasm() {
     test_mem_check_above_limit(
       "./test_cases/wasm/grow_20mib",
       &["./test_cases/**/*.wasm"],
@@ -3524,8 +3538,7 @@ mod test {
 
   #[tokio::test]
   #[serial]
-  #[ignore = "wasm mem_check broken on v8 140 — see test_mem_checker_above_limit_wasm"]
-  async fn test_mem_checker_above_limit_wasm_heap() {
+async fn test_mem_checker_above_limit_wasm_heap() {
     test_mem_check_above_limit(
       "./test_cases/wasm/heap",
       &["./test_cases/**/*.wasm"],
@@ -3537,8 +3550,7 @@ mod test {
 
   #[tokio::test]
   #[serial]
-  #[ignore = "wasm mem_check broken on v8 140 — see test_mem_checker_above_limit_wasm"]
-  async fn test_mem_checker_above_limit_wasm_grow_jsapi() {
+async fn test_mem_checker_above_limit_wasm_grow_jsapi() {
     test_mem_check_above_limit(
       "./test_cases/wasm/grow_jsapi",
       &[],
@@ -3550,8 +3562,7 @@ mod test {
 
   #[tokio::test]
   #[serial]
-  #[ignore = "wasm mem_check broken on v8 140 — see test_mem_checker_above_limit_wasm"]
-  async fn test_mem_checker_above_limit_wasm_grow_standalone() {
+async fn test_mem_checker_above_limit_wasm_grow_standalone() {
     test_mem_check_above_limit(
       "./test_cases/wasm/grow_standalone",
       &["./test_cases/**/*.wasm"],

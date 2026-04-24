@@ -39,6 +39,7 @@ import * as WebGPU from "ext:deno_webgpu/00_init.js";
 import * as WebGPUSurface from "ext:deno_webgpu/02_surface.js";
 
 import "ext:ai/onnxruntime/cache_adapter.js";
+import { startWasmMemoryPolling } from "ext:runtime/wasm_memory_tracker.js";
 
 import { SUPABASE_ENV } from "ext:env/env.js";
 
@@ -828,6 +829,8 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
 
     delete globalThis.nodeBootstrap;
   }
+
+  startWasmMemoryPolling();
 
   delete globalThis.bootstrapSBEdge;
 };

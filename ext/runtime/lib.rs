@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -76,6 +77,19 @@ pub struct MemCheckWaker(Arc<AtomicWaker>);
 impl From<Arc<AtomicWaker>> for MemCheckWaker {
   fn from(value: Arc<AtomicWaker>) -> Self {
     Self(value)
+  }
+}
+
+// Live total of WebAssembly.Memory buffer bytes, summed by a JS shim
+// (ext:runtime/wasm_memory_tracker.js) and read by MemCheck. v8 147 does not
+// surface WasmMemoryObject through HeapStatistics::external_memory, so this is
+// the only way the native side sees wasm linear memory growth.
+#[derive(Clone, Default)]
+pub struct WasmMemoryTracker(pub Arc<AtomicU64>);
+
+impl WasmMemoryTracker {
+  pub fn bytes(&self) -> u64 {
+    self.0.load(Ordering::Relaxed)
   }
 }
 
@@ -359,6 +373,17 @@ fn op_schedule_mem_check(state: &mut OpState) -> Result<(), JsErrorBox> {
   Ok(())
 }
 
+#[op2(fast)]
+fn op_set_wasm_memory_bytes(
+  state: &mut OpState,
+  #[number] bytes: u64,
+) -> Result<(), JsErrorBox> {
+  if let Some(tracker) = state.try_borrow::<WasmMemoryTracker>() {
+    tracker.0.store(bytes, Ordering::Relaxed);
+  }
+  Ok(())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MemoryUsage {
@@ -504,6 +529,7 @@ deno_core::extension!(
     // op_set_exit_code, // Removed: now provided by ext/os
     op_runtime_metrics,
     op_schedule_mem_check,
+    op_set_wasm_memory_bytes,
     op_runtime_memory_usage,
     op_set_raw,
     op_bootstrap_unstable_args,
@@ -528,5 +554,6 @@ deno_core::extension!(
     "navigator.js",
     "permissions.js",
     "promises.js",
+    "wasm_memory_tracker.js",
   ]
 );
