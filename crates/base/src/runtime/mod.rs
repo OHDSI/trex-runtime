@@ -1055,18 +1055,15 @@ where
               Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
             },
           ),
-          {
-            let sys = node_services.sys.clone();
-            ext_node::deno_node::args::<
-              deno_resolver::npm::DenoInNpmPackageChecker,
-              npm::NpmResolver<VfsSys>,
-              VfsSys,
-            >(Some(node_services), if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
-              fs.clone()
-            } else {
-              Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
-            }, sys)
-          },
+          ext_node::deno_node::args::<
+            deno_resolver::npm::DenoInNpmPackageChecker,
+            npm::NpmResolver<VfsSys>,
+            VfsSys,
+          >(Some(node_services), if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
+            fs.clone()
+          } else {
+            Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
+          }),
           deno_cache::deno_cache::args(Some(deno_cache::CreateCache(
             Arc::new(|| {
               let storage_dir = std::env::temp_dir().join("trex-cache");
@@ -2674,6 +2671,14 @@ mod test {
   use std::sync::Arc;
   use std::time::Duration;
 
+  // Tests reference fixtures via relative `./test_cases/...` paths. Anchor cwd
+  // to this package's manifest dir so they resolve regardless of whether
+  // `cargo test` runs from the workspace root or the package root.
+  #[::ctor::ctor]
+  fn anchor_cwd_to_manifest() {
+    let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+  }
+
   use anyhow::Context;
   use deno::DenoOptionsBuilder;
   use deno_core::error::AnyError;
@@ -2825,7 +2830,21 @@ mod test {
 
   impl<C> RuntimeBuilder<C> {
     fn set_path(mut self, path: &str) -> Self {
-      let _ = self.path.insert(path.to_string());
+      // Tests are run from the workspace root (cargo test --workspace),
+      // but fixtures live under this package's directory. Anchor relative
+      // paths to CARGO_MANIFEST_DIR so they resolve regardless of cwd.
+      let resolved = {
+        let p = std::path::Path::new(path);
+        if p.is_absolute() {
+          path.to_string()
+        } else {
+          std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(p)
+            .to_string_lossy()
+            .into_owned()
+        }
+      };
+      let _ = self.path.insert(resolved);
       self
     }
 

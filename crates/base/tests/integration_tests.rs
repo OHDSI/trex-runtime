@@ -7,6 +7,11 @@ use std::borrow::Cow;
 #[ctor::ctor]
 fn init() {
   let _ = ::rustls::crypto::ring::default_provider().install_default();
+  // The fixture at test_cases/main/index.ts builds user-worker paths as
+  // `./test_cases/${name}`. Those resolve against the process cwd at runtime,
+  // so anchor cwd to this package's directory regardless of how `cargo test`
+  // is invoked (workspace root vs package root).
+  let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 }
 use std::collections::HashMap;
 use std::io;
@@ -3636,7 +3641,6 @@ async fn test_ort_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "flaky: worker OOM (Array buffer allocation failed)"]
 async fn test_ort_nlp_question_answering() {
   test_ort_transformers_js("question-answering").await;
 }
@@ -3685,7 +3689,6 @@ async fn test_ort_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction").await;
 }
@@ -3717,7 +3720,6 @@ async fn test_ort_cache_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "flaky: worker OOM (Array buffer allocation failed)"]
 async fn test_ort_cache_nlp_question_answering() {
   test_ort_transformers_js("question-answering-cache").await;
 }
@@ -3766,7 +3768,6 @@ async fn test_ort_cache_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_cache_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction-cache").await;
 }

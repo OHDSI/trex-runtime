@@ -291,40 +291,38 @@ libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.
 duckdb-loadable-macros = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
 
 # Standalone forks
-eszip = { path = "/home/ph/code/eszip" }
-# TODO: revert to git once deno_npm bump is pushed: { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.109.0-edge-runtime" }
+eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.109.0-edge-runtime" }
 v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v147.3.0" }
 
-# Deno monorepo fork — local path patches for fast iteration during upgrade.
-# TODO: revert to git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" once changes are pushed.
-deno_core = { path = "/home/ph/code/deno/libs/core" }
-deno_fs = { path = "/home/ph/code/deno/ext/fs" }
-deno_io = { path = "/home/ph/code/deno/ext/io" }
-deno_net = { path = "/home/ph/code/deno/ext/net" }
-deno_console = { path = "/home/ph/code/deno/ext/console" }
-deno_telemetry = { path = "/home/ph/code/deno/ext/telemetry" }
-ext_node = { path = "/home/ph/code/deno/ext/node" }
-deno_resolver = { path = "/home/ph/code/deno/libs/resolver" }
-deno_npm_installer = { path = "/home/ph/code/deno/libs/npm_installer" }
-deno_npmrc = { path = "/home/ph/code/deno/libs/npmrc" }
-deno_node_crypto = { path = "/home/ph/code/deno/ext/node_crypto" }
-deno_node_sqlite = { path = "/home/ph/code/deno/ext/node_sqlite" }
-deno_config = { path = "/home/ph/code/deno/libs/config" }
-deno_crypto_provider = { path = "/home/ph/code/deno/libs/crypto" }
-deno_features = { path = "/home/ph/code/deno/runtime/features" }
-deno_fetch = { path = "/home/ph/code/deno/ext/fetch" }
-deno_maybe_sync = { path = "/home/ph/code/deno/libs/maybe_sync" }
-deno_npm_cache = { path = "/home/ph/code/deno/libs/npm_cache" }
-deno_package_json = { path = "/home/ph/code/deno/libs/package_json" }
-deno_permissions = { path = "/home/ph/code/deno/runtime/permissions" }
-deno_process = { path = "/home/ph/code/deno/ext/process" }
-deno_signals = { path = "/home/ph/code/deno/ext/signals" }
-deno_subprocess_windows = { path = "/home/ph/code/deno/runtime/subprocess_windows" }
-deno_tls = { path = "/home/ph/code/deno/ext/tls" }
-node_resolver = { path = "/home/ph/code/deno/libs/node_resolver" }
-deno_npm = { path = "/home/ph/code/deno/libs/npm" }
-deno_cache_dir = { path = "/home/ph/code/deno/libs/cache_dir" }
-deno_lockfile = { path = "/home/ph/code/deno/libs/lockfile" }
+# Deno monorepo fork — pinned to the trex-v2.7.12 branch.
+deno_core = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_io = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_net = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_console = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_telemetry = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+ext_node = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npm_installer = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npmrc = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_node_crypto = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_node_sqlite = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_config = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_crypto_provider = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_features = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_fetch = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_maybe_sync = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npm_cache = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_package_json = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_permissions = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_process = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_signals = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_subprocess_windows = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_tls = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+node_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npm = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_cache_dir = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_lockfile = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
 
 [profile.dind]
 inherits = "dev"

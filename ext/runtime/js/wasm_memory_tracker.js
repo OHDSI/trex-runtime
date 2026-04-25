@@ -9,7 +9,7 @@
 // op_set_wasm_memory_bytes and read by MemCheck::check.
 
 import { core, primordials } from "ext:core/mod.js";
-import { setInterval } from "ext:deno_web/02_timers.js";
+import { setInterval, unrefTimer } from "ext:deno_web/02_timers.js";
 
 const {
   ArrayPrototypePush,
@@ -119,5 +119,9 @@ function pollWasmBytes() {
 // timers and node state are wired; doing it at module-load time panics in
 // op_node_new_async_id.
 export function startWasmMemoryPolling() {
-  setInterval(pollWasmBytes, 100);
+  // Unref so this monitoring timer never keeps the event loop alive on its
+  // own. Without this, runtimes whose user code finishes synchronously
+  // (e.g. unit tests) hang waiting for it to drain.
+  const id = setInterval(pollWasmBytes, 100);
+  unrefTimer(id);
 }
