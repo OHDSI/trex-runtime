@@ -12,9 +12,7 @@ path = "lib.rs"
 sync_fs = ["ext_node/sync_fs"]
 
 [lints.rust]
-# Vendored from upstream Deno; the new Rust 1.92 lint flags many `Cow<str>`
-# return types where the elided lifetime should be `'_`. Keep this as `allow`
-# so we don't have to diverge from upstream on cosmetic style.
+# Vendored from upstream Deno; allow lets us avoid divergence on style.
 mismatched_lifetime_syntaxes = "allow"
 
 [dependencies]

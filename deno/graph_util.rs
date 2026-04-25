@@ -1041,10 +1041,7 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
             maybe_specifier = Some(specifier);
           }
         }
-        ResolveError::Other(_other_error) => {
-          // deno_graph 0.107 folded ImportMap errors into Other (JsErrorBox);
-          // downcasting to SpecifierError is no longer possible here.
-        }
+        ResolveError::Other(_other_error) => {}
       }
     }
   }

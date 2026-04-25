@@ -1,9 +1,8 @@
 // This implementation originated from the link below:
 // https://gist.github.com/programatik29/36d371c657392fd7f322e7342957b6d1
 
-// Rust 1.92 `unused_assignments` fires inside `#[derive(EnumAsInner)]`-expanded
-// match arms for `ReadTimeoutOp::UseTimeout`'s named fields. An attribute on
-// the enum doesn't propagate to the derive's generated impl block.
+// `EnumAsInner` derive output trips Rust 1.92's `unused_assignments`; an
+// attribute on the enum itself doesn't reach the generated impl.
 #![allow(unused_assignments)]
 
 use std::pin::Pin;

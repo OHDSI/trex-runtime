@@ -797,8 +797,6 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
-  // pread over the VFS bypasses the cursor; the underlying read_file already
-  // takes an explicit position so this is a direct call.
   fn read_at_sync(
     self: Rc<Self>,
     buf: &mut [u8],
@@ -1352,11 +1350,8 @@ impl sys_traits::SystemRandom for VfsSys {
   }
 }
 
-/// sys_traits::FsFile adapter for VfsSys.
-///
-/// VFS files are read-only and are eagerly loaded into memory on open
-/// because sys_traits::FsFile requires std::io::Read (sync) while the
-/// backing VFS is async-native. Real paths delegate to RealFsFile.
+/// `sys_traits::FsFile` adapter for `VfsSys`. VFS files are read-only and
+/// eagerly loaded because the trait requires synchronous `std::io::Read`.
 pub enum VfsFile {
   Real(sys_traits::impls::RealFsFile),
   Vfs { data: Vec<u8>, pos: u64 },

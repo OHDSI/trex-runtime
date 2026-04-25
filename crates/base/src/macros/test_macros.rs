@@ -22,9 +22,8 @@ macro_rules! integration_test_listen_fut {
       if p.is_absolute() {
         raw
       } else {
-        // Tests can be invoked from the workspace root or the package
-        // directory; anchor relative fixture paths to the test crate's
-        // manifest dir so they resolve consistently.
+        // Anchor to the calling crate's manifest dir; CARGO_MANIFEST_DIR is
+        // expanded at the macro call site.
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
           .join(p)
           .to_string_lossy()

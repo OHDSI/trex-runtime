@@ -882,9 +882,6 @@ where
           Arc::new(DenoCompileFileSystem::from_rc(vfs))
         })?;
 
-        // Deno 2.7.12: deno_url, deno_console, deno_broadcast_channel are
-        // now empty deprecated shells; their ops live in deno_web. Permissions
-        // are no longer a generic parameter — they're read from op_state.
         let extensions = vec![
           deno_telemetry::deno_telemetry::init(),
           deno_webidl::deno_webidl::init(),
@@ -1023,16 +1020,10 @@ where
 
         let mut js_runtime = JsRuntime::new(runtime_options);
 
-        // Initialize lazy-loaded extensions
-        // This is required for extensions that use lazy_init() instead of init()
-        // It calls the state initializers for those extensions (e.g., AsyncId for node)
-        // Deno 2.7.12: permissions are wired through op_state, not generics.
-        // deno_web now owns the broadcast_channel ops and takes the
-        // InMemoryBroadcastChannel as its third argument.
         js_runtime.lazy_init_extensions(vec![
           deno_web::deno_web::args(
-            Default::default(), // blob_store
-            None,               // location
+            Default::default(),
+            None,
             deno_web::InMemoryBroadcastChannel::default(),
           ),
           deno_fetch::deno_fetch::args(
@@ -3536,11 +3527,8 @@ mod test {
     .await;
   }
 
-  // WASM memory-limit tests on v8 147. HeapStatistics no longer surfaces
-  // WasmMemoryObject, so wasm linear memory is tracked via a JS shim
-  // (ext/runtime/js/wasm_memory_tracker.js) that monkey-patches
-  // WebAssembly.Memory/Instance/instantiate* and sums buffer.byteLength when
-  // polled from the event-loop mem_check path.
+  // Wasm linear memory is tracked via ext/runtime/js/wasm_memory_tracker.js;
+  // v8 147's HeapStatistics no longer surfaces WasmMemoryObject directly.
   #[tokio::test]
   #[serial]
   async fn test_mem_checker_above_limit_wasm() {

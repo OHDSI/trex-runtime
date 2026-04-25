@@ -85,8 +85,6 @@ fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
       use ResolveError::*;
       match error.as_ref() {
         Specifier(_) => "TypeError",
-        // deno_graph 0.107 removed the dedicated ImportMap variant;
-        // import-map errors are now wrapped in Other (JsErrorBox).
         Other(_) => "Error",
       }
     }

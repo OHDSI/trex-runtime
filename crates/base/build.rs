@@ -28,9 +28,6 @@ mod supabase_startup_snapshot {
     deno::transpile::maybe_transpile_source(specifier, code)
   }
 
-  // Permissions stubs removed: in Deno 2.7 the ext crates no longer expose
-  // public permission traits — extensions consume `PermissionsContainer`
-  // directly. The snapshot below is empty anyway, so nothing references these.
   #[derive(Clone)]
   #[allow(dead_code)]
   pub struct Permissions;

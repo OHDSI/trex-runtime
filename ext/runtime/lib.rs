@@ -80,10 +80,7 @@ impl From<Arc<AtomicWaker>> for MemCheckWaker {
   }
 }
 
-// Live total of WebAssembly.Memory buffer bytes, summed by a JS shim
-// (ext:runtime/wasm_memory_tracker.js) and read by MemCheck. v8 147 does not
-// surface WasmMemoryObject through HeapStatistics::external_memory, so this is
-// the only way the native side sees wasm linear memory growth.
+/// Wasm linear memory total in bytes, populated by wasm_memory_tracker.js.
 #[derive(Clone, Default)]
 pub struct WasmMemoryTracker(pub Arc<AtomicU64>);
 
@@ -508,9 +505,8 @@ pub fn op_bootstrap_unstable_args(_state: &mut OpState) -> Vec<String> {
   vec![]
 }
 
-// Stub for process.cpuUsage(). Upstream deno defines this in runtime::ops::worker_host,
-// which trex replaces with ext_workers. The node:process polyfill links against this
-// op at module load time, so it must exist in the global op registry.
+// Stub: node:process polyfill links against this op at module-load time.
+// Upstream defines it in runtime::ops::worker_host, which we replace.
 #[op2(fast)]
 pub fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
   out[0] = 0.0;

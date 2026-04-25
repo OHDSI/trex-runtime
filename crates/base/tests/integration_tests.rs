@@ -3,14 +3,11 @@
 
 use std::borrow::Cow;
 
-// Install the default rustls crypto provider for TLS operations
 #[ctor::ctor]
 fn init() {
   let _ = ::rustls::crypto::ring::default_provider().install_default();
-  // The fixture at test_cases/main/index.ts builds user-worker paths as
-  // `./test_cases/${name}`. Those resolve against the process cwd at runtime,
-  // so anchor cwd to this package's directory regardless of how `cargo test`
-  // is invoked (workspace root vs package root).
+  // Fixtures use cwd-relative paths; anchor cwd so tests work from either
+  // the workspace root or this package.
   let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 }
 use std::collections::HashMap;
@@ -2511,15 +2508,6 @@ async fn test_issue_513() {
   tb.exit(Duration::from_secs(TESTBED_DEADLINE_SEC)).await;
 }
 
-// node:http2 CLIENT in our vendored deno 2.7.12 fork has a regression: TLS
-// socket closes before HTTP/2 handshake completes (ERR_HTTP2_STREAM_CANCEL).
-// Reproducible against example.com, google.com, httpbin.org. curl --http2 to
-// the same sites succeeds. Root cause: commit a2eb5ba6b (upstream denoland,
-// "rewrite node:http with llhttp and native TCPWrap") — landed in our 2.7.12
-// tag — broke http2; fixes landed upstream in #33300, #33315, #33332, #33387,
-// #33435. They conflict in ops/http2/session.rs when cherry-picked piecemeal
-// and #33332 alone changes ~700 lines across 9 files. Needs a fork-wide deno
-// bump past #33435 or a batched cherry-pick pass to restore http2.
 #[tokio::test]
 #[serial]
 #[ignore = "node:http2 regression in vendored deno 2.7.12 — needs fork bump past upstream #33435"]

@@ -134,12 +134,8 @@ pub async fn supervise(
               None => pending().await,
           }
       } => {
-          // Raise drain_triggered directly (see strategy_per_worker::dispatch_drain_fn
-          // for why we bypass thread_safe_handle::request_interrupt). Without this,
-          // a user worker idle in an async op (e.g. Deno.serve waiting for the next
-          // connection) never dispatches the "drain" event, its serve loop never
-          // closes the listener, run() never returns, and oneshot's terminate_execution
-          // fallback is a no-op on an idle isolate.
+          // See strategy_per_worker::dispatch_drain_fn for why we bypass
+          // thread_safe_handle::request_interrupt here.
           if !runtime_drop.is_cancelled() {
               runtime_state.drain_triggered.raise();
               waker.wake();

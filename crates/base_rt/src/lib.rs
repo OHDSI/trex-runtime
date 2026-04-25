@@ -65,10 +65,8 @@ pub static PRIMARY_WORKER_RT: Lazy<tokio_util::task::LocalPoolHandle> =
           }
         });
 
-    // See USER_WORKER_RT below for the rationale: without v8::Locker, every
-    // thread that successively hosts multiple V8 isolates eventually faults
-    // in JsRealm::destroy. Use available_parallelism by default so the
-    // primary pool distributes isolates across threads.
+    // See USER_WORKER_RT below: without v8::Locker, threads that host many
+    // successive isolates eventually fault in JsRealm::destroy.
     tokio_util::task::LocalPoolHandle::new(maybe_pool_size.unwrap_or_else(
       || {
         std::thread::available_parallelism()
@@ -93,14 +91,9 @@ pub static USER_WORKER_RT: Lazy<tokio_util::task::LocalPoolHandle> =
         }
       });
 
-    // Use available_parallelism in both debug and release. trex's V8 setup
-    // does not use v8::Locker, so each pool thread that hosts an isolate
-    // accumulates V8 thread-local state across successive isolates. When
-    // isolates are reused on the same thread too many times, that state
-    // eventually corrupts and a future isolate's drop path faults inside
-    // JsRealm::destroy with "Cannot create a handle without a HandleScope"
-    // (observed reliably in the integration test suite with pool_size=1).
-    // Giving each worker a fresh thread keeps per-thread V8 state bounded.
+    // Without v8::Locker, per-thread V8 state accumulates across successive
+    // isolates and eventually faults in JsRealm::destroy. Spreading isolates
+    // across threads keeps that state bounded.
     tokio_util::task::LocalPoolHandle::new(maybe_pool_size.unwrap_or_else(
       || {
         std::thread::available_parallelism()

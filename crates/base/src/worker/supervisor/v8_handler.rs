@@ -13,14 +13,11 @@ use crate::runtime::WillTerminateReason;
 
 use super::IsolateMemoryStats;
 
-// Matches rusty_v8's InterruptCallback signature in 2.7.12+.
 pub type RawInterruptCallback = unsafe extern "C" fn(
   isolate: v8::UnsafeRawIsolatePtr,
   data: *mut std::ffi::c_void,
 );
 
-// Retained as a no-op wrapper so callers can keep the old idiom; the raw
-// function pointer is already the correct shape for request_interrupt.
 #[inline]
 pub fn as_interrupt_callback(f: RawInterruptCallback) -> RawInterruptCallback {
   f

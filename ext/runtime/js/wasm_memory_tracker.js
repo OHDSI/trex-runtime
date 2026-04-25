@@ -1,12 +1,6 @@
-// Tracks live WebAssembly.Memory buffer bytes so MemCheck can see WASM linear
-// memory growth. v8 147 stopped surfacing WasmMemoryObject through the native
-// HeapStatistics channels (external_memory, malloced_memory, and our
-// ArrayBufferAllocator all stay flat while wasm grows), so we intercept every
-// JS-visible source of Memory objects and sum buffer.byteLength on demand.
-//
-// Rust calls `globalThis.__trex_poll_wasm_bytes()` from the event-loop
-// mem_check path; the result is written to a shared AtomicU64 via
-// op_set_wasm_memory_bytes and read by MemCheck::check.
+// v8 147 no longer surfaces WasmMemoryObject through HeapStatistics, so we
+// track WebAssembly.Memory buffers manually for MemCheck. Rust polls via
+// globalThis.__trex_poll_wasm_bytes() and stores the total in a shared atomic.
 
 import { core, primordials } from "ext:core/mod.js";
 import { setInterval, unrefTimer } from "ext:deno_web/02_timers.js";
@@ -23,7 +17,6 @@ const op_set_wasm_memory_bytes = core.ops.op_set_wasm_memory_bytes;
 
 const Wasm = globalThis.WebAssembly;
 
-// Array<WeakRef<WebAssembly.Memory>>, compacted on each poll.
 const memories = [];
 
 function trackMemory(mem) {
@@ -96,9 +89,7 @@ if (origInstantiateStreaming !== undefined) {
   };
 }
 
-// Poll the registry and publish the current total to the shared AtomicU64.
-// Includes memory grown via the wasm `memory.grow` instruction (which bypasses
-// WebAssembly.Memory.prototype), because we read buffer.byteLength directly.
+// buffer.byteLength reflects growth from the `memory.grow` instruction too.
 function pollWasmBytes() {
   let total = 0;
   let write = 0;
@@ -114,14 +105,10 @@ function pollWasmBytes() {
   op_set_wasm_memory_bytes(total);
 }
 
-// 100ms keeps the feedback tight enough for the 10s memory-limit tests and is
-// essentially free when the registry is empty. Invoked from bootstrap.js once
-// timers and node state are wired; doing it at module-load time panics in
-// op_node_new_async_id.
+// Called from bootstrap.js after timers are wired (op_node_new_async_id
+// panics if invoked at module-load time).
 export function startWasmMemoryPolling() {
-  // Unref so this monitoring timer never keeps the event loop alive on its
-  // own. Without this, runtimes whose user code finishes synchronously
-  // (e.g. unit tests) hang waiting for it to drain.
+  // Unref so this never keeps the event loop alive on its own.
   const id = setInterval(pollWasmBytes, 100);
   unrefTimer(id);
 }

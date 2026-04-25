@@ -995,9 +995,8 @@ pub async fn create_module_loader_for_eszip(
             maybe_node_modules_path: None,
           },
         ));
-      // In development mode (use_real_fs), skip the eszip snapshot because it
-      // contains localhost-based package IDs; let the resolver rebuild from
-      // the real npm cache/lockfile instead.
+      // Eszip snapshot embeds localhost package IDs; in dev, rebuild from the
+      // real npm cache instead.
       let snapshot_option = if use_real_fs {
         CliNpmResolverManagedSnapshotOption::Specified(None)
       } else {

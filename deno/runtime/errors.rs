@@ -1114,7 +1114,6 @@ mod node {
   pub use deno_node_crypto::x509::X509Error;
   pub use ext_node::ops::blocklist::BlocklistError;
   pub use ext_node::ops::fs::FsError;
-  // Http2Error removed in Deno 2.7.12 (ops::http2 module reshaped upstream)
   pub use ext_node::ops::idna::IdnaError;
   pub use ext_node::ops::ipc::IpcError;
   pub use ext_node::ops::os::OsError;
@@ -1212,7 +1211,6 @@ mod node {
     }
   }
 
-  // Http2Error removed in Deno 2.7.12 (ops::http2 module reshaped upstream)
 
   pub fn get_os_error(error: &OsError) -> &'static str {
     match error {
@@ -1650,8 +1648,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<node::RequireError>()
         .map(node::get_require_error)
     })
-    // Http2Error removed in Deno 2.7.12 (ops::http2 module reshaped upstream)
-    .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
+      .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
     // BrotliError removed in Deno 2.5.6
     // .or_else(|| {
     //   e.downcast_ref::<node::BrotliError>()

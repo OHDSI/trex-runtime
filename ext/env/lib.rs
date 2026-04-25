@@ -5,8 +5,6 @@ use deno_error::JsErrorBox;
 
 use std::collections::HashMap;
 
-// Upstream moved this list into ext/os as a private const. Kept inline here to
-// preserve the skip-permission-check behavior without reaching into ext/os.
 const NODE_ENV_VAR_ALLOWLIST: &[&str] =
   &["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 

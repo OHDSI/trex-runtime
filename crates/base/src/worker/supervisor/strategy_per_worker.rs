@@ -234,10 +234,9 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
     let token = early_drop_token.clone();
     let waker = waker.clone();
     move || {
-      // The original implementation routed through a V8 interrupt, but the
-      // interrupt body only calls token.cancel() - no V8 handle API. Skip
-      // the interrupt hop so we don't depend on V8 reaching a safe point
-      // (which may never happen if the isolate is idle in an async op).
+      // V8 interrupts only fire at JS safe points; an idle isolate (e.g.
+      // awaiting op_net_accept) never reaches one. Wake the event loop and
+      // let it observe the cancellation directly.
       token.cancel();
       waker.wake();
     }
@@ -248,14 +247,8 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
     let runtime_state = state.runtime.clone();
     let waker = waker.clone();
     move || {
-      // Raise the drain-triggered flag directly rather than via V8 interrupt.
-      // V8 interrupts only fire at "safe points" during JS execution; a user
-      // worker idle in an async op (e.g. op_net_accept inside Deno.serve's
-      // accept loop) has no JS stack, so the interrupt would be queued
-      // indefinitely and drain never dispatches. `drain_triggered` is a
-      // thread-safe flag that poll_event_loop reads on its next tick, which
-      // is woken by `waker.wake()`. When the flag is set, poll_event_loop
-      // enters a HandleScope and calls `dispatch_drain_event` properly.
+      // Raise the flag and wake; poll_event_loop dispatches drain on its
+      // next tick. (V8 interrupts don't reach idle isolates — see above.)
       if runtime_drop.is_cancelled() {
         return;
       }
@@ -460,11 +453,7 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
       _ = &mut wall_clock_beforeunload_alert,
         if !state.is_wall_clock_limit_disabled && !state.is_wall_clock_beforeunload_armed
       => {
-        // Same rationale as dispatch_drain_fn: raise the flag directly
-        // instead of via a V8 interrupt. Interrupts don't fire on idle
-        // isolates, and for wall-clock beforeunload we need the event to
-        // dispatch even when the user worker's JS stack is empty (waiting
-        // on an async op).
+        // Same rationale as dispatch_drain_fn: bypass V8 interrupt.
         if !runtime_drop.is_cancelled() {
           state.runtime.wall_clock_beforeunload_triggered.raise();
           waker.wake();

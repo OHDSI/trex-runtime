@@ -10,9 +10,8 @@ use tokio::fs;
 
 use crate::args::npm_registry_url;
 
-/// Adapter that routes `EnvVar` lookups through a supplied HashMap, falling back
-/// to the process environment. Needed because `deno_npmrc::NpmRc::parse` now
-/// takes a `&impl EnvVar` instead of a closure (deno 2.7.12).
+/// `EnvVar` adapter that prefers an override map and falls back to the process
+/// environment.
 struct MapEnvVar<'a> {
   overrides: Option<&'a HashMap<String, String>>,
 }

@@ -828,9 +828,7 @@ impl Server {
   }
 }
 
-/// Bind a TcpListener with SO_REUSEADDR. Tests and restart scenarios
-/// otherwise hit "Address already in use" when a previous listener is still
-/// in TIME_WAIT on Linux.
+/// Bind with SO_REUSEADDR so restarts and tests don't hit TIME_WAIT.
 fn bind_with_reuseaddr(addr: SocketAddr) -> Result<TcpListener, Error> {
   let socket = match addr {
     SocketAddr::V4(_) => TcpSocket::new_v4()?,
