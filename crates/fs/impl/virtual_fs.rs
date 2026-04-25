@@ -412,7 +412,7 @@ impl VfsEntry {
     }
   }
 
-  fn as_ref(&self) -> VfsEntryRef {
+  fn as_ref(&self) -> VfsEntryRef<'_> {
     match self {
       VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
       VfsEntry::File(file) => VfsEntryRef::File(file),
@@ -531,7 +531,7 @@ impl VfsRoot {
   fn find_entry_no_follow(
     &self,
     path: &Path,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'_>)> {
     self.find_entry_no_follow_inner(path, &mut HashSet::new())
   }
 
@@ -809,7 +809,10 @@ impl deno_io::fs::File for FileBackedVfsFile {
       let file = self.file.clone();
       s.spawn(move || {
         IO_RT.block_on(async move {
-          vfs.read_file(&file, position, buf).await.map_err(Into::into)
+          vfs
+            .read_file(&file, position, buf)
+            .await
+            .map_err(Into::into)
         })
       })
       .join()
@@ -822,10 +825,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
     mut buf: BufMutView,
     position: u64,
   ) -> FsResult<(usize, BufMutView)> {
-    let nread = self
-      .vfs
-      .read_file(&self.file, position, &mut buf)
-      .await?;
+    let nread = self.vfs.read_file(&self.file, position, &mut buf).await?;
     Ok((nread, buf))
   }
 
@@ -1234,7 +1234,7 @@ pub struct VfsDirEntry {
 impl sys_traits::FsDirEntry for VfsDirEntry {
   type Metadata = sys_traits::boxed::BoxedFsMetadataValue;
 
-  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+  fn file_name(&self) -> Cow<'_, std::ffi::OsStr> {
     Cow::Owned(std::ffi::OsString::from(&self.name))
   }
 

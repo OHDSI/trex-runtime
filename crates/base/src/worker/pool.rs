@@ -1,3 +1,8 @@
+// Rust 1.92 `unused_assignments` fires inside `#[derive(EnumAsInner)]`-expanded
+// match arms for `SupervisorPolicy::PerRequest`'s named field. An attribute on
+// the enum doesn't propagate to the derive's generated impl block.
+#![allow(unused_assignments)]
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;

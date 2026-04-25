@@ -8,11 +8,11 @@ use std::sync::Arc;
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::package::PackageReq;
-use deno_permissions::PermissionsContainer;
 use node_resolver::NpmPackageFolderResolver;
 use sys_traits::impls::RealSys;
 

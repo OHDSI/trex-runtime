@@ -61,7 +61,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
-use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -394,12 +393,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(url)
         }
 
-        PackageJsonDepValue::File(_) => {
-          Err(JsErrorBox::type_error(format!(
-            "file: protocol dependencies are not supported in package.json (dependency: {})",
-            alias
-          )))
-        }
+        PackageJsonDepValue::File(_) => Err(JsErrorBox::type_error(format!(
+          "file: protocol dependencies are not supported in package.json (dependency: {})",
+          alias
+        ))),
       },
       Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =

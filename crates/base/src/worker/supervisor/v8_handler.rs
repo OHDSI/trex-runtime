@@ -32,6 +32,10 @@ pub struct V8HandleTerminationData {
   pub isolate_memory_usage_tx: Option<oneshot::Sender<IsolateMemoryStats>>,
 }
 
+/// # Safety
+/// `data` must be a `Box::into_raw` pointer to `V8HandleTerminationData`.
+/// `isolate_ptr` is provided by V8 and must be valid for the duration of the
+/// callback (or null when V8 is tearing the isolate down).
 pub unsafe extern "C" fn v8_handle_termination_raw(
   isolate_ptr: v8::UnsafeRawIsolatePtr,
   data: *mut std::ffi::c_void,
@@ -46,8 +50,9 @@ pub unsafe extern "C" fn v8_handle_termination_raw(
   // SAFETY: V8 guarantees the pointer is valid for the duration of the
   // interrupt callback. We reconstruct an Isolate handle from the raw ptr
   // without taking ownership — dropping it would dispose the isolate.
-  let mut isolate =
-    std::mem::ManuallyDrop::new(unsafe { v8::Isolate::from_raw_isolate_ptr(isolate_ptr) });
+  let isolate = std::mem::ManuallyDrop::new(unsafe {
+    v8::Isolate::from_raw_isolate_ptr(isolate_ptr)
+  });
 
   if data.should_terminate {
     isolate.terminate_execution();
@@ -63,6 +68,8 @@ pub struct V8HandleBeforeunloadData {
   pub runtime_state: Arc<RuntimeState>,
 }
 
+/// # Safety
+/// `data` must be a `Box::into_raw` pointer to `V8HandleBeforeunloadData`.
 pub unsafe extern "C" fn v8_handle_beforeunload_raw(
   _isolate_ptr: v8::UnsafeRawIsolatePtr,
   data: *mut std::ffi::c_void,
@@ -80,6 +87,8 @@ pub struct V8HandleEarlyDropData {
   pub token: CancellationToken,
 }
 
+/// # Safety
+/// `data` must be a `Box::into_raw` pointer to `V8HandleEarlyDropData`.
 pub unsafe extern "C" fn v8_handle_early_drop_beforeunload_raw(
   _isolate_ptr: v8::UnsafeRawIsolatePtr,
   data: *mut std::ffi::c_void,
@@ -88,6 +97,8 @@ pub unsafe extern "C" fn v8_handle_early_drop_beforeunload_raw(
   data.token.cancel();
 }
 
+/// # Safety
+/// Invoked by V8 as an interrupt callback; `_data` is unused.
 #[instrument(level = "debug", skip_all)]
 pub unsafe extern "C" fn v8_handle_early_retire_raw(
   _isolate_ptr: v8::UnsafeRawIsolatePtr,
@@ -102,6 +113,8 @@ pub struct V8HandleDrainData {
   pub runtime_state: Arc<RuntimeState>,
 }
 
+/// # Safety
+/// `data` must be a `Box::into_raw` pointer to `V8HandleDrainData`.
 #[instrument(level = "debug", skip_all)]
 pub unsafe extern "C" fn v8_handle_drain_raw(
   _isolate_ptr: v8::UnsafeRawIsolatePtr,

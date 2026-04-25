@@ -327,7 +327,7 @@ pub struct UserWorkerResponse {
 struct UserWorkerRequestResource(Request<Body>);
 
 impl Resource for UserWorkerRequestResource {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "userWorkerRequest".into()
   }
 }
@@ -338,7 +338,7 @@ struct UserWorkerRequestBodyResource {
 }
 
 impl Resource for UserWorkerRequestBodyResource {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "userWorkerRequestBody".into()
   }
 
@@ -415,7 +415,7 @@ struct UserWorkerResponseBodyResource {
 }
 
 impl Resource for UserWorkerResponseBodyResource {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "userWorkerResponseBody".into()
   }
 

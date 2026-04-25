@@ -386,7 +386,7 @@ struct HttpUpgradeRawResponseResource {
 }
 
 impl Resource for HttpUpgradeRawResponseResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpUpgradeRawResponseResource".into()
   }
 }
@@ -412,7 +412,7 @@ struct HttpUpgradeRawResponseFenceResource(
 );
 
 impl Resource for HttpUpgradeRawResponseFenceResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpUpgradeRawResponseFenceResource".into()
   }
 }

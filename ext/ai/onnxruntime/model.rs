@@ -78,4 +78,3 @@ impl Model {
     load_session_from_bytes(model_bytes).await.map(Self::new)
   }
 }
-

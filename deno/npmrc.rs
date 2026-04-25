@@ -22,12 +22,11 @@ impl<'a> sys_traits::BaseEnvVar for MapEnvVar<'a> {
     &self,
     key: &std::ffi::OsStr,
   ) -> Option<std::ffi::OsString> {
-    if let Some(map) = self.overrides {
-      if let Some(k) = key.to_str() {
-        if let Some(v) = map.get(k) {
-          return Some(std::ffi::OsString::from(v));
-        }
-      }
+    if let Some(map) = self.overrides
+      && let Some(k) = key.to_str()
+      && let Some(v) = map.get(k)
+    {
+      return Some(std::ffi::OsString::from(v));
     }
     std::env::var_os(key)
   }

@@ -74,10 +74,10 @@ use deno_facade::EszipPayloadKind;
 use deno_facade::Metadata;
 use deno_resolver::npm;
 use ext_event_worker::events::WorkerEventWithMetadata;
-use ext_runtime::WasmMemoryTracker;
 use ext_runtime::external_memory::CustomAllocator;
 use ext_runtime::MemCheckWaker;
 use ext_runtime::PromiseMetrics;
+use ext_runtime::WasmMemoryTracker;
 use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::WorkerContextInitOpts;
 use ext_workers::context::WorkerKind;
@@ -903,7 +903,8 @@ where
           deno_io::deno_io::lazy_init(),
           deno_fs::deno_fs::lazy_init(),
           ext_ai::ai::init(),
-          #[cfg(feature = "trex")]
+          // Re-enable once OHDSI/trexsql bumps deno_error to =0.7.1.
+          #[cfg(any())]
           trex_core::trex::init(),
           ext_env::env::init(),
           deno_process::deno_process::init(None),
@@ -1787,10 +1788,7 @@ where
 
         this.js_runtime.poll_event_loop(
           &mut std::task::Context::from_waker(waker.as_ref()),
-          PollEventLoopOptions {
-            wait_for_inspector,
-            ..Default::default()
-          },
+          PollEventLoopOptions { wait_for_inspector },
         )
       } else {
         Poll::Pending
@@ -3545,7 +3543,7 @@ mod test {
   // polled from the event-loop mem_check path.
   #[tokio::test]
   #[serial]
-async fn test_mem_checker_above_limit_wasm() {
+  async fn test_mem_checker_above_limit_wasm() {
     test_mem_check_above_limit(
       "./test_cases/wasm/grow_20mib",
       &["./test_cases/**/*.wasm"],
@@ -3557,7 +3555,7 @@ async fn test_mem_checker_above_limit_wasm() {
 
   #[tokio::test]
   #[serial]
-async fn test_mem_checker_above_limit_wasm_heap() {
+  async fn test_mem_checker_above_limit_wasm_heap() {
     test_mem_check_above_limit(
       "./test_cases/wasm/heap",
       &["./test_cases/**/*.wasm"],
@@ -3569,7 +3567,7 @@ async fn test_mem_checker_above_limit_wasm_heap() {
 
   #[tokio::test]
   #[serial]
-async fn test_mem_checker_above_limit_wasm_grow_jsapi() {
+  async fn test_mem_checker_above_limit_wasm_grow_jsapi() {
     test_mem_check_above_limit(
       "./test_cases/wasm/grow_jsapi",
       &[],
@@ -3581,7 +3579,7 @@ async fn test_mem_checker_above_limit_wasm_grow_jsapi() {
 
   #[tokio::test]
   #[serial]
-async fn test_mem_checker_above_limit_wasm_grow_standalone() {
+  async fn test_mem_checker_above_limit_wasm_grow_standalone() {
     test_mem_check_above_limit(
       "./test_cases/wasm/grow_standalone",
       &["./test_cases/**/*.wasm"],

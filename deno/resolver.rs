@@ -568,10 +568,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
 
             let has_errors = results.iter().any(|r| r.is_err());
             return NpmResolvePkgReqsResult {
-              results: results
-                .into_iter()
-                .map(|r| r.map(|_| ()))
-                .collect(),
+              results: results.into_iter().map(|r| r.map(|_| ())).collect(),
               dep_graph_result: if has_errors {
                 Err(Arc::new(JsErrorBox::generic(
                   "Some npm packages could not be found in node_modules/. Run 'npm install' to install them.",

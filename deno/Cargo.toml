@@ -8,6 +8,15 @@ license.workspace = true
 [lib]
 path = "lib.rs"
 
+[features]
+sync_fs = ["ext_node/sync_fs"]
+
+[lints.rust]
+# Vendored from upstream Deno; the new Rust 1.92 lint flags many `Cow<str>`
+# return types where the elided lifetime should be `'_`. Keep this as `allow`
+# so we don't have to diverge from upstream on cosmetic style.
+mismatched_lifetime_syntaxes = "allow"
+
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core.workspace = true

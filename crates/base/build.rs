@@ -6,17 +6,11 @@ use std::path::PathBuf;
 // - Compiled into rusty_v8 when building V8 from source
 // - Allows snapshot generation to work without full temporal_rs integration
 mod supabase_startup_snapshot {
-  use std::borrow::Cow;
   use std::io::Write;
-  use std::path::Path;
   use std::rc::Rc;
 
-  use deno::deno_permissions::CheckedPath;
-  use deno::deno_permissions::OpenAccessKind;
-  use deno::deno_permissions::PermissionCheckError;
   use deno_core::snapshot::create_snapshot;
   use deno_core::snapshot::CreateSnapshotOptions;
-  use deno_core::url::Url;
   use deno_core::Extension;
 
   use super::*;
