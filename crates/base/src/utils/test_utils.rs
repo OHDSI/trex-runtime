@@ -141,17 +141,8 @@ impl TestBedBuilder {
   where
     T: Into<PathBuf>,
   {
-    let path: PathBuf = main_service_path.into();
-    // Anchor relative fixture paths to this package's directory so tests
-    // pass regardless of whether `cargo test` is run from workspace root
-    // or the package root.
-    let main_service_path = if path.is_absolute() {
-      path
-    } else {
-      PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
-    };
     Self {
-      main_service_path,
+      main_service_path: main_service_path.into(),
       worker_pool_policy: None,
       worker_event_sender: None,
       main_worker_init_opts: None,
@@ -398,16 +389,10 @@ pub async fn ensure_npm_package_installed<P>(path: P)
 where
   P: AsRef<Path>,
 {
-  let p = path.as_ref();
-  // Anchor relative paths to the package's manifest dir so this works
-  // regardless of whether `cargo test` runs from workspace or package root.
-  let path = if p.is_absolute() {
-    p.to_path_buf()
-  } else {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(p)
-  };
+  let cwd = std::env::current_dir().unwrap();
+  let path = cwd.join(path);
 
-  assert!(path.is_dir(), "expected fixture dir to exist: {path:?}");
+  assert!(path.is_dir());
 
   let output = Command::new("npm")
     .current_dir(path)
