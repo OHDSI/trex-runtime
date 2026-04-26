@@ -2,6 +2,9 @@
   "workspace": [],
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "https://esm.sh/preact"
+    "jsxImportSource": "preact-shim"
+  },
+  "imports": {
+    "preact-shim/jsx-runtime": "./preact-shim/jsx-runtime.ts"
   }
 }

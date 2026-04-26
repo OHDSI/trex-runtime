@@ -13,9 +13,11 @@ sys_traits.workspace = true
 
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
-deno_canvas.workspace = true
+deno_image.workspace = true
 deno_config.workspace = true
 deno_console.workspace = true
+deno_node_crypto.workspace = true
+deno_node_sqlite.workspace = true
 deno_process.workspace = true
 deno_webgpu.workspace = true
 
@@ -33,7 +35,8 @@ ext_node.workspace = true
 ext_os.workspace = true
 ext_runtime.workspace = true
 ext_workers.workspace = true
-trex_core = { version = "0.1.0", optional = true }
+# TODO(deno-2.7.12 upgrade): re-enable once OHDSI/trexsql bumps deno_error to =0.7.1.
+# trex_core = { version = "0.1.0", optional = true }
 
 anyhow.workspace = true
 async-trait.workspace = true
@@ -103,8 +106,10 @@ deno_error.workspace = true
 
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
-deno_canvas.workspace = true
+deno_image.workspace = true
 deno_console.workspace = true
+deno_node_crypto.workspace = true
+deno_node_sqlite.workspace = true
 deno_process.workspace = true
 deno_webgpu.workspace = true
 
@@ -138,5 +143,5 @@ sys_traits.workspace = true
 [features]
 default = []
 tracing = ["dep:tracing-subscriber"]
-trex = ["dep:trex_core"]
+# trex = ["dep:trex_core"]  # disabled during deno-2.7.12 upgrade; see dependencies
 termination-signal-ext = []

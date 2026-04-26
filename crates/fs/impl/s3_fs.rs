@@ -839,6 +839,16 @@ impl deno_fs::FileSystem for S3Fs {
     Ok(())
   }
 
+  // S3 has no distinct directory concept; leave dedicated rmdir unsupported
+  // and route callers to remove_*/recursive when they want bulk deletion.
+  fn rmdir_sync(&self, _path: &CheckedPath) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn rmdir_async(&self, _path: CheckedPathBuf) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
   fn copy_file_sync(
     &self,
     _oldpath: &CheckedPath,
@@ -2070,11 +2080,44 @@ impl deno_io::fs::File for S3Object {
     Err(FsError::NotSupported)
   }
 
+  fn try_lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn try_lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
 
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  // pread/pwrite aren't meaningful over the S3 streaming abstraction here.
+  fn read_at_sync(
+    self: Rc<Self>,
+    _buf: &mut [u8],
+    _position: u64,
+  ) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    _buf: BufMutView,
+    _position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    Err(FsError::NotSupported)
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
     Err(FsError::NotSupported)
   }
 

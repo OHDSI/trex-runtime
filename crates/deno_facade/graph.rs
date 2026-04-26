@@ -45,6 +45,7 @@ pub async fn create_eszip_from_graph_raw(
     emit_options,
     relative_file_base,
     npm_packages: None,
+    npm_snapshot: Default::default(),
   })
 }
 

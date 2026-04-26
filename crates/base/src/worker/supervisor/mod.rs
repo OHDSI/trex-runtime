@@ -9,6 +9,7 @@ use base_rt::RuntimeState;
 use cpu_timer::CPUTimer;
 use deno_core::serde_json;
 use deno_core::v8;
+use deno_core::InspectorSessionChannels;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionProxy;
 use enum_as_inner::EnumAsInner;
@@ -273,8 +274,10 @@ pub fn create_supervisor(
 
                 if session_tx
                   .unbounded_send(InspectorSessionProxy {
-                    tx: outbound_tx,
-                    rx: inbound_rx,
+                    channels: InspectorSessionChannels::Regular {
+                      tx: outbound_tx,
+                      rx: inbound_rx,
+                    },
                     kind: InspectorSessionKind::Blocking,
                   })
                   .is_err()

@@ -18,16 +18,16 @@ use deno_fs::FileSystem;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npmrc::ResolvedNpmRc;
+use deno_permissions::PermissionsContainer;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use ext_node::NodePermissions;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
@@ -172,6 +172,7 @@ fn create_api(
     cache,
     http_client.clone(),
     options.npmrc.clone(),
+    deno_npm_cache::NpmPackumentFormat::Abbreviated,
   ))
 }
 
@@ -533,19 +534,14 @@ impl ManagedCliNpmResolver {
   ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.0.as_ref() {
-        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_) => {
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_)
+        | deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope(_) => {
           return Err(Box::new(err.clone()));
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
         } => {
-          // only warn for this one
           log::warn!("{} {}\n    at {}", "Warning", err.source, err.location)
-        }
-        deno_package_json::PackageJsonDepValueParseErrorKind::JsrVersionReq(
-          _,
-        ) => {
-          return Err(Box::new(err.clone()));
         }
       }
     }
@@ -663,6 +659,16 @@ impl NpmPackageFolderResolver for ManagedCliNpmResolver {
     );
     Ok(path)
   }
+
+  fn resolve_types_package_folder(
+    &self,
+    _types_package_name: &str,
+    _maybe_package_version: Option<&deno_semver::Version>,
+    _maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<PathBuf> {
+    // TODO(trex): implement @types package resolution when needed.
+    None
+  }
 }
 
 impl crate::resolver::CliNpmReqResolver for ManagedCliNpmResolver {
@@ -743,7 +749,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
 
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError> {
     self.fs_resolver.ensure_read_permission(permissions, path)

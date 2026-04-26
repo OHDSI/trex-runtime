@@ -146,7 +146,10 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_file_async(CheckedPathBuf::unsafe_new(file_path.clone()))
+      .read_file_async(
+        CheckedPathBuf::unsafe_new(file_path.clone()),
+        deno_fs::OpenOptions::read(),
+      )
       .await
       .map_err(AnyError::from)
       .with_context(|| {
@@ -231,6 +234,7 @@ pub struct GenericNpmModuleLoader<
     + sys_traits::FsMetadata
     + sys_traits::FsRead
     + sys_traits::FsReadDir
+    + sys_traits::BaseFsOpen
     + Send
     + Sync
     + Clone
@@ -258,6 +262,7 @@ impl<
     + sys_traits::FsMetadata
     + sys_traits::FsRead
     + sys_traits::FsReadDir
+    + sys_traits::BaseFsOpen
     + Send
     + Sync
     + Clone
@@ -304,7 +309,10 @@ impl<
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_file_async(CheckedPathBuf::unsafe_new(file_path.clone()))
+      .read_file_async(
+        CheckedPathBuf::unsafe_new(file_path.clone()),
+        deno_fs::OpenOptions::read(),
+      )
       .await
       .map_err(AnyError::from)
       .with_context(|| {
@@ -558,10 +566,9 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
               })
               .collect();
 
-            // Check if any package failed to resolve
             let has_errors = results.iter().any(|r| r.is_err());
             return NpmResolvePkgReqsResult {
-              results,
+              results: results.into_iter().map(|r| r.map(|_| ())).collect(),
               dep_graph_result: if has_errors {
                 Err(Arc::new(JsErrorBox::generic(
                   "Some npm packages could not be found in node_modules/. Run 'npm install' to install them.",
@@ -602,7 +609,7 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
             .results
             .into_iter()
             .map(|r| {
-              r.map_err(|err| match err {
+              r.map(|_| ()).map_err(|err| match err {
                 NpmResolutionError::Registry(e) => NpmLoadError::RegistryInfo(
                   Arc::new(JsErrorBox::generic(e.to_string()))
                     as Arc<dyn JsErrorClass>,

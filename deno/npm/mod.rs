@@ -11,9 +11,9 @@ use byonm::CliByonmNpmResolver;
 use byonm::CliByonmNpmResolverCreateOptions;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_permissions::PermissionsContainer;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
-use ext_node::NodePermissions;
 pub use managed::*;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -57,6 +57,7 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
     url: Url,
     maybe_auth: Option<String>,
     maybe_etag: Option<String>,
+    _maybe_registry_config: Option<&deno_npmrc::RegistryConfig>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
     let guard = self.progress_bar.update(url.as_str());
     let client = self.http_client_provider.get_or_create().map_err(|err| {
@@ -207,7 +208,7 @@ pub trait CliNpmResolver:
 
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
 

@@ -29,58 +29,56 @@ repository = "https://github.com/supabase/edge-runtime"
 [workspace.dependencies]
 deno = { path = "./deno" }
 
-deno_ast = { version = "=0.50.3", features = ["transpiling"] }
-deno_core = "0.363.0"
+deno_ast = { version = "=0.53.1", features = ["transpiling"] }
+deno_core = "0.398.0"
 sourcemap = "9.3"
-deno_error = "=0.7.0"
-temporal_capi = { package = "ry_temporal_capi", version = "=0.0.11-ry.1", features = ["compiled_data"] }
-# Pin timezone_provider to v0.0.14 to fix temporal_rs macro invocation error
-# (v0.0.16 has breaking API changes in iana_normalizer_singleton!() macro)
-# Note: rusty_v8 fork requires =0.0.14, but temporal_rs v0.0.11 requires ^0.0.16
-# This creates a conflict - trexas cannot be built until the v8 fork is updated
-timezone_provider = "=0.0.14"
+deno_error = "=0.7.1"
+temporal_capi = { version = "=0.2.3", features = ["zoneinfo64"] }
 
-deno_cache_dir = "=0.25.0"
-deno_config = { version = "=0.71.0", features = ["workspace", "sync"] }
-deno_graph = "=0.103.1"
-deno_lockfile = "=0.32.2"
-deno_media_type = { version = "=0.2.9", features = ["module_specifier"] }
-deno_npm = "=0.42.0"
-deno_package_json = { version = "=0.23.0", default-features = false }
+deno_cache_dir = "=0.37.0"
+deno_config = { version = "=0.95.0", features = ["workspace", "sync"] }
+deno_graph = "=0.107.1"
+deno_lockfile = "=0.47.0"
+deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
+deno_npm = "=0.57.0"
+deno_package_json = { version = "=0.47.0", default-features = false }
 deno_path_util = "=0.6.4"
-deno_permissions = "0.80.0"
-deno_semver = "=0.9.0"
+deno_permissions = "0.104.0"
+deno_semver = "=0.9.1"
 
 # deno libs
-deno_maybe_sync = "0.8.0"
-deno_npm_cache = "0.40.0"
-deno_npm_installer = "0.16.0"
-deno_terminal = "0.2.2"
+deno_maybe_sync = "0.32.0"
+deno_npm_cache = "0.64.0"
+deno_npm_installer = "0.40.0"
+deno_npmrc = "0.6.0"
+deno_terminal = "=0.2.3"
 deno_unsync = "0.4.4"
-node_resolver = "0.59.0"
+node_resolver = "0.83.0"
 
-# upstream exts - updated to Deno 2.5.6 exact versions from upstream
-deno_broadcast_channel = "0.215.0"
-deno_cache = "0.153.0"
-deno_canvas = "0.90.0"
-deno_console = "0.221.0"
-deno_crypto = "0.235.0"
-deno_features = "0.18.0"
-deno_fetch = "0.245.0"
-deno_fs = { version = "0.131.0", features = ["sync_fs"] }
-deno_http = "0.219.0"
-deno_io = "0.131.0"
-deno_net = "0.213.0"
-deno_signals = "0.12.0"
-deno_telemetry = "0.43.0"
-deno_tls = "0.208.0"
-deno_tunnel = "0.8.0"
-deno_url = "0.221.0"
-deno_web = "0.252.0"
-deno_webgpu = "0.188.0"
-deno_webidl = "0.221.0"
-deno_websocket = "0.226.0"
-deno_webstorage = "0.216.0"
+# upstream exts - Deno 2.7.12 versions
+deno_broadcast_channel = "0.216.0"
+deno_node_crypto = "0.15.0"
+deno_node_sqlite = "0.15.0"
+deno_cache = "0.178.0"
+deno_image = "0.21.0"
+deno_console = "0.222.0"
+deno_crypto = "0.259.0"
+deno_features = "0.42.0"
+deno_fetch = "0.269.0"
+deno_fs = { version = "0.155.0", features = ["sync_fs"] }
+deno_http = "0.243.0"
+deno_io = "0.155.0"
+deno_net = "0.237.0"
+deno_signals = "0.36.0"
+deno_telemetry = "0.67.0"
+deno_tls = "0.232.0"
+deno_tunnel = "0.8.1"
+deno_url = "0.222.0"
+deno_web = "0.276.0"
+deno_webgpu = "0.212.0"
+deno_webidl = "0.245.0"
+deno_websocket = "0.250.0"
+deno_webstorage = "0.240.0"
 
 # local crates
 base = { version = "0.1.0", path = "./crates/base" }
@@ -107,10 +105,10 @@ clap = { version = "4.5.16", features = ["cargo", "string", "env"] }
 ctor = "0.2.6"
 either = "1"
 enum-as-inner = "0.6.0"
-eszip = "=0.104.0"
+eszip = "=0.109.0"
 futures-util = "0.3.30"
 fxhash = "0.2"
-import_map = { version = "=0.24.0", features = ["ext"] }
+import_map = { version = "=0.25.0", features = ["ext"] }
 num-traits = "0.2"
 rkyv = "0.7"
 serial_test = "3.0.0"
@@ -222,8 +220,8 @@ simd-json = "0.14.0"
 smallvec = "1.8"
 socket2 = { version = "0.5.7", features = ["all"] }
 spki = "0.7.2"
-sys_traits = { version = "=0.1.17", features = ["real", "winapi", "libc", "getrandom"] }
-tar = "=0.4.43"
+sys_traits = { version = "=0.1.27", features = ["real", "winapi", "libc", "getrandom"] }
+tar = "=0.4.45"
 tempfile = "3.4.0"
 thiserror = "2.0.3"
 tokio = { version = "1.36.0", features = ["full"] }
@@ -250,12 +248,12 @@ opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_
 opentelemetry_sdk = "0.27.0"
 
 # upstream resolvers
-deno_resolver = "0.52.0"
+deno_resolver = "0.76.0"
 
 # upstream deno extensions
-deno_process = "0.36.0"
-deno_subprocess_windows = "0.16.0"
-deno_crypto_provider = "0.2.0"
+deno_process = "0.60.0"
+deno_subprocess_windows = "0.40.0"
+deno_crypto_provider = "0.39.0"
 
 # crypto
 aws-lc-rs = "1.0.0"
@@ -284,7 +282,8 @@ windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media
 
 [patch.crates-io]
 # trex_core — lives in the parent monorepo; patch so standalone CI can resolve the optional dep
-trex_core = { git = "https://github.com/OHDSI/trexsql", branch = "develop" }
+# TODO(deno-2.7.12 upgrade): re-enable once OHDSI/trexsql bumps deno_error to =0.7.1.
+# trex_core = { git = "https://github.com/OHDSI/trexsql", branch = "develop" }
 
 # DuckDB Rust bindings fork
 duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
@@ -292,34 +291,38 @@ libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.
 duckdb-loadable-macros = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
 
 # Standalone forks
-deno_core = { git = "https://github.com/p-hoffmann/deno_core", branch = "supabase-v0.363.0" }
-eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.104.0-edge-runtime" }
-v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v140.2.0" }
-timezone_provider = { git = "https://github.com/boa-dev/temporal", tag = "v0.0.14" }
+eszip = { git = "https://github.com/p-hoffmann/eszip", branch = "supabase-v0.109.0-edge-runtime" }
+v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v147.3.0" }
 
-# Deno monorepo fork — patched crates
-deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_io = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_net = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_console = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_telemetry = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-ext_node = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_npm_installer = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-# Deno monorepo fork — unmodified transitive deps (must come from same monorepo to avoid version conflicts)
-deno_config = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_crypto_provider = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_features = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_fetch = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_maybe_sync = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_npm_cache = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_package_json = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_permissions = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_process = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_signals = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_subprocess_windows = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-deno_tls = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
-node_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex_fix" }
+# Deno monorepo fork — pinned to the trex-v2.7.12 branch.
+deno_core = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_io = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_net = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_console = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_telemetry = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+ext_node = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npm_installer = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npmrc = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_node_crypto = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_node_sqlite = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_config = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_crypto_provider = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_features = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_fetch = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_maybe_sync = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npm_cache = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_package_json = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_permissions = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_process = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_signals = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_subprocess_windows = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_tls = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+node_resolver = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_npm = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_cache_dir = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
+deno_lockfile = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.7.12" }
 
 [profile.dind]
 inherits = "dev"

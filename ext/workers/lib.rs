@@ -161,12 +161,14 @@ impl JsPermissionsOptions {
       prompt: false,
       allow_env: self.allow_env,
       deny_env: self.deny_env,
+      ignore_env: None,
       allow_net: self.allow_net,
       deny_net: self.deny_net,
       allow_ffi: self.allow_ffi,
       deny_ffi: self.deny_ffi,
       allow_read: self.allow_read,
       deny_read: self.deny_read,
+      ignore_read: None,
       allow_run: self.allow_run,
       deny_run: self.deny_run,
       allow_sys: self.allow_sys,
@@ -174,12 +176,12 @@ impl JsPermissionsOptions {
       allow_write: self.allow_write,
       deny_write: self.deny_write,
       allow_import: self.allow_import,
-      deny_import: None, // New field in Deno 2.5.6
+      deny_import: None,
     }
   }
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_user_worker_create(
   state: Rc<RefCell<OpState>>,
@@ -325,7 +327,7 @@ pub struct UserWorkerResponse {
 struct UserWorkerRequestResource(Request<Body>);
 
 impl Resource for UserWorkerRequestResource {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "userWorkerRequest".into()
   }
 }
@@ -336,7 +338,7 @@ struct UserWorkerRequestBodyResource {
 }
 
 impl Resource for UserWorkerRequestBodyResource {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "userWorkerRequestBody".into()
   }
 
@@ -413,7 +415,7 @@ struct UserWorkerResponseBodyResource {
 }
 
 impl Resource for UserWorkerResponseBodyResource {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "userWorkerResponseBody".into()
   }
 
@@ -524,7 +526,7 @@ pub fn op_user_worker_fetch_build(
   })
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_user_worker_fetch_send(
   state: Rc<RefCell<OpState>>,
@@ -690,7 +692,7 @@ pub async fn op_user_worker_fetch_send(
   Ok(response)
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_user_worker_cleanup_idle_workers(
   state: Rc<RefCell<OpState>>,

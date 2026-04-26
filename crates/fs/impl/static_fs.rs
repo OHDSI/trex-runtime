@@ -269,6 +269,14 @@ impl deno_fs::FileSystem for StaticFs {
     Err(FsError::NotSupported)
   }
 
+  fn rmdir_sync(&self, _path: &CheckedPath) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn rmdir_async(&self, _path: CheckedPathBuf) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
   fn copy_file_sync(
     &self,
     _oldpath: &CheckedPath,
@@ -490,7 +498,11 @@ impl deno_fs::FileSystem for StaticFs {
     Err(FsError::NotSupported)
   }
 
-  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
+  fn read_file_sync(
+    &self,
+    path: &CheckedPath,
+    _options: OpenOptions,
+  ) -> FsResult<Cow<'static, [u8]>> {
     let is_npm = self.is_valid_npm_package(path);
     let is_byonm_path = self
       .byonm_node_modules_path
@@ -537,9 +549,10 @@ impl deno_fs::FileSystem for StaticFs {
   async fn read_file_async<'a>(
     &'a self,
     path: CheckedPathBuf,
+    options: OpenOptions,
   ) -> FsResult<Cow<'static, [u8]>> {
     let checked = CheckedPath::unsafe_new(Cow::Borrowed(&*path));
-    self.read_file_sync(&checked)
+    self.read_file_sync(&checked, options)
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {

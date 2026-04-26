@@ -42,7 +42,10 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       ModuleErrorKind::Parse { .. } => "SyntaxError",
       ModuleErrorKind::WasmParse { .. } => "SyntaxError",
       ModuleErrorKind::UnsupportedMediaType { .. }
-      | ModuleErrorKind::UnsupportedImportAttributeType { .. } => "TypeError",
+      | ModuleErrorKind::UnsupportedImportAttributeType { .. }
+      | ModuleErrorKind::UnsupportedModuleTypeForSourcePhaseImport { .. } => {
+        "TypeError"
+      }
       ModuleErrorKind::Missing { .. }
       | ModuleErrorKind::MissingDynamic { .. } => "NotFound",
       ModuleErrorKind::Load { err, .. } => match err {
@@ -82,7 +85,6 @@ fn get_resolution_error_class(err: &ResolutionError) -> &'static str {
       use ResolveError::*;
       match error.as_ref() {
         Specifier(_) => "TypeError",
-        ImportMap(_) => "Error",
         Other(_) => "Error",
       }
     }

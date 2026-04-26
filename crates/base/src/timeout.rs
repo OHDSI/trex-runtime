@@ -1,6 +1,10 @@
 // This implementation originated from the link below:
 // https://gist.github.com/programatik29/36d371c657392fd7f322e7342957b6d1
 
+// `EnumAsInner` derive output trips Rust 1.92's `unused_assignments`; an
+// attribute on the enum itself doesn't reach the generated impl.
+#![allow(unused_assignments)]
+
 use std::pin::Pin;
 use std::task::ready;
 use std::task::Poll;

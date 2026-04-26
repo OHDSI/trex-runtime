@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -76,6 +77,16 @@ pub struct MemCheckWaker(Arc<AtomicWaker>);
 impl From<Arc<AtomicWaker>> for MemCheckWaker {
   fn from(value: Arc<AtomicWaker>) -> Self {
     Self(value)
+  }
+}
+
+/// Wasm linear memory total in bytes, populated by wasm_memory_tracker.js.
+#[derive(Clone, Default)]
+pub struct WasmMemoryTracker(pub Arc<AtomicU64>);
+
+impl WasmMemoryTracker {
+  pub fn bytes(&self) -> u64 {
+    self.0.load(Ordering::Relaxed)
   }
 }
 
@@ -196,20 +207,19 @@ impl RuntimeMetricSource {
       heap_tx: oneshot::Sender<WorkerHeapStatistics>,
     }
 
-    extern "C" fn interrupt_fn_raw(
-      isolate_ptr: *mut v8::Isolate,
+    unsafe extern "C" fn interrupt_fn_raw(
+      isolate_ptr: v8::UnsafeRawIsolatePtr,
       data: *mut std::ffi::c_void,
     ) {
       let arg = unsafe { Box::<InterruptData>::from_raw(data as *mut _) };
 
-      // Use black_box to prevent LLVM from optimizing away the null check
-      // by back-propagating the nonnull attribute from the &mut reference below.
-      let isolate_ptr = std::hint::black_box(isolate_ptr);
       if isolate_ptr.is_null() {
         return;
       }
 
-      let isolate = unsafe { &mut *isolate_ptr };
+      let mut isolate =
+        unsafe { v8::Isolate::from_raw_isolate_ptr_unchecked(isolate_ptr) };
+      let isolate = &mut isolate;
       let v8_stats = isolate.get_heap_statistics();
       let worker_stats = WorkerHeapStatistics {
         total_heap_size: v8_stats.total_heap_size(),
@@ -237,18 +247,10 @@ impl RuntimeMetricSource {
       let (tx, rx) = oneshot::channel::<WorkerHeapStatistics>();
       let data_ptr_mut = Box::into_raw(Box::new(InterruptData { heap_tx: tx }));
 
-      // SAFETY: *mut T and &mut T have identical ABI representation.
-      let callback = unsafe {
-        std::mem::transmute::<
-          extern "C" fn(*mut v8::Isolate, *mut std::ffi::c_void),
-          extern "C" fn(&mut v8::Isolate, *mut std::ffi::c_void),
-        >(interrupt_fn_raw)
-      };
-
-      if !source
-        .handle
-        .request_interrupt(callback, data_ptr_mut as *mut std::ffi::c_void)
-      {
+      if !source.handle.request_interrupt(
+        interrupt_fn_raw,
+        data_ptr_mut as *mut std::ffi::c_void,
+      ) {
         drop(unsafe { Box::from_raw(data_ptr_mut) });
         return async { None }.boxed();
       }
@@ -341,7 +343,7 @@ fn op_console_size(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_runtime_metrics(
   state: Rc<RefCell<OpState>>,
@@ -365,6 +367,17 @@ fn op_schedule_mem_check(state: &mut OpState) -> Result<(), JsErrorBox> {
     waker.0.wake();
   }
 
+  Ok(())
+}
+
+#[op2(fast)]
+fn op_set_wasm_memory_bytes(
+  state: &mut OpState,
+  #[number] bytes: u64,
+) -> Result<(), JsErrorBox> {
+  if let Some(tracker) = state.try_borrow::<WasmMemoryTracker>() {
+    tracker.0.store(bytes, Ordering::Relaxed);
+  }
   Ok(())
 }
 
@@ -492,6 +505,14 @@ pub fn op_bootstrap_unstable_args(_state: &mut OpState) -> Vec<String> {
   vec![]
 }
 
+// Stub: node:process polyfill links against this op at module-load time.
+// Upstream defines it in runtime::ops::worker_host, which we replace.
+#[op2(fast)]
+pub fn op_current_thread_cpu_usage(#[buffer] out: &mut [f64]) {
+  out[0] = 0.0;
+  out[1] = 0.0;
+}
+
 deno_core::extension!(
   runtime,
   deps = [os],
@@ -504,12 +525,14 @@ deno_core::extension!(
     // op_set_exit_code, // Removed: now provided by ext/os
     op_runtime_metrics,
     op_schedule_mem_check,
+    op_set_wasm_memory_bytes,
     op_runtime_memory_usage,
     op_set_raw,
     op_bootstrap_unstable_args,
     op_raise_segfault,
     op_tap_promise_metrics,
     op_cancel_drop_token,
+    op_current_thread_cpu_usage,
   ],
   esm_entry_point = "ext:runtime/bootstrap.js",
   esm = [
@@ -527,5 +550,6 @@ deno_core::extension!(
     "navigator.js",
     "permissions.js",
     "promises.js",
+    "wasm_memory_tracker.js",
   ]
 );

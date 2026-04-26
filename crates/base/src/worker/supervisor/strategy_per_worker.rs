@@ -19,19 +19,12 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use crate::runtime::WillTerminateReason;
 use crate::worker::supervisor::as_interrupt_callback;
 use crate::worker::supervisor::create_wall_clock_beforeunload_alert;
-use crate::worker::supervisor::v8_handle_beforeunload_raw;
-use crate::worker::supervisor::v8_handle_drain_raw;
-use crate::worker::supervisor::v8_handle_early_drop_beforeunload_raw;
 use crate::worker::supervisor::v8_handle_early_retire_raw;
 use crate::worker::supervisor::wait_cpu_alarm;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::Tokens;
-use crate::worker::supervisor::V8HandleBeforeunloadData;
-use crate::worker::supervisor::V8HandleDrainData;
-use crate::worker::supervisor::V8HandleEarlyDropData;
 
 use super::Arguments;
 use super::CPUUsageMetrics;
@@ -239,56 +232,28 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
 
   let mut dispatch_early_drop_beforeunload_fn = Some({
     let token = early_drop_token.clone();
-    let isolate_lifecycle = isolate_lifecycle.clone();
-    let thread_safe_handle = thread_safe_handle.clone();
     let waker = waker.clone();
     move || {
-      let data_ptr_mut =
-        Box::into_raw(Box::new(V8HandleEarlyDropData { token }));
-
-      // Guard against calling V8 handle methods during/after runtime disposal
-      let Some(_guard) = isolate_lifecycle.try_enter() else {
-        unsafe { Box::from_raw(data_ptr_mut) }.token.cancel();
-        return;
-      };
-
-      if thread_safe_handle.request_interrupt(
-        as_interrupt_callback(v8_handle_early_drop_beforeunload_raw),
-        data_ptr_mut as *mut std::ffi::c_void,
-      ) {
-        waker.wake();
-      } else {
-        unsafe { Box::from_raw(data_ptr_mut) }.token.cancel();
-      }
+      // V8 interrupts only fire at JS safe points; an idle isolate (e.g.
+      // awaiting op_net_accept) never reaches one. Wake the event loop and
+      // let it observe the cancellation directly.
+      token.cancel();
+      waker.wake();
     }
   });
 
   let mut dispatch_drain_fn = Some({
     let runtime_drop = runtime_drop.clone();
-    let isolate_lifecycle = isolate_lifecycle.clone();
     let runtime_state = state.runtime.clone();
-    let thread_safe_handle = thread_safe_handle.clone();
     let waker = waker.clone();
     move || {
-      let data_ptr_mut = Box::into_raw(Box::new(V8HandleDrainData {
-        runtime_drop_token: runtime_drop.clone(),
-        runtime_state: runtime_state.clone(),
-      }));
-
-      // Guard against calling V8 handle methods during/after runtime disposal
-      let Some(_guard) = isolate_lifecycle.try_enter() else {
-        drop(unsafe { Box::from_raw(data_ptr_mut) });
+      // Raise the flag and wake; poll_event_loop dispatches drain on its
+      // next tick. (V8 interrupts don't reach idle isolates — see above.)
+      if runtime_drop.is_cancelled() {
         return;
-      };
-
-      if thread_safe_handle.request_interrupt(
-        as_interrupt_callback(v8_handle_drain_raw),
-        data_ptr_mut as *mut _,
-      ) {
-        waker.wake();
-      } else {
-        drop(unsafe { Box::from_raw(data_ptr_mut) });
       }
+      runtime_state.drain_triggered.raise();
+      waker.wake();
     }
   });
 
@@ -488,26 +453,11 @@ pub async fn supervise(args: Arguments) -> (ShutdownReason, i64) {
       _ = &mut wall_clock_beforeunload_alert,
         if !state.is_wall_clock_limit_disabled && !state.is_wall_clock_beforeunload_armed
       => {
-        let data_ptr_mut = Box::into_raw(Box::new(V8HandleBeforeunloadData {
-          reason: WillTerminateReason::WallClock,
-          runtime_drop_token: runtime_drop.clone(),
-          runtime_state: state.runtime.clone(),
-        }));
-
-        // Guard against calling V8 handle methods during/after runtime disposal
-        if let Some(_guard) = isolate_lifecycle.try_enter() {
-          if thread_safe_handle.request_interrupt(
-            as_interrupt_callback(v8_handle_beforeunload_raw),
-            data_ptr_mut as *mut _,
-          ) {
-            waker.wake();
-          } else {
-            drop(unsafe { Box::from_raw(data_ptr_mut) });
-          }
-        } else {
-          drop(unsafe { Box::from_raw(data_ptr_mut) });
+        // Same rationale as dispatch_drain_fn: bypass V8 interrupt.
+        if !runtime_drop.is_cancelled() {
+          state.runtime.wall_clock_beforeunload_triggered.raise();
+          waker.wake();
         }
-
         state.is_wall_clock_beforeunload_armed = true;
       }
 

@@ -316,7 +316,7 @@ async fn run_gte(
     .context("failed to get inference results")?
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_ai_init_model(
   state: Rc<RefCell<OpState>>,
@@ -331,7 +331,7 @@ pub async fn op_ai_init_model(
   }
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_ai_run_model(
   state: Rc<RefCell<OpState>>,
@@ -349,7 +349,7 @@ pub async fn op_ai_run_model(
   }
 }
 
-#[op2(async)]
+#[op2]
 #[bigint]
 pub async fn op_ai_try_cleanup_unused_session() -> Result<usize, JsErrorBox> {
   session::cleanup()
@@ -357,7 +357,7 @@ pub async fn op_ai_try_cleanup_unused_session() -> Result<usize, JsErrorBox> {
     .map_err(|e| JsErrorBox::generic(e.to_string()))
 }
 
-#[op2(async)]
+#[op2]
 #[bigint]
 pub async fn op_ai_force_cleanup_all_sessions() -> usize {
   session::force_cleanup_all().await

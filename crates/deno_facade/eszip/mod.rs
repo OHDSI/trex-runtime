@@ -911,7 +911,10 @@ pub async fn generate_binary_eszip(
                 let checked_path =
                   CheckedPathBuf::unsafe_new(file_path.clone());
                 RealFs
-                  .read_file_sync(&checked_path.as_checked_path())?
+                  .read_file_sync(
+                    &checked_path.as_checked_path(),
+                    deno::deno_fs::OpenOptions::read(),
+                  )?
                   .into_owned()
               }
             },
@@ -939,7 +942,7 @@ pub async fn generate_binary_eszip(
     eszip.set_checksum(checksum);
   }
   if let Some(snapshot) = npm_snapshot {
-    eszip.add_npm_snapshot(snapshot);
+    eszip.npm_snapshot = Some(snapshot);
   }
   for (specifier, content) in contents {
     eszip.add_opaque_data(specifier, content.into());

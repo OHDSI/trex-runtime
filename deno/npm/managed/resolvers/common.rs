@@ -21,7 +21,7 @@ use deno_npm::NpmResolutionPackage;
 use deno_permissions::CheckedPath;
 use deno_permissions::OpenAccessKind;
 
-use ext_node::NodePermissions;
+use deno_permissions::PermissionsContainer;
 use node_resolver::UrlOrPathRef;
 use node_resolver::errors::PackageFolderResolveError;
 
@@ -66,7 +66,7 @@ pub trait NpmPackageFsResolver: Send + Sync {
 
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError>;
 }
@@ -89,7 +89,7 @@ impl RegistryReadPermissionChecker {
 
   pub fn ensure_registry_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError> {
     if permissions.query_read_all() {

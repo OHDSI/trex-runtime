@@ -65,9 +65,17 @@ pub static PRIMARY_WORKER_RT: Lazy<tokio_util::task::LocalPoolHandle> =
           }
         });
 
-    tokio_util::task::LocalPoolHandle::new(
-      maybe_pool_size.unwrap_or(DEFAULT_PRIMARY_WORKER_POOL_SIZE),
-    )
+    // See USER_WORKER_RT below: without v8::Locker, threads that host many
+    // successive isolates eventually fault in JsRealm::destroy.
+    tokio_util::task::LocalPoolHandle::new(maybe_pool_size.unwrap_or_else(
+      || {
+        std::thread::available_parallelism()
+          .ok()
+          .map(NonZeroUsize::get)
+          .map(|n| n.max(DEFAULT_PRIMARY_WORKER_POOL_SIZE))
+          .unwrap_or(DEFAULT_PRIMARY_WORKER_POOL_SIZE)
+      },
+    ))
   });
 
 pub static USER_WORKER_RT: Lazy<tokio_util::task::LocalPoolHandle> =
@@ -83,16 +91,17 @@ pub static USER_WORKER_RT: Lazy<tokio_util::task::LocalPoolHandle> =
         }
       });
 
-    tokio_util::task::LocalPoolHandle::new(if cfg!(debug_assertions) {
-      maybe_pool_size.unwrap_or(DEFAULT_USER_WORKER_POOL_SIZE)
-    } else {
-      maybe_pool_size.unwrap_or(
+    // Without v8::Locker, per-thread V8 state accumulates across successive
+    // isolates and eventually faults in JsRealm::destroy. Spreading isolates
+    // across threads keeps that state bounded.
+    tokio_util::task::LocalPoolHandle::new(maybe_pool_size.unwrap_or_else(
+      || {
         std::thread::available_parallelism()
           .ok()
           .map(NonZeroUsize::get)
-          .unwrap_or(DEFAULT_USER_WORKER_POOL_SIZE),
-      )
-    })
+          .unwrap_or(DEFAULT_USER_WORKER_POOL_SIZE)
+      },
+    ))
   });
 
 #[derive(Clone)]

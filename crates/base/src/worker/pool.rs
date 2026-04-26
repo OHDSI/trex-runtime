@@ -1,3 +1,7 @@
+// `EnumAsInner` derive output trips Rust 1.92's `unused_assignments`; an
+// attribute on the enum itself doesn't reach the generated impl.
+#![allow(unused_assignments)]
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;

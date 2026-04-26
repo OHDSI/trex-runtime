@@ -61,7 +61,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
-use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -394,21 +393,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
           Ok(url)
         }
 
-        PackageJsonDepValue::File(_) => {
-          // file: protocol dependencies are not supported in standalone mode
-          Err(JsErrorBox::type_error(format!(
-            "file: protocol dependencies are not supported in package.json (dependency: {})",
-            alias
-          )))
-        }
-
-        PackageJsonDepValue::JsrReq(_) => {
-          // jsr: protocol dependencies are not supported in standalone mode
-          Err(JsErrorBox::type_error(format!(
-            "jsr: protocol dependencies are not supported in package.json (dependency: {})",
-            alias
-          )))
-        }
+        PackageJsonDepValue::File(_) => Err(JsErrorBox::type_error(format!(
+          "file: protocol dependencies are not supported in package.json (dependency: {})",
+          alias
+        ))),
       },
       Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =
@@ -482,9 +470,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&deno_core::ModuleLoadReferrer>,
-    _is_dynamic: bool,
-    _requested_module_type: RequestedModuleType,
+    options: deno_core::ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
+    let _is_dynamic = options.is_dynamic_import;
+    let _requested_module_type = options.requested_module_type;
     let include_source_map = self.include_source_map;
 
     if original_specifier.scheme() == "data" {
@@ -782,7 +771,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
 impl NodeRequireLoader for EmbeddedModuleLoader {
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn ext_node::NodePermissions,
+    permissions: &mut PermissionsContainer,
     path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if self.shared.vfs.open_file(&path).is_ok() {
@@ -1006,9 +995,8 @@ pub async fn create_module_loader_for_eszip(
             maybe_node_modules_path: None,
           },
         ));
-      // In development mode (use_real_fs), don't use the eszip snapshot as it contains
-      // localhost-based package IDs. Instead use ResolveFromLockfile or no snapshot
-      // so the resolver will look for packages in the real npm cache.
+      // Eszip snapshot embeds localhost package IDs; in dev, rebuild from the
+      // real npm cache instead.
       let snapshot_option = if use_real_fs {
         CliNpmResolverManagedSnapshotOption::Specified(None)
       } else {
@@ -1056,6 +1044,7 @@ pub async fn create_module_loader_for_eszip(
           ),
           pkg_json_resolver: cli_pkg_json_resolver.clone(),
           root_node_modules_dir,
+          search_stop_dir: None,
         }),
       )
       .await?;
@@ -1106,7 +1095,10 @@ pub async fn create_module_loader_for_eszip(
       let upstream_resolver =
         ManagedNpmResolver::<VfsSys>::new(ManagedNpmResolverCreateOptions {
           npm_cache_dir: npm_cache_dir.clone(),
-          sys: vfs_sys.clone(),
+          sys: node_resolver::cache::NodeResolutionSys::new(
+            vfs_sys.clone(),
+            None,
+          ),
           maybe_node_modules_path,
           npm_system_info: inner.npm_system_info().clone(),
           npmrc: inner.npmrc().clone(),
@@ -1130,6 +1122,7 @@ pub async fn create_module_loader_for_eszip(
             None,
           ),
           pkg_json_resolver: pkg_json_resolver.clone(),
+          search_stop_dir: None,
         });
       deno::deno_resolver::npm::NpmResolver::Byonm(new_rc(byonm_resolver))
     }
@@ -1150,6 +1143,7 @@ pub async fn create_module_loader_for_eszip(
       concrete_in_npm_pkg_checker.clone(),
       pkg_json_resolver.clone(),
       IsCjsResolutionMode::ExplicitTypeCommonJs,
+      Vec::new(),
     ));
 
   let cache_db = Caches::new(deno_dir_provider.clone());

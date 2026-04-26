@@ -35,11 +35,14 @@ pub struct PermissionStatus {
 impl From<PermissionState> for PermissionStatus {
   fn from(state: PermissionState) -> Self {
     PermissionStatus {
-      state: if state == PermissionState::GrantedPartial {
-        PermissionState::Granted.to_string()
-      } else {
-        state.to_string()
-      },
+      state: match state {
+        PermissionState::Granted | PermissionState::GrantedPartial => "granted",
+        PermissionState::Ignored
+        | PermissionState::DeniedPartial
+        | PermissionState::Denied => "denied",
+        PermissionState::Prompt => "prompt",
+      }
+      .to_string(),
       partial: state == PermissionState::GrantedPartial,
     }
   }

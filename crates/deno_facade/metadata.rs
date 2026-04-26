@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use anyhow::anyhow;
-use deno::deno_npm;
-use deno::deno_npm::npm_rc::RegistryConfigWithUrl;
-use deno::deno_npm::npm_rc::ResolvedNpmRc;
+use deno::deno_npmrc;
+use deno::deno_npmrc::RegistryConfigWithUrl;
+use deno::deno_npmrc::ResolvedNpmRc;
 use deno::deno_path_util::normalize_path;
 use deno::standalone::binary::NodeModules;
 use deno::standalone::binary::SerializedWorkspaceResolver;
@@ -99,7 +99,7 @@ impl Metadata {
       .unwrap_or_default();
 
     Ok(Arc::new(ResolvedNpmRc {
-      default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+      default_config: deno_npmrc::RegistryConfigWithUrl {
         registry_url: registry_yrl.clone(),
         config: Default::default(),
       },

@@ -223,5 +223,8 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Unknown => 16,
     Html => 17,
     Sql => 18,
+    Jsonc => 19,
+    Json5 => 20,
+    Markdown => 21,
   }
 }

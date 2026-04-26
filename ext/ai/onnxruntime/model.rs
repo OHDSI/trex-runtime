@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use deno_core::ToV8;
-use deno_core::serde_v8::to_v8;
 use ort::session::Session;
 use reqwest::Url;
+use serde::Serialize;
 
 use super::session::SessionWithId;
 use super::session::get_session;
 use super::session::load_session_from_bytes;
 use super::session::load_session_from_url;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ModelInfo {
   pub id: String,
   pub input_names: Vec<String>,
@@ -77,22 +76,5 @@ impl Model {
 
   pub async fn from_bytes(model_bytes: &[u8]) -> Result<Self> {
     load_session_from_bytes(model_bytes).await.map(Self::new)
-  }
-}
-
-impl<'a> ToV8<'a> for ModelInfo {
-  type Error = std::convert::Infallible;
-
-  fn to_v8(
-    self,
-    scope: &mut deno_core::v8::PinScope<'a, '_>,
-  ) -> std::result::Result<
-    deno_core::v8::Local<'a, deno_core::v8::Value>,
-    Self::Error,
-  > {
-    let v8_values =
-      to_v8(scope, (self.id, self.input_names, self.output_names));
-
-    Ok(v8_values.unwrap())
   }
 }

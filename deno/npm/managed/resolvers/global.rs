@@ -14,7 +14,7 @@ use deno_fs::FileSystem;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
-use ext_node::NodePermissions;
+use deno_permissions::PermissionsContainer;
 use node_resolver::UrlOrPathRef;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
@@ -184,7 +184,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError> {
     self

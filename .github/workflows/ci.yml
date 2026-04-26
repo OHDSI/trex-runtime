@@ -23,7 +23,7 @@ on:
     branches:
       - main
       - develop
-      - deno2.5.6
+      - deno2.7.12
     paths: *watch
   workflow_dispatch:
 
