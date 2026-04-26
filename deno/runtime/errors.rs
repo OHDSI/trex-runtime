@@ -1211,7 +1211,6 @@ mod node {
     }
   }
 
-
   pub fn get_os_error(error: &OsError) -> &'static str {
     match error {
       OsError::Priority(e) => match e {
@@ -1648,7 +1647,7 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       e.downcast_ref::<node::RequireError>()
         .map(node::get_require_error)
     })
-      .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
+    .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
     // BrotliError removed in Deno 2.5.6
     // .or_else(|| {
     //   e.downcast_ref::<node::BrotliError>()
