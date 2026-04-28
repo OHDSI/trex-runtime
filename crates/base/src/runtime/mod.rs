@@ -900,8 +900,7 @@ where
           deno_io::deno_io::lazy_init(),
           deno_fs::deno_fs::lazy_init(),
           ext_ai::ai::init(),
-          // Re-enable once OHDSI/trexsql bumps deno_error to =0.7.1.
-          #[cfg(any())]
+          #[cfg(feature = "trex")]
           trex_core::trex::init(),
           ext_env::env::init(),
           deno_process::deno_process::init(None),

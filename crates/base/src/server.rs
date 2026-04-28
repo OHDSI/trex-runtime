@@ -190,8 +190,7 @@ impl Service<Request<Body>> for WorkerService {
     let metric_src = self.metric_src.clone();
     let worker_req_tx = self.worker_req_tx.clone();
     let fut = async move {
-      // Re-enable once OHDSI/trexsql bumps deno_error to =0.7.1.
-      #[cfg(any())]
+      #[cfg(feature = "trex")]
       if let Some(static_resp) = trex_core::try_serve_static(req.uri().path()) {
         metric_src.incl_received_requests();
         metric_src.incl_handled_requests();
