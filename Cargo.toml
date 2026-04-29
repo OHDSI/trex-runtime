@@ -281,9 +281,12 @@ winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem"] }
 
 [patch.crates-io]
-# trex_core — lives in the parent monorepo; patch so standalone CI can resolve the optional dep
-# TODO(deno-2.7.12 upgrade): re-enable once OHDSI/trexsql bumps deno_error to =0.7.1.
-# trex_core = { git = "https://github.com/OHDSI/trexsql", branch = "develop" }
+# trex_core — the real crate lives in the parent OHDSI/trexsql monorepo and overrides
+# this stub when this repo is built as a child of that workspace. A git patch back to
+# OHDSI/trexsql would be cyclic (the parent already pulls this repo), so standalone CI
+# resolves against a local empty stub instead. Safe because `--features trex` is never
+# enabled in this repo's CI — only the parent monorepo exercises that feature.
+trex_core = { path = "crates/trex_core_stub" }
 
 # DuckDB Rust bindings fork
 duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }

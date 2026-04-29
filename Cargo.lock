@@ -1039,6 +1039,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "trex_core",
  "tungstenite",
  "url",
  "urlencoding",
@@ -10376,6 +10377,10 @@ dependencies = [
  "tracing-log",
  "tracing-serde",
 ]
+
+[[package]]
+name = "trex_core"
+version = "0.1.0"
 
 [[package]]
 name = "triomphe"
