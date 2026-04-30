@@ -1,6 +1,6 @@
 # trex-runtime
 
-[![Docker Build and Up](https://github.com/ohdsi/trex/actions/workflows/docker-build-push.yml/badge.svg)](https://github.com/ohdsi/trex/actions/workflows/docker-build-push.yml) &nbsp;&nbsp; [![NPM build package](https://github.com/ohdsi/trex/actions/workflows/npm-ci.yml/badge.svg)](https://github.com/ohdsi/trex/actions/workflows/npm-ci.yml)
+[![Docker Build and Up](https://github.com/ohdsi/trex-runtime/actions/workflows/docker-build-push.yml/badge.svg)](https://github.com/ohdsi/trex-runtime/actions/workflows/docker-build-push.yml) &nbsp;&nbsp; [![NPM build package](https://github.com/ohdsi/trex-runtime/actions/workflows/npm-ci.yml/badge.svg)](https://github.com/ohdsi/trex-runtime/actions/workflows/npm-ci.yml)
 
 `trex-runtime` is the edge function runtime used by [Trex](https://github.com/OHDSI/trex). It hosts the JavaScript / TypeScript functions that back HTTP routes, plugin APIs, and server-side workloads inside the `trex` binary, and is the execution environment in which Supabase-compatible edge functions run within this project.
 
