@@ -32,8 +32,8 @@ use tokio::sync::oneshot;
 use tracing::debug;
 use tracing::trace;
 
-#[op2(async)]
-#[to_v8]
+#[op2]
+#[serde]
 pub async fn op_ai_ort_init_session(
   state: Rc<RefCell<OpState>>,
   #[buffer] model_bytes: JsBuffer,
@@ -70,7 +70,7 @@ pub async fn op_ai_ort_init_session(
   })
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 pub async fn op_ai_ort_run_session(
   state: Rc<RefCell<OpState>>,

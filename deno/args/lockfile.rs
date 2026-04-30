@@ -119,7 +119,6 @@ impl CliLockfile {
           }
           PackageJsonDepValue::Workspace(_) => None,
           PackageJsonDepValue::File(_) => None,
-          PackageJsonDepValue::JsrReq(_) => None,
         })
         .collect()
     }
@@ -204,6 +203,7 @@ impl CliLockfile {
         })
         .collect(),
       links: Default::default(), // Empty links for now - not used in edge-runtime
+      npm_overrides: None,
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: builder.no_npm.unwrap_or_default(),

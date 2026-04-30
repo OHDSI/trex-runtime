@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 pub mod events;
 pub mod js_interceptors;
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_event_accept(
   state: Rc<RefCell<OpState>>,

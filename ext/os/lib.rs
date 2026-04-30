@@ -124,7 +124,7 @@ fn op_signal_bind(
   Ok(rid)
 }
 
-#[op2(async)]
+#[op2]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,

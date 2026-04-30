@@ -19,7 +19,7 @@ import {
 } from "ext:deno_telemetry/telemetry.ts";
 import {
   updateSpanFromRequest,
-  updateSpanFromResponse,
+  updateSpanFromServerResponse,
 } from "ext:deno_telemetry/util.ts";
 
 const ops = core.ops;
@@ -261,7 +261,7 @@ async function respond(requestEvent, httpConn, options, snapshot) {
     }
 
     if (span) {
-      updateSpanFromResponse(span, response);
+      updateSpanFromServerResponse(span, response);
     }
 
     if (response === internals.RAW_UPGRADE_RESPONSE_SENTINEL) {

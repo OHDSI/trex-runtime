@@ -42,12 +42,10 @@ use deno::deno_net;
 use deno::deno_telemetry;
 use deno::deno_telemetry::OtelConfig;
 use deno::deno_tls;
-use deno::deno_url;
 use deno::deno_web;
 use deno::deno_webidl;
 use deno::deno_websocket;
 use deno::DenoOptionsBuilder;
-use deno::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::serde_json;
@@ -79,6 +77,7 @@ use ext_event_worker::events::WorkerEventWithMetadata;
 use ext_runtime::external_memory::CustomAllocator;
 use ext_runtime::MemCheckWaker;
 use ext_runtime::PromiseMetrics;
+use ext_runtime::WasmMemoryTracker;
 use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::WorkerContextInitOpts;
 use ext_workers::context::WorkerKind;
@@ -186,7 +185,7 @@ fn init_v8_platform() {
   // NOTE(denoland/deno/20495): Due to the new PKU (Memory Protection Keys)
   // feature introduced in V8 11.6, We need to initialize the V8 platform on
   // the main thread that spawns V8 isolates.
-  JsRuntime::init_platform(None, false);
+  JsRuntime::init_platform(None);
 }
 
 struct MemCheck {
@@ -195,6 +194,7 @@ struct MemCheck {
   limit: Option<usize>,
   waker: Arc<AtomicWaker>,
   state: Arc<RwLock<MemCheckState>>,
+  wasm_tracker: WasmMemoryTracker,
 }
 
 impl Default for MemCheck {
@@ -207,6 +207,7 @@ impl Default for MemCheck {
       limit: None,
       waker: Arc::new(AtomicWaker::new()),
       state: Arc::new(RwLock::new(MemCheckState::default())),
+      wasm_tracker: WasmMemoryTracker::default(),
     }
   }
 }
@@ -232,10 +233,14 @@ impl MemCheck {
     // committed heap? (but it can be bloated)
     let used_heap_bytes = stats.used_heap_size();
     let external_bytes = stats.external_memory();
+    // WebAssembly linear memory is invisible to HeapStatistics on v8 147;
+    // see ext/runtime/js/wasm_memory_tracker.js for how it gets here.
+    let wasm_bytes = self.wasm_tracker.bytes() as usize;
 
     let total_bytes = malloced_bytes
       .saturating_add(used_heap_bytes)
-      .saturating_add(external_bytes);
+      .saturating_add(external_bytes)
+      .saturating_add(wasm_bytes);
 
     let heap_stats = WorkerHeapStatistics::from(&stats);
     let mut state = self.state.write().unwrap();
@@ -880,23 +885,20 @@ where
         let extensions = vec![
           deno_telemetry::deno_telemetry::init(),
           deno_webidl::deno_webidl::init(),
-          deno_console::deno_console::init(),
-          deno_url::deno_url::init(),
-          deno_web::deno_web::lazy_init::<PermissionsContainer>(),
+          deno_web::deno_web::lazy_init(),
           deno_webgpu::deno_webgpu::init(),
-          deno_canvas::deno_canvas::init(),
-          deno_fetch::deno_fetch::lazy_init::<PermissionsContainer>(),
-          deno_websocket::deno_websocket::lazy_init::<PermissionsContainer>(),
+          deno_image::deno_image::init(),
+          deno_fetch::deno_fetch::lazy_init(),
+          deno_websocket::deno_websocket::lazy_init(),
           // TODO: support providing a custom seed for crypto
           deno_crypto::deno_crypto::lazy_init(),
-          deno_broadcast_channel::deno_broadcast_channel::lazy_init::<
-            deno_broadcast_channel::InMemoryBroadcastChannel,
-          >(),
-          deno_net::deno_net::lazy_init::<PermissionsContainer>(),
+          deno_net::deno_net::lazy_init(),
           deno_tls::deno_tls::init(),
+          deno_node_crypto::deno_node_crypto::init(),
+          deno_node_sqlite::deno_node_sqlite::init(),
           deno_http::deno_http::lazy_init(),
           deno_io::deno_io::lazy_init(),
-          deno_fs::deno_fs::lazy_init::<PermissionsContainer>(),
+          deno_fs::deno_fs::lazy_init(),
           ext_ai::ai::init(),
           #[cfg(feature = "trex")]
           trex_core::trex::init(),
@@ -905,7 +907,7 @@ where
           ext_workers::user_workers::init(),
           ext_event_worker::user_event_worker::init(),
           ext_event_worker::js_interceptors::js_interceptors::init(),
-          ext_runtime::runtime_bootstrap::init::<PermissionsContainer>(
+          ext_runtime::runtime_bootstrap::init(
             Some(main_module_url.clone()),
           ),
           ext_runtime::runtime_net::init(),
@@ -914,7 +916,6 @@ where
           // NOTE(AndresP): Order is matters. Otherwise, it will lead to hard
           // errors such as SIGBUS depending on the platform.
           ext_node::deno_node::lazy_init::<
-            PermissionsContainer,
             deno_resolver::npm::DenoInNpmPackageChecker,
             npm::NpmResolver<VfsSys>,
             VfsSys,
@@ -1018,15 +1019,13 @@ where
 
         let mut js_runtime = JsRuntime::new(runtime_options);
 
-        // Initialize lazy-loaded extensions
-        // This is required for extensions that use lazy_init() instead of init()
-        // It calls the state initializers for those extensions (e.g., AsyncId for node)
         js_runtime.lazy_init_extensions(vec![
-          deno_web::deno_web::args::<PermissionsContainer>(
-            Default::default(), // blob_store
-            None, // location
+          deno_web::deno_web::args(
+            Default::default(),
+            None,
+            deno_web::InMemoryBroadcastChannel::default(),
           ),
-          deno_fetch::deno_fetch::args::<PermissionsContainer>(
+          deno_fetch::deno_fetch::args(
             deno_fetch::Options {
               user_agent: "supabase-edge-runtime".to_string(),
               root_cert_store_provider: None,
@@ -1035,37 +1034,34 @@ where
               ..Default::default()
             },
           ),
-          deno_websocket::deno_websocket::args::<PermissionsContainer>(),
+          deno_websocket::deno_websocket::args(),
           deno_crypto::deno_crypto::args(None),
-          deno_broadcast_channel::deno_broadcast_channel::args::<
-            deno_broadcast_channel::InMemoryBroadcastChannel,
-          >(
-            deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-          ),
-          deno_net::deno_net::args::<PermissionsContainer>(None, None),
+          deno_net::deno_net::args(None, None),
           deno_http::deno_http::args(deno_http::Options::default()),
           deno_io::deno_io::args(Some(stdio.clone())),
-          deno_fs::deno_fs::args::<PermissionsContainer>(
+          deno_fs::deno_fs::args(
             if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
               fs.clone()
             } else {
               Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
             },
           ),
-          {
-            let sys = node_services.sys.clone();
-            ext_node::deno_node::args::<
-              PermissionsContainer,
-              deno_resolver::npm::DenoInNpmPackageChecker,
-              npm::NpmResolver<VfsSys>,
-              VfsSys,
-            >(Some(node_services), if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
-              fs.clone()
-            } else {
-              Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
-            }, sys)
-          },
-          deno_cache::deno_cache::args(Default::default()),
+          ext_node::deno_node::args::<
+            deno_resolver::npm::DenoInNpmPackageChecker,
+            npm::NpmResolver<VfsSys>,
+            VfsSys,
+          >(Some(node_services), if should_block_fs || s3_fs.is_some() || flags.restrict_host_fs {
+            fs.clone()
+          } else {
+            Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>
+          }),
+          deno_cache::deno_cache::args(Some(deno_cache::CreateCache(
+            Arc::new(|| {
+              let storage_dir = std::env::temp_dir().join("trex-cache");
+              let sqlite = deno_cache::SqliteBackedCache::new(storage_dir)?;
+              Ok(deno_cache::CacheImpl::Sqlite(sqlite))
+            }),
+          ))),
         ]).map_err(|e| anyhow::anyhow!("Failed to lazy init extensions: {:#}", e))?;
 
         let dispatch_fns = {
@@ -1148,10 +1144,12 @@ where
             GCType::kGCTypeAll,
           );
 
-          js_runtime
-            .op_state()
-            .borrow_mut()
-            .put(MemCheckWaker::from(mem_check.waker.clone()));
+          {
+            let op_state = js_runtime.op_state();
+            let mut op_state = op_state.borrow_mut();
+            op_state.put(MemCheckWaker::from(mem_check.waker.clone()));
+            op_state.put(mem_check.wasm_tracker.clone());
+          }
         }
 
         // V8 isolate stays entered on this thread.
@@ -1717,7 +1715,11 @@ where
       let this = &mut *self;
 
       if woked {
-        extern "C" fn dummy(_: *mut v8::Isolate, _: *mut std::ffi::c_void) {}
+        unsafe extern "C" fn dummy(
+          _: v8::UnsafeRawIsolatePtr,
+          _: *mut std::ffi::c_void,
+        ) {
+        }
         this
           .js_runtime
           .v8_isolate()
@@ -1776,10 +1778,7 @@ where
 
         this.js_runtime.poll_event_loop(
           &mut std::task::Context::from_waker(waker.as_ref()),
-          PollEventLoopOptions {
-            wait_for_inspector,
-            ..Default::default()
-          },
+          PollEventLoopOptions { wait_for_inspector },
         )
       } else {
         Poll::Pending
@@ -2660,6 +2659,14 @@ mod test {
   use std::sync::Arc;
   use std::time::Duration;
 
+  // Tests reference fixtures via relative `./test_cases/...` paths. Anchor cwd
+  // to this package's manifest dir so they resolve regardless of whether
+  // `cargo test` runs from the workspace root or the package root.
+  #[::ctor::ctor]
+  fn anchor_cwd_to_manifest() {
+    let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+  }
+
   use anyhow::Context;
   use deno::DenoOptionsBuilder;
   use deno_core::error::AnyError;
@@ -2811,7 +2818,21 @@ mod test {
 
   impl<C> RuntimeBuilder<C> {
     fn set_path(mut self, path: &str) -> Self {
-      let _ = self.path.insert(path.to_string());
+      // Tests are run from the workspace root (cargo test --workspace),
+      // but fixtures live under this package's directory. Anchor relative
+      // paths to CARGO_MANIFEST_DIR so they resolve regardless of cwd.
+      let resolved = {
+        let p = std::path::Path::new(path);
+        if p.is_absolute() {
+          path.to_string()
+        } else {
+          std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(p)
+            .to_string_lossy()
+            .into_owned()
+        }
+      };
+      let _ = self.path.insert(resolved);
       self
     }
 
@@ -3505,6 +3526,8 @@ mod test {
     .await;
   }
 
+  // Wasm linear memory is tracked via ext/runtime/js/wasm_memory_tracker.js;
+  // v8 147's HeapStatistics no longer surfaces WasmMemoryObject directly.
   #[tokio::test]
   #[serial]
   async fn test_mem_checker_above_limit_wasm() {

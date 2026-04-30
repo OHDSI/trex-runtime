@@ -467,6 +467,33 @@ where
     }
   }
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    self.check_sync_api_allowed("rmdir_sync")?;
+    if path.starts_with(&self.prefix) {
+      let stripped = path.strip_prefix(&self.prefix).unwrap();
+      let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
+      self.fs.rmdir_sync(&checked)
+    } else {
+      self
+        .base_fs
+        .as_ref()
+        .map(|it| it.rmdir_sync(path))
+        .unwrap_or_else(|| Err(FsError::NotSupported))
+    }
+  }
+
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    if path.starts_with(&self.prefix) {
+      let stripped = path.strip_prefix(&self.prefix).unwrap();
+      let checked = CheckedPathBuf::unsafe_new(stripped.to_path_buf());
+      self.fs.rmdir_async(checked).await
+    } else if let Some(fs) = self.base_fs.as_ref() {
+      fs.rmdir_async(path).await
+    } else {
+      Err(FsError::NotSupported)
+    }
+  }
+
   fn copy_file_sync(
     &self,
     oldpath: &CheckedPath,
@@ -1111,7 +1138,7 @@ where
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     if path.starts_with(&self.prefix) {
       let stripped = path.strip_prefix(&self.prefix).unwrap();
@@ -1124,17 +1151,21 @@ where
     }
   }
 
-  fn read_file_sync(&self, path: &CheckedPath) -> FsResult<Cow<'static, [u8]>> {
+  fn read_file_sync(
+    &self,
+    path: &CheckedPath,
+    options: OpenOptions,
+  ) -> FsResult<Cow<'static, [u8]>> {
     self.check_sync_api_allowed("read_file_sync")?;
     if path.starts_with(&self.prefix) {
       let stripped = path.strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
-      self.fs.read_file_sync(&checked)
+      self.fs.read_file_sync(&checked, options)
     } else {
       self
         .base_fs
         .as_ref()
-        .map(|it| it.read_file_sync(path))
+        .map(|it| it.read_file_sync(path, options))
         .unwrap_or_else(|| Err(FsError::NotSupported))
     }
   }
@@ -1142,13 +1173,14 @@ where
   async fn read_file_async<'a>(
     &'a self,
     path: CheckedPathBuf,
+    options: OpenOptions,
   ) -> FsResult<Cow<'static, [u8]>> {
     if path.starts_with(&self.prefix) {
       let stripped = path.strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPathBuf::unsafe_new(stripped.to_path_buf());
-      self.fs.read_file_async(checked).await
+      self.fs.read_file_async(checked, options).await
     } else if let Some(fs) = self.base_fs.as_ref() {
-      fs.read_file_async(path).await
+      fs.read_file_async(path, options).await
     } else {
       Err(FsError::NotSupported)
     }

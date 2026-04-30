@@ -309,9 +309,9 @@ async fn add_package_reqs_to_snapshot(
   );
   // Create a default NpmVersionResolver for dependency resolution
   let version_resolver = deno_npm::resolution::NpmVersionResolver {
-    types_node_version_req: None,
     link_packages: Arc::new(HashMap::new()),
     newest_dependency_date_options: Default::default(),
+    overrides: Default::default(),
   };
   let result = snapshot
     .add_pkg_reqs(

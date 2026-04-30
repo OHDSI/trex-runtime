@@ -4,12 +4,11 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_error::JsErrorBox;
-use deno_fs::FsPermissions;
+use deno_permissions::PermissionsContainer;
 
 deno_core::extension!(runtime_bootstrap,
-  parameters = [P: FsPermissions],
   ops = [
-    op_main_module<P>,
+    op_main_module,
     op_bootstrap_color_depth,
   ],
   options = {
@@ -24,10 +23,7 @@ deno_core::extension!(runtime_bootstrap,
 
 #[op2]
 #[string]
-fn op_main_module<P>(state: &mut OpState) -> Result<String, JsErrorBox>
-where
-  P: FsPermissions + 'static,
-{
+fn op_main_module(state: &mut OpState) -> Result<String, JsErrorBox> {
   let main = state.borrow::<ModuleSpecifier>().to_string();
   let cwd = std::env::current_dir()
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
@@ -43,7 +39,7 @@ where
       })?
       .join(main_url.to_string());
     state
-      .borrow_mut::<P>()
+      .borrow_mut::<PermissionsContainer>()
       .check_read_all("Deno.mainModule")
       .map_err(|e| JsErrorBox::generic(e.to_string()))?;
   }

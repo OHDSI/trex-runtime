@@ -51,7 +51,7 @@ use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::clone_dir_recursive;
 use crate::util::fs::symlink_dir;
 
-use ext_node::NodePermissions;
+use deno_permissions::PermissionsContainer;
 
 use super::super::resolution::NpmResolution;
 use super::common::NpmPackageFsResolver;
@@ -270,7 +270,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError> {
     self

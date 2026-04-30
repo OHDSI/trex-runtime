@@ -100,9 +100,10 @@ Deno.serve(async (req: Request) => {
   assertEquals(output.dims.length, 2);
 
   // Comparing first 3 predictions
-
+  // round6 rounds to 1e-6 so two values can legitimately differ by 1e-6;
+  // 5e-6 leaves headroom for FP rounding when the diff is computed.
   for (const [idx, expected] of Object.entries(snapshot)) {
-    assertAlmostEquals(round6(output.data[idx]), expected);
+    assertAlmostEquals(round6(output.data[idx]), expected, 5e-6);
   }
 
   return new Response();

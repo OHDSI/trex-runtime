@@ -13,9 +13,9 @@ use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::Workspace;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
-use deno_npm::npm_rc::NpmRc;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
+use deno_npmrc::NpmRc;
+use deno_npmrc::ResolvedNpmRc;
 use deno_semver::StackString;
 use once_cell::sync::Lazy;
 use reqwest::Url;
@@ -206,10 +206,6 @@ fn discover_npmrc(
 ) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
   const NPMRC_NAME: &str = ".npmrc";
 
-  fn get_env_var(var_name: &str) -> Option<String> {
-    std::env::var(var_name).ok()
-  }
-
   #[derive(Debug, Error)]
   #[error("Error loading .npmrc at {}.", path.display())]
   struct NpmRcLoadError {
@@ -235,11 +231,15 @@ fn discover_npmrc(
     source: String,
     path: &Path,
   ) -> Result<Arc<ResolvedNpmRc>, AnyError> {
-    let npmrc = NpmRc::parse(&source, &get_env_var).with_context(|| {
+    let sys = sys_traits::impls::RealSys;
+    let npmrc = NpmRc::parse(&sys, &source).with_context(|| {
       format!("Failed to parse .npmrc at {}", path.display())
     })?;
     let resolved = npmrc
-      .as_resolved(npm_registry_url())
+      .as_resolved(&deno_npmrc::NpmRegistryUrl {
+        url: npm_registry_url().clone(),
+        from_env: false,
+      })
       .context("Failed to resolve .npmrc options")?;
     log::debug!(".npmrc found at: '{}'", path.display());
     Ok(Arc::new(resolved))
@@ -290,7 +290,7 @@ fn discover_npmrc(
 
 pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   Arc::new(ResolvedNpmRc {
-    default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
+    default_config: deno_npmrc::RegistryConfigWithUrl {
       registry_url: npm_registry_url().clone(),
       config: Default::default(),
     },

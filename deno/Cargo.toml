@@ -1,12 +1,19 @@
 [package]
 name = "deno"
-version = "2.5.6"
+version = "2.7.12"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
 path = "lib.rs"
+
+[features]
+sync_fs = ["ext_node/sync_fs"]
+
+[lints.rust]
+# Vendored from upstream Deno; allow lets us avoid divergence on style.
+mismatched_lifetime_syntaxes = "allow"
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
@@ -27,6 +34,7 @@ deno_lockfile.workspace = true
 deno_media_type.workspace = true
 deno_net.workspace = true
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
@@ -47,6 +55,7 @@ deno_resolver = { workspace = true, features = ["graph"] }
 node_resolver.workspace = true
 sys_traits.workspace = true
 
+deno_node_crypto.workspace = true
 ext_node.workspace = true
 ext_runtime.workspace = true
 

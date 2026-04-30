@@ -90,6 +90,7 @@ fn main() -> Result<ExitCode, anyhow::Error> {
     let exit_code = match matches.subcommand() {
       Some(("start", sub_matches)) => {
         deno_telemetry::init(
+          &sys_traits::impls::RealSys,
           deno::versions::otel_runtime_config(),
           OtelConfig::default(),
         )?;

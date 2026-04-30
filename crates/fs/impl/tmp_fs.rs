@@ -444,6 +444,22 @@ impl deno_fs::FileSystem for TmpFs {
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    self.quota.sync.do_opt.raise();
+    let joined_path = self.root.path().join(path.try_normalize()?);
+    let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
+    RealFs.rmdir_sync(&checked_path)
+  }
+
+  #[instrument(level = "trace", skip(self), ret, err(Debug))]
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    self.quota.sync.do_opt.raise();
+    let joined_path = self.root.path().join(path.try_normalize()?);
+    let checked_path = CheckedPathBuf::unsafe_new(joined_path);
+    RealFs.rmdir_async(checked_path).await
+  }
+
+  #[instrument(level = "trace", skip(self), ret, err(Debug))]
   fn copy_file_sync(
     &self,
     oldpath: &CheckedPath,
@@ -951,6 +967,16 @@ impl deno_io::fs::File for TmpObject {
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    self.file.clone().try_lock_sync(exclusive)
+  }
+
+  #[instrument(level = "trace", skip(self), ret, err(Debug))]
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
+    self.file.clone().try_lock_async(exclusive).await
+  }
+
+  #[instrument(level = "trace", skip(self), ret, err(Debug))]
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     self.file.clone().unlock_sync()
   }
@@ -958,6 +984,30 @@ impl deno_io::fs::File for TmpObject {
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
     self.file.clone().unlock_async().await
+  }
+
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.file.clone().read_at_sync(buf, position)
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    self.file.clone().read_at_async(buf, position).await
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self.file.clone().write_at_sync(buf, position)
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
@@ -1127,7 +1177,7 @@ mod test {
     fs.write_file_async(
       CheckedPathBuf::unsafe_new(PathBuf::from("meowmeow")),
       *OPEN_CREATE,
-      DATA.to_vec(),
+      DATA.to_vec().into(),
     )
     .await
     .unwrap();
@@ -1142,7 +1192,7 @@ mod test {
     fs.write_file_async(
       CheckedPathBuf::unsafe_new(PathBuf::from("meowmeow/a/b/../..")),
       *OPEN_CREATE,
-      DATA.to_vec(),
+      DATA.to_vec().into(),
     )
     .await
     .unwrap();
@@ -1158,7 +1208,7 @@ mod test {
       fs.write_file_async(
         CheckedPathBuf::unsafe_new(PathBuf::from("../meowmeow")),
         *OPEN_CREATE,
-        DATA.to_vec(),
+        DATA.to_vec().into(),
       )
       .await
       .unwrap_err()
@@ -1214,7 +1264,7 @@ mod test {
       fs.write_file_async(
         CheckedPathBuf::unsafe_new(PathBuf::from("meowmeow")),
         *OPEN_CREATE,
-        arr,
+        arr.into(),
       )
       .await
       .unwrap_err()
@@ -1323,7 +1373,7 @@ mod test {
     fs.write_file_async(
       CheckedPathBuf::unsafe_new(PathBuf::from("meowmeow")),
       *OPEN_CREATE,
-      arr,
+      arr.into(),
     )
     .await
     .unwrap();

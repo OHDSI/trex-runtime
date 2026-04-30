@@ -8,7 +8,7 @@ import "ext:deno_http/00_serve.ts";
 
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as base64 from "ext:deno_web/05_base64.js";
-import * as console from "ext:deno_console/01_console.js";
+import * as console from "ext:deno_web/01_console.js";
 import * as crypto from "ext:deno_crypto/00_crypto.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
@@ -22,15 +22,15 @@ import * as headers from "ext:deno_fetch/20_headers.js";
 import * as streams from "ext:deno_web/06_streams.js";
 import * as streams2 from "ext:deno_web/14_compression.js";
 import * as timers from "ext:deno_web/02_timers.js";
-import * as url from "ext:deno_url/00_url.js";
-import * as urlPattern from "ext:deno_url/01_urlpattern.js";
+import * as url from "ext:deno_web/00_url.js";
+import * as urlPattern from "ext:deno_web/01_urlpattern.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as webSocket from "ext:deno_websocket/01_websocket.js";
 import * as response from "ext:deno_fetch/23_response.js";
 import * as request from "ext:deno_fetch/23_request.js";
 import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
-import * as broadcastChannel from "ext:deno_broadcast_channel/01_broadcast_channel.js";
+import * as broadcastChannel from "ext:deno_web/01_broadcast_channel.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as messagePort from "ext:deno_web/13_message_port.js";
 import * as DenoWSStream from "ext:deno_websocket/02_websocketstream.js";
@@ -39,6 +39,7 @@ import * as WebGPU from "ext:deno_webgpu/00_init.js";
 import * as WebGPUSurface from "ext:deno_webgpu/02_surface.js";
 
 import "ext:ai/onnxruntime/cache_adapter.js";
+import { startWasmMemoryPolling } from "ext:runtime/wasm_memory_tracker.js";
 
 import { SUPABASE_ENV } from "ext:env/env.js";
 
@@ -162,7 +163,7 @@ function ImageWritable(getter) {
 }
 function loadImage() {
   if (!image) {
-    image = ops.op_lazy_load_esm("ext:deno_canvas/01_image.js");
+    image = ops.op_lazy_load_esm("ext:deno_image/01_image.js");
   }
 }
 
@@ -828,6 +829,8 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
 
     delete globalThis.nodeBootstrap;
   }
+
+  startWasmMemoryPolling();
 
   delete globalThis.bootstrapSBEdge;
 };

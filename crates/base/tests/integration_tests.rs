@@ -3,10 +3,12 @@
 
 use std::borrow::Cow;
 
-// Install the default rustls crypto provider for TLS operations
 #[ctor::ctor]
 fn init() {
   let _ = ::rustls::crypto::ring::default_provider().install_default();
+  // Fixtures use cwd-relative paths; anchor cwd so tests work from either
+  // the workspace root or this package.
+  let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
 }
 use std::collections::HashMap;
 use std::io;
@@ -2508,6 +2510,7 @@ async fn test_issue_513() {
 
 #[tokio::test]
 #[serial]
+#[ignore = "node:http2 regression in vendored deno 2.7.12 — needs fork bump past upstream #33435"]
 async fn test_supabase_issue_29583() {
   integration_test!(
     "./test_cases/main",
@@ -3626,7 +3629,6 @@ async fn test_ort_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "flaky: worker OOM (Array buffer allocation failed)"]
 async fn test_ort_nlp_question_answering() {
   test_ort_transformers_js("question-answering").await;
 }
@@ -3675,7 +3677,6 @@ async fn test_ort_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction").await;
 }
@@ -3707,7 +3708,6 @@ async fn test_ort_cache_nlp_fill_mask() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "flaky: worker OOM (Array buffer allocation failed)"]
 async fn test_ort_cache_nlp_question_answering() {
   test_ort_transformers_js("question-answering-cache").await;
 }
@@ -3756,7 +3756,6 @@ async fn test_ort_cache_nlp_zero_shot_classification() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "Xenova/clip-vit-base-patch32 model causes user worker 500"]
 async fn test_ort_cache_vision_image_feature_extraction() {
   test_ort_transformers_js("image-feature-extraction-cache").await;
 }

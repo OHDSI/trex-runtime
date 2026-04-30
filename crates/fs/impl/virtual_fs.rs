@@ -412,7 +412,7 @@ impl VfsEntry {
     }
   }
 
-  fn as_ref(&self) -> VfsEntryRef {
+  fn as_ref(&self) -> VfsEntryRef<'_> {
     match self {
       VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
       VfsEntry::File(file) => VfsEntryRef::File(file),
@@ -531,7 +531,7 @@ impl VfsRoot {
   fn find_entry_no_follow(
     &self,
     path: &Path,
-  ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'_>)> {
     self.find_entry_no_follow_inner(path, &mut HashSet::new())
   }
 
@@ -783,10 +783,55 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
+  fn try_lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+  async fn try_lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    std::thread::scope(|s| {
+      let vfs = self.vfs.clone();
+      let file = self.file.clone();
+      s.spawn(move || {
+        IO_RT.block_on(async move {
+          vfs
+            .read_file(&file, position, buf)
+            .await
+            .map_err(Into::into)
+        })
+      })
+      .join()
+      .unwrap()
+    })
+  }
+
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    let nread = self.vfs.read_file(&self.file, position, &mut buf).await?;
+    Ok((nread, buf))
+  }
+
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
     Err(FsError::NotSupported)
   }
 
@@ -1187,7 +1232,7 @@ pub struct VfsDirEntry {
 impl sys_traits::FsDirEntry for VfsDirEntry {
   type Metadata = sys_traits::boxed::BoxedFsMetadataValue;
 
-  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+  fn file_name(&self) -> Cow<'_, std::ffi::OsStr> {
     Cow::Owned(std::ffi::OsString::from(&self.name))
   }
 
@@ -1302,5 +1347,225 @@ impl sys_traits::ThreadSleep for VfsSys {
 impl sys_traits::SystemRandom for VfsSys {
   fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
     sys_traits::impls::RealSys.sys_random(buf)
+  }
+}
+
+/// `sys_traits::FsFile` adapter for `VfsSys`. VFS files are read-only and
+/// eagerly loaded because the trait requires synchronous `std::io::Read`.
+pub enum VfsFile {
+  Real(sys_traits::impls::RealFsFile),
+  Vfs { data: Vec<u8>, pos: u64 },
+}
+
+impl sys_traits::FsFile for VfsFile {}
+
+impl sys_traits::FsFileAsRaw for VfsFile {
+  #[cfg(windows)]
+  fn fs_file_as_raw_handle(&self) -> Option<std::os::windows::io::RawHandle> {
+    match self {
+      Self::Real(f) => f.fs_file_as_raw_handle(),
+      Self::Vfs { .. } => None,
+    }
+  }
+
+  #[cfg(unix)]
+  fn fs_file_as_raw_fd(&self) -> Option<std::os::fd::RawFd> {
+    match self {
+      Self::Real(f) => f.fs_file_as_raw_fd(),
+      Self::Vfs { .. } => None,
+    }
+  }
+}
+
+impl sys_traits::FsFileMetadata for VfsFile {
+  fn fs_file_metadata(
+    &self,
+  ) -> std::io::Result<sys_traits::boxed::BoxedFsMetadataValue> {
+    match self {
+      Self::Real(f) => f.fs_file_metadata(),
+      Self::Vfs { data, .. } => {
+        Ok(sys_traits::boxed::BoxedFsMetadataValue::new(VfsMetadata {
+          file_type: sys_traits::FileType::File,
+          len: data.len() as u64,
+        }))
+      }
+    }
+  }
+}
+
+impl sys_traits::FsFileSyncData for VfsFile {
+  fn fs_file_sync_data(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_sync_data(),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+}
+
+impl sys_traits::FsFileSyncAll for VfsFile {
+  fn fs_file_sync_all(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_sync_all(),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+}
+
+impl sys_traits::FsFileSetPermissions for VfsFile {
+  fn fs_file_set_permissions(&mut self, mode: u32) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_set_permissions(mode),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+}
+
+impl std::io::Read for VfsFile {
+  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    match self {
+      Self::Real(f) => f.read(buf),
+      Self::Vfs { data, pos } => {
+        let start = (*pos as usize).min(data.len());
+        let available = &data[start..];
+        let n = available.len().min(buf.len());
+        buf[..n].copy_from_slice(&available[..n]);
+        *pos += n as u64;
+        Ok(n)
+      }
+    }
+  }
+}
+
+impl std::io::Seek for VfsFile {
+  fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+    match self {
+      Self::Real(f) => f.seek(pos),
+      Self::Vfs { data, pos: cur } => {
+        let len = data.len() as i64;
+        let new_pos = match pos {
+          std::io::SeekFrom::Start(n) => n as i64,
+          std::io::SeekFrom::End(n) => len + n,
+          std::io::SeekFrom::Current(n) => *cur as i64 + n,
+        };
+        if new_pos < 0 {
+          return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "seek before start",
+          ));
+        }
+        *cur = new_pos as u64;
+        Ok(*cur)
+      }
+    }
+  }
+}
+
+impl std::io::Write for VfsFile {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    match self {
+      Self::Real(f) => f.write(buf),
+      Self::Vfs { .. } => Err(std::io::Error::new(
+        std::io::ErrorKind::ReadOnlyFilesystem,
+        "VFS is read-only",
+      )),
+    }
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.flush(),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+}
+
+impl sys_traits::FsFileSetLen for VfsFile {
+  fn fs_file_set_len(&mut self, len: u64) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_set_len(len),
+      Self::Vfs { .. } => Err(std::io::Error::new(
+        std::io::ErrorKind::ReadOnlyFilesystem,
+        "VFS is read-only",
+      )),
+    }
+  }
+}
+
+impl sys_traits::FsFileSetTimes for VfsFile {
+  fn fs_file_set_times(
+    &mut self,
+    times: sys_traits::FsFileTimes,
+  ) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_set_times(times),
+      Self::Vfs { .. } => Err(std::io::Error::new(
+        std::io::ErrorKind::ReadOnlyFilesystem,
+        "VFS is read-only",
+      )),
+    }
+  }
+}
+
+impl sys_traits::FsFileLock for VfsFile {
+  fn fs_file_lock(
+    &mut self,
+    mode: sys_traits::FsFileLockMode,
+  ) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_lock(mode),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+
+  fn fs_file_try_lock(
+    &mut self,
+    mode: sys_traits::FsFileLockMode,
+  ) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_try_lock(mode),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+
+  fn fs_file_unlock(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(f) => f.fs_file_unlock(),
+      Self::Vfs { .. } => Ok(()),
+    }
+  }
+}
+
+impl sys_traits::FsFileIsTerminal for VfsFile {
+  fn fs_file_is_terminal(&self) -> bool {
+    match self {
+      Self::Real(f) => f.fs_file_is_terminal(),
+      Self::Vfs { .. } => false,
+    }
+  }
+}
+
+impl sys_traits::BaseFsOpen for VfsSys {
+  type File = VfsFile;
+
+  fn base_fs_open(
+    &self,
+    path: &Path,
+    options: &sys_traits::OpenOptions,
+  ) -> std::io::Result<Self::File> {
+    if self.0.is_path_within(path) {
+      if options.write || options.append || options.create || options.create_new
+      {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::ReadOnlyFilesystem,
+          "VFS is read-only",
+        ));
+      }
+      let data = self.0.read_file_all_sync(path)?;
+      Ok(VfsFile::Vfs { data, pos: 0 })
+    } else {
+      Ok(VfsFile::Real(
+        sys_traits::impls::RealSys.base_fs_open(path, options)?,
+      ))
+    }
   }
 }

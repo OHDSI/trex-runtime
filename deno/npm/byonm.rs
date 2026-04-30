@@ -8,11 +8,11 @@ use std::sync::Arc;
 use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_permissions::OpenAccessKind;
+use deno_permissions::PermissionsContainer;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::package::PackageReq;
-use ext_node::NodePermissions;
 use node_resolver::NpmPackageFolderResolver;
 use sys_traits::impls::RealSys;
 
@@ -67,7 +67,7 @@ impl CliNpmResolver for CliByonmNpmResolver {
   #[allow(clippy::manual_ignore_case_cmp)]
   fn ensure_read_permission<'a>(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &PermissionsContainer,
     path: &'a Path,
   ) -> Result<Cow<'a, Path>, AnyError> {
     if !path

@@ -123,6 +123,7 @@ fn get_permission_check_error_class(e: &PermissionCheckError) -> &'static str {
     }
     PermissionCheckError::PathResolve(e) => get_path_resolve_error(e),
     PermissionCheckError::HostParse(_) => "URIError",
+    PermissionCheckError::Io(e) => get_io_error_class(e),
   }
 }
 
@@ -420,6 +421,7 @@ fn get_crypto_generate_key_error_class(e: &GenerateKeyError) -> &'static str {
     GenerateKeyError::FailedRSAKeyGeneration => "DOMExceptionOperationError",
     GenerateKeyError::FailedECKeyGeneration => "DOMExceptionOperationError",
     GenerateKeyError::FailedKeyGeneration => "DOMExceptionOperationError",
+    GenerateKeyError::UnsupportedAlgorithm => "DOMExceptionNotSupportedError",
   }
 }
 
@@ -573,6 +575,7 @@ fn get_web_message_port_error_class(e: &MessagePortError) -> &'static str {
     MessagePortError::TransferSelf => "TypeError",
     MessagePortError::Canceled(_) => "Interrupted",
     MessagePortError::Resource(_) => "Error",
+    MessagePortError::Generic(_) => "Error",
   }
 }
 
@@ -746,6 +749,8 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::Io(e) => get_io_error_class(e),
     FetchError::Dns(_) => "Error",
     FetchError::PermissionCheck(_) => "Error",
+    FetchError::UrlToFilePath(_) => "Error",
+    FetchError::Other(_) => "Error",
   }
 }
 
@@ -1068,6 +1073,7 @@ fn get_fs_error(e: &FsError) -> &'static str {
     FsError::FileBusy => "Busy",
     FsError::NotSupported => "NotSupported",
     FsError::PermissionCheck(e) => get_permission_check_error_class(e),
+    FsError::JoinError(_) => "Error",
   }
 }
 
@@ -1078,37 +1084,36 @@ mod node {
   use super::get_url_parse_error_class;
   // IpcJsonStreamError is now part of IpcError in Deno 2.5.6
   // use deno_process::ipc::IpcJsonStreamError;
+  pub use deno_node_crypto::DiffieHellmanError;
+  pub use deno_node_crypto::EcdhEncodePubKey;
+  pub use deno_node_crypto::HkdfError;
+  pub use deno_node_crypto::Pbkdf2Error;
+  pub use deno_node_crypto::PrivateEncryptDecryptError;
+  pub use deno_node_crypto::ScryptAsyncError;
+  pub use deno_node_crypto::SignEd25519Error;
+  pub use deno_node_crypto::VerifyEd25519Error;
+  pub use deno_node_crypto::cipher::CipherContextError;
+  pub use deno_node_crypto::cipher::CipherError;
+  pub use deno_node_crypto::cipher::DecipherContextError;
+  pub use deno_node_crypto::cipher::DecipherError;
+  pub use deno_node_crypto::digest::HashError;
+  pub use deno_node_crypto::keys::AsymmetricPrivateKeyDerError;
+  pub use deno_node_crypto::keys::AsymmetricPrivateKeyError;
+  pub use deno_node_crypto::keys::AsymmetricPublicKeyDerError;
+  pub use deno_node_crypto::keys::AsymmetricPublicKeyError;
+  pub use deno_node_crypto::keys::AsymmetricPublicKeyJwkError;
+  pub use deno_node_crypto::keys::EcJwkError;
+  pub use deno_node_crypto::keys::EdRawError;
+  pub use deno_node_crypto::keys::ExportPrivateKeyPemError;
+  pub use deno_node_crypto::keys::ExportPublicKeyPemError;
+  pub use deno_node_crypto::keys::GenerateRsaPssError;
+  pub use deno_node_crypto::keys::RsaJwkError;
+  pub use deno_node_crypto::keys::RsaPssParamsParseError;
+  pub use deno_node_crypto::keys::X509PublicKeyError;
+  pub use deno_node_crypto::sign::KeyObjectHandlePrehashedSignAndVerifyError;
+  pub use deno_node_crypto::x509::X509Error;
   pub use ext_node::ops::blocklist::BlocklistError;
-  pub use ext_node::ops::crypto::DiffieHellmanError;
-  pub use ext_node::ops::crypto::EcdhEncodePubKey;
-  pub use ext_node::ops::crypto::HkdfError;
-  pub use ext_node::ops::crypto::Pbkdf2Error;
-  pub use ext_node::ops::crypto::PrivateEncryptDecryptError;
-  pub use ext_node::ops::crypto::ScryptAsyncError;
-  pub use ext_node::ops::crypto::SignEd25519Error;
-  pub use ext_node::ops::crypto::VerifyEd25519Error;
-  pub use ext_node::ops::crypto::cipher::CipherContextError;
-  pub use ext_node::ops::crypto::cipher::CipherError;
-  pub use ext_node::ops::crypto::cipher::DecipherContextError;
-  pub use ext_node::ops::crypto::cipher::DecipherError;
-  pub use ext_node::ops::crypto::digest::HashError;
-  pub use ext_node::ops::crypto::keys::AsymmetricPrivateKeyDerError;
-  pub use ext_node::ops::crypto::keys::AsymmetricPrivateKeyError;
-  pub use ext_node::ops::crypto::keys::AsymmetricPublicKeyDerError;
-  pub use ext_node::ops::crypto::keys::AsymmetricPublicKeyError;
-  pub use ext_node::ops::crypto::keys::AsymmetricPublicKeyJwkError;
-  pub use ext_node::ops::crypto::keys::EcJwkError;
-  pub use ext_node::ops::crypto::keys::EdRawError;
-  pub use ext_node::ops::crypto::keys::ExportPrivateKeyPemError;
-  pub use ext_node::ops::crypto::keys::ExportPublicKeyPemError;
-  pub use ext_node::ops::crypto::keys::GenerateRsaPssError;
-  pub use ext_node::ops::crypto::keys::RsaJwkError;
-  pub use ext_node::ops::crypto::keys::RsaPssParamsParseError;
-  pub use ext_node::ops::crypto::keys::X509PublicKeyError;
-  pub use ext_node::ops::crypto::sign::KeyObjectHandlePrehashedSignAndVerifyError;
-  pub use ext_node::ops::crypto::x509::X509Error;
   pub use ext_node::ops::fs::FsError;
-  pub use ext_node::ops::http2::Http2Error;
   pub use ext_node::ops::idna::IdnaError;
   pub use ext_node::ops::ipc::IpcError;
   pub use ext_node::ops::os::OsError;
@@ -1139,6 +1144,10 @@ mod node {
       #[cfg(not(any(unix, windows)))]
       FsError::UnsupportedPlatform => "Error",
       FsError::Fs(e) => super::get_fs_error(e),
+      FsError::Cp(_) => "Error",
+      FsError::NodeFs(_) => "Error",
+      #[cfg(feature = "sync_fs")]
+      FsError::JoinError(_) => "Error",
     }
   }
 
@@ -1176,8 +1185,8 @@ mod node {
       WorkerThreadsFilenameError::Permission(_) => "Error",
       WorkerThreadsFilenameError::UrlParse(e) => get_url_parse_error_class(e),
       WorkerThreadsFilenameError::InvalidRelativeUrl => "Error",
-      WorkerThreadsFilenameError::UrlFromPathString => "Error",
-      WorkerThreadsFilenameError::UrlToPathString => "Error",
+      WorkerThreadsFilenameError::UrlFromPathString(_) => "Error",
+      WorkerThreadsFilenameError::UrlToPathString(_) => "Error",
       WorkerThreadsFilenameError::UrlToPath => "Error",
       WorkerThreadsFilenameError::FileNotFound(_) => "Error",
       WorkerThreadsFilenameError::Fs(e) => super::get_fs_error(e),
@@ -1202,15 +1211,6 @@ mod node {
     }
   }
 
-  pub fn get_http2_error(error: &Http2Error) -> &'static str {
-    match error {
-      Http2Error::Resource(_) => "Error",
-      Http2Error::UrlParse(e) => get_url_parse_error_class(e),
-      Http2Error::H2(_) => "Error",
-      Http2Error::TakeNetworkStream(_) => "Error",
-    }
-  }
-
   pub fn get_os_error(error: &OsError) -> &'static str {
     match error {
       OsError::Priority(e) => match e {
@@ -1220,6 +1220,7 @@ mod node {
       },
       OsError::Permission(e) => get_permission_check_error_class(e),
       OsError::FailedToGetUserInfo(e) => get_io_error_class(e),
+      OsError::FailedToGetGroups(e) => get_io_error_class(e),
     }
   }
 
@@ -1264,6 +1265,7 @@ mod node {
       CipherError::InvalidInitializationVector => "TypeError",
       CipherError::CannotPadInputData => "TypeError",
       CipherError::UnknownCipher(_) => "TypeError",
+      CipherError::InvalidAuthTag(_) => "TypeError",
     }
   }
 
@@ -1284,8 +1286,6 @@ mod node {
       DecipherError::InvalidInitializationVector => "TypeError",
       DecipherError::CannotUnpadInputData => "TypeError",
       DecipherError::DataAuthenticationFailed => "TypeError",
-      DecipherError::SetAutoPaddingFalseAes128GcmUnsupported => "TypeError",
-      DecipherError::SetAutoPaddingFalseAes256GcmUnsupported => "TypeError",
       DecipherError::UnknownCipher(_) => "TypeError",
       DecipherError::InvalidAuthTag(_) => "TypeError",
       DecipherError::InvalidFinalBlockLength => "TypeError",
@@ -1318,6 +1318,8 @@ mod node {
       KeyObjectHandlePrehashedSignAndVerifyError::X25519KeyCannotBeUsedForVerification => "TypeError",
       KeyObjectHandlePrehashedSignAndVerifyError::Ed25519KeyCannotBeUsedForPrehashedVerification => "TypeError",
       KeyObjectHandlePrehashedSignAndVerifyError::DhKeyCannotBeUsedForVerification => "TypeError",
+      KeyObjectHandlePrehashedSignAndVerifyError::DigestTooBigForRsaKey => "Error",
+      KeyObjectHandlePrehashedSignAndVerifyError::IllegalOrUnsupportedPaddingMode => "Error",
     }
   }
 
@@ -1356,6 +1358,8 @@ mod node {
       AsymmetricPrivateKeyDerError::InvalidEd25519PrivateKey => "TypeError",
       AsymmetricPrivateKeyDerError::InvalidDhPrivateKey => "TypeError",
       AsymmetricPrivateKeyDerError::UnsupportedKeyType(_) => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidX448PrivateKey => "TypeError",
+      AsymmetricPrivateKeyDerError::InvalidEd448PrivateKey => "TypeError",
     }
   }
 
@@ -1386,6 +1390,8 @@ mod node {
       }
       ExportPrivateKeyPemError::VeryLargeData => "TypeError",
       ExportPrivateKeyPemError::Der(_) => "Error",
+      ExportPrivateKeyPemError::UnsupportedCipher(_) => "TypeError",
+      ExportPrivateKeyPemError::MissingCipherOrPassphrase => "TypeError",
     }
   }
 
@@ -1399,6 +1405,9 @@ mod node {
       X509PublicKeyError::MissingEcParameters => "TypeError",
       X509PublicKeyError::MalformedDssPublicKey => "TypeError",
       X509PublicKeyError::UnsupportedX509KeyType => "TypeError",
+      X509PublicKeyError::InvalidEd25519Key => "TypeError",
+      X509PublicKeyError::InvalidEd448Key => "TypeError",
+      X509PublicKeyError::InvalidX25519Key => "TypeError",
     }
   }
 
@@ -1422,6 +1431,8 @@ mod node {
       EdRawError::Ed25519Signature(_) => "Error",
       EdRawError::InvalidEd25519Key => "TypeError",
       EdRawError::UnsupportedCurve => "TypeError",
+      EdRawError::InvalidEd448Key => "TypeError",
+      EdRawError::InvalidX448Key => "TypeError",
     }
   }
 
@@ -1480,7 +1491,10 @@ mod node {
       AsymmetricPrivateKeyError::X25519PrivateKeyIsWrongLength => "TypeError",
       AsymmetricPrivateKeyError::InvalidEd25519PrivateKey => "TypeError",
       AsymmetricPrivateKeyError::MissingDhParameters => "TypeError",
-      AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid => "TypeError",
+      AsymmetricPrivateKeyError::UnsupportedPrivateKeyOid(_) => "TypeError",
+      AsymmetricPrivateKeyError::InvalidX448PrivateKey => "TypeError",
+      AsymmetricPrivateKeyError::X448PrivateKeyIsWrongLength => "TypeError",
+      AsymmetricPrivateKeyError::InvalidEd448PrivateKey => "TypeError",
     }
   }
 
@@ -1528,6 +1542,11 @@ mod node {
         "TypeError"
       }
       AsymmetricPublicKeyError::UnsupportedPrivateKeyOid => "TypeError",
+      AsymmetricPublicKeyError::MalformedOrMissingPublicKeyInX448Spki => {
+        "TypeError"
+      }
+      AsymmetricPublicKeyError::X448PublicKeyIsTooShort => "TypeError",
+      AsymmetricPublicKeyError::InvalidEd448PublicKey => "TypeError",
     }
   }
 
@@ -1537,7 +1556,6 @@ mod node {
     match e {
       PrivateEncryptDecryptError::Pkcs8(_) => "Error",
       PrivateEncryptDecryptError::Spki(_) => "Error",
-      PrivateEncryptDecryptError::Utf8(_) => "Error",
       PrivateEncryptDecryptError::Rsa(_) => "Error",
       PrivateEncryptDecryptError::UnknownPadding => "TypeError",
     }
@@ -1628,10 +1646,6 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
     .or_else(|| {
       e.downcast_ref::<node::RequireError>()
         .map(node::get_require_error)
-    })
-    .or_else(|| {
-      e.downcast_ref::<node::Http2Error>()
-        .map(node::get_http2_error)
     })
     .or_else(|| e.downcast_ref::<node::OsError>().map(node::get_os_error))
     // BrotliError removed in Deno 2.5.6

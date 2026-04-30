@@ -19,7 +19,7 @@ use deno::deno_ast::EmitOptions;
 use deno::deno_ast::SourceMapOption;
 use deno::deno_cache_dir::HttpCache;
 use deno::deno_cache_dir::npm::NpmCacheDir;
-use deno::deno_npm::npm_rc::ResolvedNpmRc;
+use deno::deno_npmrc::ResolvedNpmRc;
 use deno::deno_permissions::Permissions;
 use deno::deno_permissions::PermissionsOptions;
 use deno::deno_resolver::DenoResolverOptions;
@@ -318,6 +318,7 @@ impl EmitterFactory {
         } else {
           IsCjsResolutionMode::Disabled
         },
+        Vec::new(),
       )))
     })
   }
@@ -384,6 +385,7 @@ impl EmitterFactory {
                     }
                   },
                 ),
+                search_stop_dir: None,
               },
             )
           } else {
@@ -452,7 +454,10 @@ impl EmitterFactory {
               ManagedNpmResolver::<deno::cache::CliSys>::new(
                 ManagedNpmResolverCreateOptions {
                   npm_cache_dir: self.npm_cache_dir()?.clone(),
-                  sys: deno::cache::CliSys::default(),
+                  sys: deno::node_resolver::cache::NodeResolutionSys::new(
+                    deno::cache::CliSys::default(),
+                    None,
+                  ),
                   maybe_node_modules_path,
                   npm_system_info: inner.npm_system_info().clone(),
                   npmrc: self.resolved_npm_rc()?.clone(),
@@ -512,7 +517,10 @@ impl EmitterFactory {
               ManagedNpmResolver::<deno::cache::CliSys>::new(
                 ManagedNpmResolverCreateOptions {
                   npm_cache_dir: self.npm_cache_dir()?.clone(),
-                  sys: deno::cache::CliSys::default(),
+                  sys: deno::node_resolver::cache::NodeResolutionSys::new(
+                    deno::cache::CliSys::default(),
+                    None,
+                  ),
                   maybe_node_modules_path,
                   npm_system_info: inner.npm_system_info().clone(),
                   npmrc: self.resolved_npm_rc()?.clone(),
@@ -620,7 +628,10 @@ impl EmitterFactory {
                 ManagedNpmResolver::<deno::cache::CliSys>::new(
                   ManagedNpmResolverCreateOptions {
                     npm_cache_dir: self.npm_cache_dir()?.clone(),
-                    sys: deno::cache::CliSys::default(),
+                    sys: deno::node_resolver::cache::NodeResolutionSys::new(
+                      deno::cache::CliSys::default(),
+                      None,
+                    ),
                     maybe_node_modules_path,
                     npm_system_info: inner.npm_system_info().clone(),
                     npmrc: self.resolved_npm_rc()?.clone(),

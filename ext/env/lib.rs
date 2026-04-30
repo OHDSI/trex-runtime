@@ -2,9 +2,11 @@ use deno::PermissionsContainer;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_error::JsErrorBox;
-use ext_node::NODE_ENV_VAR_ALLOWLIST;
 
 use std::collections::HashMap;
+
+const NODE_ENV_VAR_ALLOWLIST: &[&str] =
+  &["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
 #[derive(Default)]
 pub struct EnvVars(pub HashMap<String, String>);
@@ -50,7 +52,7 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: String,
 ) -> Result<Option<String>, JsErrorBox> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
+  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key.as_str());
 
   if !skip_permission_check {
     state

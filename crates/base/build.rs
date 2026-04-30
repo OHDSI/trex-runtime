@@ -6,17 +6,11 @@ use std::path::PathBuf;
 // - Compiled into rusty_v8 when building V8 from source
 // - Allows snapshot generation to work without full temporal_rs integration
 mod supabase_startup_snapshot {
-  use std::borrow::Cow;
   use std::io::Write;
-  use std::path::Path;
   use std::rc::Rc;
 
-  use deno::deno_permissions::CheckedPath;
-  use deno::deno_permissions::OpenAccessKind;
-  use deno::deno_permissions::PermissionCheckError;
   use deno_core::snapshot::create_snapshot;
   use deno_core::snapshot::CreateSnapshotOptions;
-  use deno_core::url::Url;
   use deno_core::Extension;
 
   use super::*;
@@ -37,169 +31,6 @@ mod supabase_startup_snapshot {
   #[derive(Clone)]
   #[allow(dead_code)]
   pub struct Permissions;
-
-  impl deno::deno_fetch::FetchPermissions for Permissions {
-    fn check_net(
-      &mut self,
-      _host: &str,
-      _port: u16,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_net_url(
-      &mut self,
-      _url: &Url,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_open<'a>(
-      &mut self,
-      _path: Cow<'a, Path>,
-      _open_access: OpenAccessKind,
-      _api_name: &str,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_net_vsock(
-      &mut self,
-      _cid: u32,
-      _port: u32,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
-  impl deno::deno_web::TimersPermission for Permissions {
-    fn allow_hrtime(&mut self) -> bool {
-      unreachable!("snapshotting!")
-    }
-  }
-
-  impl deno::deno_websocket::WebSocketPermissions for Permissions {
-    fn check_net_url(
-      &mut self,
-      _url: &Url,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
-  impl ext_node::NodePermissions for Permissions {
-    fn check_net_url(
-      &mut self,
-      _url: &Url,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_net(
-      &mut self,
-      _host: (&str, Option<u16>),
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_open<'a>(
-      &mut self,
-      _path: Cow<'a, Path>,
-      _open_access: OpenAccessKind,
-      _api_name: Option<&str>,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn query_read_all(&mut self) -> bool {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_sys(
-      &mut self,
-      _kind: &str,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
-  impl deno::deno_net::NetPermissions for Permissions {
-    fn check_net<T: AsRef<str>>(
-      &mut self,
-      _host: &(T, Option<u16>),
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_open<'a>(
-      &mut self,
-      _path: Cow<'a, Path>,
-      _open_access: OpenAccessKind,
-      _api_name: &str,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_vsock(
-      &mut self,
-      _cid: u32,
-      _port: u32,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-  }
-
-  impl deno::deno_fs::FsPermissions for Permissions {
-    fn check_open<'a>(
-      &self,
-      _path: Cow<'a, Path>,
-      _access_kind: OpenAccessKind,
-      _api_name: &str,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_open_blind<'a>(
-      &self,
-      _path: Cow<'a, Path>,
-      _access_kind: OpenAccessKind,
-      _display: &str,
-      _api_name: &str,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_read_all(
-      &self,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_write_partial<'a>(
-      &self,
-      _path: Cow<'a, Path>,
-      _api_name: &str,
-    ) -> Result<CheckedPath<'a>, PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-
-    fn check_write_all(
-      &self,
-      _api_name: &str,
-    ) -> Result<(), PermissionCheckError> {
-      unreachable!("snapshotting!")
-    }
-  }
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // SNAPSHOT COMPLETELY DISABLED FOR DENO 2.5.6:

@@ -16,7 +16,20 @@ macro_rules! integration_test_listen_fut {
 
     use $crate::macros::test_macros::__private;
 
-    let main_service_path = String::from($main_file);
+    let main_service_path = {
+      let raw = String::from($main_file);
+      let p = std::path::Path::new(&raw);
+      if p.is_absolute() {
+        raw
+      } else {
+        // Anchor to the calling crate's manifest dir; CARGO_MANIFEST_DIR is
+        // expanded at the macro call site.
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+          .join(p)
+          .to_string_lossy()
+          .into_owned()
+      }
+    };
     let tls: Option<base::server::Tls> = $tls.clone();
     let addr = std::net::SocketAddr::from_str(&format!("0.0.0.0:{}", $port))
       .expect("failed to parse the address to bind the server");

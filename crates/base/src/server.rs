@@ -45,6 +45,7 @@ use tls_listener::TlsListener;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpListener;
+use tokio::net::TcpSocket;
 use tokio::pin;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
@@ -542,21 +543,21 @@ impl Server {
   }
 
   pub async fn listen(&mut self) -> Result<Option<SignumOrExitCode>, Error> {
-    let non_secure_listener = TcpListener::bind(&self.addr).await?;
+    let non_secure_listener = bind_with_reuseaddr(self.addr)?;
     let mut secure_listener = if let Some(tls) = self.tls.take() {
       let addr = SocketAddr::new(self.addr.ip(), tls.port);
       eprintln!("[TREX-EXT] Starting TLS listener on {:?}", addr);
       match tls.into_acceptor() {
         Ok(acceptor) => {
           eprintln!("[TREX-EXT] TLS acceptor created successfully");
-          match TcpListener::bind(addr).await {
+          match bind_with_reuseaddr(addr) {
             Ok(listener) => {
               eprintln!("[TREX-EXT] TLS TCP listener bound to {:?}", addr);
               Some((TlsListener::new(acceptor, listener), addr))
             }
             Err(e) => {
               eprintln!("[TREX-EXT] Failed to bind TLS TCP listener: {}", e);
-              return Err(e.into());
+              return Err(e);
             }
           }
         }
@@ -824,6 +825,17 @@ impl Server {
 
     Ok(ret)
   }
+}
+
+/// Bind with SO_REUSEADDR so restarts and tests don't hit TIME_WAIT.
+fn bind_with_reuseaddr(addr: SocketAddr) -> Result<TcpListener, Error> {
+  let socket = match addr {
+    SocketAddr::V4(_) => TcpSocket::new_v4()?,
+    SocketAddr::V6(_) => TcpSocket::new_v6()?,
+  };
+  socket.set_reuseaddr(true)?;
+  socket.bind(addr)?;
+  Ok(socket.listen(1024)?)
 }
 
 pub struct Builder {

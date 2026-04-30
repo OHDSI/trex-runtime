@@ -82,7 +82,7 @@ impl DenoCompileFileSystem {
           custom_flags: None,
           mode: None,
         },
-        old_file_bytes,
+        old_file_bytes.into(),
       )
       .await
   }
@@ -270,6 +270,17 @@ impl FileSystem for DenoCompileFileSystem {
     self.error_if_no_use_real_fs(false)?;
     self.error_if_in_vfs(&path)?;
     RealFs.remove_async(path, recursive).await
+  }
+
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    self.error_if_no_use_real_fs(false)?;
+    self.error_if_in_vfs(path)?;
+    RealFs.rmdir_sync(path)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    self.error_if_no_use_real_fs(false)?;
+    self.error_if_in_vfs(&path)?;
+    RealFs.rmdir_async(path).await
   }
 
   fn copy_file_sync(

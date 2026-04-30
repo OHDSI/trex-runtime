@@ -12,16 +12,13 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tracing::Instrument;
 
-use crate::runtime::WillTerminateReason;
 use crate::worker::supervisor::as_interrupt_callback;
 use crate::worker::supervisor::create_wall_clock_beforeunload_alert;
-use crate::worker::supervisor::v8_handle_beforeunload_raw;
 use crate::worker::supervisor::v8_handle_early_retire_raw;
 use crate::worker::supervisor::wait_cpu_alarm;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::CPUUsageMetrics;
 use crate::worker::supervisor::Tokens;
-use crate::worker::supervisor::V8HandleBeforeunloadData;
 
 use super::Arguments;
 
@@ -137,6 +134,12 @@ pub async fn supervise(
               None => pending().await,
           }
       } => {
+          // See strategy_per_worker::dispatch_drain_fn for why we bypass
+          // thread_safe_handle::request_interrupt here.
+          if !runtime_drop.is_cancelled() {
+              runtime_state.drain_triggered.raise();
+              waker.wake();
+          }
           complete_reason = Some(ShutdownReason::TerminationRequested);
       }
 
@@ -235,26 +238,12 @@ pub async fn supervise(
       _ = &mut wall_clock_beforeunload_alert,
         if !is_wall_clock_limit_disabled && !is_wall_clock_beforeunload_armed
       => {
-        let data_ptr_mut = Box::into_raw(Box::new(V8HandleBeforeunloadData {
-            reason: WillTerminateReason::WallClock,
-            runtime_drop_token: runtime_drop.clone(),
-            runtime_state: runtime_state.clone(),
-        }));
-
-        // Guard against calling V8 handle methods during/after runtime disposal
-        if let Some(_guard) = isolate_lifecycle.try_enter() {
-          if thread_safe_handle.request_interrupt(
-            as_interrupt_callback(v8_handle_beforeunload_raw),
-            data_ptr_mut as *mut _,
-          ) {
-            waker.wake();
-          } else {
-            drop(unsafe { Box::from_raw(data_ptr_mut)});
-          }
-        } else {
-          drop(unsafe { Box::from_raw(data_ptr_mut)});
+        // Raise the flag directly (see strategy_per_worker for why V8
+        // interrupts don't fire on idle user-worker isolates).
+        if !runtime_drop.is_cancelled() {
+          runtime_state.wall_clock_beforeunload_triggered.raise();
+          waker.wake();
         }
-
         is_wall_clock_beforeunload_armed = true;
       }
 

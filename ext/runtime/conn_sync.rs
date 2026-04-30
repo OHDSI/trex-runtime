@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 pub struct ConnWatcher(pub Option<CancellationToken>);
 
 impl Resource for ConnWatcher {
-  fn name(&self) -> std::borrow::Cow<str> {
+  fn name(&self) -> std::borrow::Cow<'_, str> {
     "connWatcher".into()
   }
 }

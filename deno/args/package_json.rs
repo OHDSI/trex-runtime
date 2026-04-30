@@ -159,9 +159,7 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            // Handle file and JSR dependencies by skipping them
-            PackageJsonDepValue::File(_) | PackageJsonDepValue::JsrReq(_) => {
-              // Skip file: and jsr: protocol dependencies
+            PackageJsonDepValue::File(_) => {
               continue;
             }
           }
