@@ -17,6 +17,3 @@ The fork also lets us track our own Deno release cadence. trex-runtime currently
 - Integrated alongside the analytical engine and the Postgres-wire layer, so HTTP requests can be dispatched into user-supplied edge functions without leaving the `trex` process.
 - Compatible with the Supabase Edge Functions developer experience (deploy, secrets, local dev via the Trex CLI, itself a fork of the Supabase CLI).
 
-## Get in contact
-
-Please [click here](https://discord.gg/5XtHky2BZe) to join us in Discord.
