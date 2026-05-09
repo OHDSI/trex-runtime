@@ -2382,7 +2382,7 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.37.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "base32",
@@ -2411,7 +2411,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.95.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -2437,12 +2437,12 @@ dependencies = [
 [[package]]
 name = "deno_console"
 version = "0.222.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 
 [[package]]
 name = "deno_core"
 version = "0.398.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "anyhow",
  "az",
@@ -2531,7 +2531,7 @@ dependencies = [
 [[package]]
 name = "deno_crypto_provider"
 version = "0.39.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "aws-lc-sys 0.39.1",
 ]
@@ -2539,7 +2539,7 @@ dependencies = [
 [[package]]
 name = "deno_dotenv"
 version = "0.14.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_path_util",
  "sys_traits",
@@ -2619,7 +2619,7 @@ dependencies = [
 [[package]]
 name = "deno_features"
 version = "0.42.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "serde",
@@ -2629,7 +2629,7 @@ dependencies = [
 [[package]]
 name = "deno_fetch"
 version = "0.269.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2668,7 +2668,7 @@ dependencies = [
 [[package]]
 name = "deno_fs"
 version = "0.155.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "base32",
@@ -2786,7 +2786,7 @@ dependencies = [
 [[package]]
 name = "deno_inspector_server"
 version = "0.19.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2804,7 +2804,7 @@ dependencies = [
 [[package]]
 name = "deno_io"
 version = "0.155.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -2829,7 +2829,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.47.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2841,7 +2841,7 @@ dependencies = [
 [[package]]
 name = "deno_maybe_sync"
 version = "0.32.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "dashmap",
 ]
@@ -2874,7 +2874,7 @@ dependencies = [
 [[package]]
 name = "deno_net"
 version = "0.237.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2904,7 +2904,7 @@ dependencies = [
 [[package]]
 name = "deno_node_crypto"
 version = "0.15.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -2966,7 +2966,7 @@ dependencies = [
 [[package]]
 name = "deno_node_sqlite"
 version = "0.15.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2978,7 +2978,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.57.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -2999,7 +2999,7 @@ dependencies = [
 [[package]]
 name = "deno_npm_cache"
 version = "0.64.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "aws-lc-rs",
@@ -3033,7 +3033,7 @@ dependencies = [
 [[package]]
 name = "deno_npm_installer"
 version = "0.40.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -3075,7 +3075,7 @@ dependencies = [
 [[package]]
 name = "deno_npmrc"
 version = "0.6.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "log",
  "monch",
@@ -3088,7 +3088,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.274.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",
@@ -3104,7 +3104,7 @@ dependencies = [
 [[package]]
 name = "deno_os"
 version = "0.62.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3124,7 +3124,7 @@ dependencies = [
 [[package]]
 name = "deno_otel_attrs"
 version = "0.1.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "opentelemetry",
 ]
@@ -3132,7 +3132,7 @@ dependencies = [
 [[package]]
 name = "deno_package_json"
 version = "0.47.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -3164,7 +3164,7 @@ dependencies = [
 [[package]]
 name = "deno_permissions"
 version = "0.104.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "capacity_builder",
  "chrono",
@@ -3193,7 +3193,7 @@ dependencies = [
 [[package]]
 name = "deno_process"
 version = "0.60.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3223,7 +3223,7 @@ dependencies = [
 [[package]]
 name = "deno_resolver"
 version = "0.76.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -3287,7 +3287,7 @@ dependencies = [
 [[package]]
 name = "deno_signals"
 version = "0.36.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_error",
  "libc",
@@ -3300,7 +3300,7 @@ dependencies = [
 [[package]]
 name = "deno_subprocess_windows"
 version = "0.40.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "fastrand",
  "futures-channel",
@@ -3311,7 +3311,7 @@ dependencies = [
 [[package]]
 name = "deno_telemetry"
 version = "0.67.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -3354,7 +3354,7 @@ dependencies = [
 [[package]]
 name = "deno_tls"
 version = "0.232.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -4183,7 +4183,7 @@ dependencies = [
 [[package]]
 name = "ext_node"
 version = "0.1.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "base64 0.22.1",
  "boxed_error",
@@ -6663,7 +6663,7 @@ dependencies = [
 [[package]]
 name = "node_resolver"
 version = "0.83.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6694,7 +6694,7 @@ dependencies = [
 [[package]]
 name = "node_shim"
 version = "0.20.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "exec",
  "serde_json",
@@ -8744,7 +8744,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.307.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#d52cf0674f36f8a05fae4e560a15f3a0e713b26d"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.7.12#ddb38cebc74788a226c429d498dbfcc9630e343f"
 dependencies = [
  "deno_error",
  "num-bigint",

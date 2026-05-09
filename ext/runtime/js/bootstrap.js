@@ -54,6 +54,7 @@ import { promiseRejectMacrotaskCallback } from "ext:runtime/promises.js";
 import { installPromiseHook } from "ext:runtime/async_hook.js";
 import { registerErrors } from "ext:runtime/errors.js";
 import { denoOverrides, fsVars } from "ext:runtime/denoOverrides.js";
+import { installTrexasUpgradeHttpRaw } from "ext:runtime/http.js";
 import { registerDeclarativeServer } from "ext:runtime/00_serve.js";
 import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 
@@ -512,6 +513,12 @@ function processRejectionHandled(promise, reason) {
 
 globalThis.bootstrapSBEdge = (opts, ctx) => {
   let bootstrapMockFnThrowError = false;
+
+  // Replace upstream upgradeHttpRaw with trexas's fence-based variant.
+  // Must run here (not at http.js module-load time) because deno_http's
+  // 00_serve.ts loads non-deterministically relative to runtime/http.js,
+  // and 00_serve.ts unconditionally writes internals.upgradeHttpRaw on load.
+  installTrexasUpgradeHttpRaw();
 
   globalThis_ = globalThis;
 
