@@ -8,6 +8,7 @@ import {
 } from "ext:deno_fetch/23_response.js";
 import { upgradeWebSocket } from "ext:deno_http/02_websocket.ts";
 import { HttpConn } from "ext:runtime/01_http.js";
+import { UpgradedConn } from "ext:deno_net/01_net.js";
 import {
   builtinTracer,
   ContextManager,
@@ -390,4 +391,47 @@ function applySupabaseTag(src, dest) {
 internals.getSupabaseTag = getSupabaseTag;
 internals.RAW_UPGRADE_RESPONSE_SENTINEL = RAW_UPGRADE_RESPONSE_SENTINEL;
 
-export { applySupabaseTag, getSupabaseTag, serve, serveHttp, upgradeWebSocket };
+// Override upstream Deno's upgradeHttpRaw (from ext:deno_http/00_serve.ts)
+// to use trexas's own raw upgrade machinery. The upstream version requires
+// the request to come from Deno.serve (it checks InnerRequest._wantsUpgrade),
+// but trexas serves requests via op_http_start over a duplex stream; those
+// are NOT InnerRequest instances, so upstream upgradeHttpRaw throws
+// 'may only be used with Deno.serve'. Without this override, node:http's
+// 'upgrade' event is unreachable: ext/node/polyfills/http.ts calls
+// upgradeHttpRaw before emitting the event.
+//
+// IMPORTANT: this override must be installed AFTER 00_serve.ts has loaded
+// (00_serve.ts reassigns internals.upgradeHttpRaw to the upstream default
+// at module-load time). Module load order between this file and 00_serve.ts
+// is non-deterministic across deno_core extensions, so we install the
+// override from bootstrap.js; see installTrexasUpgradeHttpRaw().
+function trexasUpgradeHttpRaw(request) {
+  const tag = getSupabaseTag(request);
+  if (tag === undefined || tag.streamRid === undefined) {
+    throw new TypeError(
+      "upgradeHttpRaw: request was not produced by trexas serve",
+    );
+  }
+  // op_http_upgrade_raw2 returns [upgradeRid, fenceRid].
+  //   upgradeRid: duplex stream the user writes the 101 response to and
+  //               then exchanges WS frames over.
+  //   fenceRid:   oneshot the responder awaits to know when the 101 has
+  //               been parsed; once it resolves, the upstream hyper
+  //               connection is actually upgraded.
+  const [upgradeRid, fenceRid] = ops.op_http_upgrade_raw2(tag.streamRid);
+  // Stash fenceRid on the tag so the responder picks it up when it sees
+  // RAW_UPGRADE_RESPONSE_SENTINEL.
+  tag.fenceRid = fenceRid;
+  // Build a Conn-shaped object whose internalRidSymbol points at the
+  // post-upgrade duplex. addr fields are dummies; node:http's TCP wrapper
+  // does not consult them for SERVER-type upgrades.
+  const dummyAddr = { transport: "tcp", hostname: "0.0.0.0", port: 9999 };
+  const conn = new UpgradedConn(upgradeRid, dummyAddr, dummyAddr);
+  return { conn, response: RAW_UPGRADE_RESPONSE_SENTINEL };
+}
+
+function installTrexasUpgradeHttpRaw() {
+  internals.upgradeHttpRaw = trexasUpgradeHttpRaw;
+}
+
+export { applySupabaseTag, getSupabaseTag, installTrexasUpgradeHttpRaw, serve, serveHttp, upgradeWebSocket };
