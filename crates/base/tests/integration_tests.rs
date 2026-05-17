@@ -4518,3 +4518,175 @@ fn new_localhost_tls(secure: bool) -> Option<Tls> {
     Tls::new(SECURE_PORT, TLS_LOCALHOST_KEY, TLS_LOCALHOST_CERT).unwrap()
   })
 }
+
+/// End-to-end test for the debugger hang fix.
+///
+/// Spin up a main worker with an inspector attached, wait for it to register
+/// against the inspector server, open a DevTools WebSocket against the
+/// advertised URL, then trigger the worker's termination. The pump on the
+/// server side must see the deregister signal and emit a 1001 ("going away")
+/// close frame to the client. Before the PR, the WS would simply hang until
+/// the client timed out.
+#[tokio::test]
+#[serial]
+async fn test_inspector_devtools_ws_closes_on_worker_kill() {
+  use base::Inspector;
+  use base::InspectorOption;
+  use std::net::TcpListener as StdTcpListener;
+
+  // Pick an ephemeral port for the inspector. There's a tiny TOCTOU window
+  // between dropping this listener and `InspectorServer` rebinding it, but
+  // it's acceptable for a serial test.
+  let inspector_addr = {
+    let l = StdTcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap();
+    drop(l);
+    addr
+  };
+
+  let inspector =
+    Inspector::from_option(InspectorOption::Inspect(inspector_addr));
+
+  let pool_termination_token = TerminationToken::new();
+  let main_termination_token = TerminationToken::new();
+
+  let (_, worker_pool_tx) = worker::create_user_worker_pool(
+    Arc::default(),
+    test_utils::test_user_worker_pool_policy(),
+    None,
+    Some(pool_termination_token.clone()),
+    vec![],
+    None,
+  )
+  .await
+  .unwrap();
+
+  let _surface = worker::WorkerSurfaceBuilder::new()
+    .init_opts(WorkerContextInitOpts {
+      service_path: "./test_cases/slow_resp".into(),
+      no_module_cache: false,
+      no_npm: None,
+      env_vars: HashMap::new(),
+      timing: None,
+      maybe_eszip: None,
+      maybe_entrypoint: None,
+      maybe_module_code: None,
+      conf: WorkerRuntimeOpts::MainWorker(MainWorkerRuntimeOpts {
+        worker_pool_tx,
+        shared_metric_src: None,
+        event_worker_metric_src: None,
+        context: None,
+      }),
+      static_patterns: vec![],
+      maybe_s3_fs_config: None,
+      maybe_tmp_fs_config: None,
+      maybe_otel_config: None,
+    })
+    .termination_token(main_termination_token.clone())
+    .inspector(inspector)
+    .build()
+    .await
+    .unwrap();
+
+  // Poll `/json` until the inspector has registered our target. The worker
+  // boots asynchronously; without this we'd race ws-connect against
+  // register_inspector.
+  let json_url = format!("http://{inspector_addr}/json");
+  let entry = timeout(Duration::from_secs(10), async {
+    loop {
+      if let Ok(resp) = reqwest::get(&json_url).await {
+        if let Ok(text) = resp.text().await {
+          if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+            if let Some(arr) = value.as_array() {
+              if let Some(first) = arr.first().cloned() {
+                if first.get("id").and_then(|v| v.as_str()).is_some() {
+                  return first;
+                }
+              }
+            }
+          }
+        }
+      }
+      sleep(Duration::from_millis(100)).await;
+    }
+  })
+  .await
+  .expect("inspector did not register within 10s");
+
+  let uuid = entry["id"]
+    .as_str()
+    .expect("/json entry has no id")
+    .to_string();
+  let ws_url_field = entry["webSocketDebuggerUrl"]
+    .as_str()
+    .expect("/json entry has no webSocketDebuggerUrl");
+  assert!(
+    ws_url_field.ends_with(&uuid),
+    "ws url should end with the target uuid; got {ws_url_field} / {uuid}"
+  );
+
+  // Connect to the DevTools WebSocket. We drive the HTTP/1.1 upgrade
+  // ourselves via reqwest, then hand the upgraded stream to
+  // async-tungstenite — same pattern the other WS tests in this file use.
+  let nonce = tungstenite::handshake::client::generate_key();
+  let client = reqwest::Client::new();
+  let req = client
+    .request(Method::GET, format!("http://{inspector_addr}/ws/{uuid}"))
+    .header(header::CONNECTION, "upgrade")
+    .header(header::UPGRADE, "websocket")
+    .header(header::SEC_WEBSOCKET_KEY, &nonce)
+    .header(header::SEC_WEBSOCKET_VERSION, "13")
+    .build()
+    .unwrap();
+  let res = client.execute(req).await.expect("ws upgrade request");
+  assert_eq!(
+    res.status().as_u16(),
+    101,
+    "ws upgrade should return 101 switching protocols"
+  );
+
+  let upgraded = res.upgrade().await.expect("upgrade stream");
+  use tokio_util::compat::TokioAsyncReadCompatExt;
+  let mut ws = WebSocketStream::from_raw_socket(
+    upgraded.compat(),
+    tungstenite::protocol::Role::Client,
+    None,
+  )
+  .await;
+
+  // Cancel the worker. Its runtime drop fires `deregister_rx`, which the
+  // inspector server flips into the watch channel; the pump notices on its
+  // next 250ms tick and writes a 1001 close frame.
+  main_termination_token.cancel();
+
+  let close = timeout(Duration::from_secs(5), async {
+    loop {
+      match ws.next().await {
+        Some(Ok(Message::Close(frame))) => return Some(frame),
+        Some(Ok(_)) => continue,
+        Some(Err(_)) | None => return None,
+      }
+    }
+  })
+  .await
+  .expect("ws did not close within 5s after worker kill");
+
+  let close_frame = close
+    .expect(
+      "ws ended without a close frame; the pump should emit 1001 on \
+       server-initiated teardown",
+    )
+    .expect(
+      "close message carried no frame; expected a 1001 frame from the pump",
+    );
+  assert_eq!(
+    u16::from(close_frame.code),
+    1001,
+    "expected 1001 (going away), got close frame: code={:?}, reason={:?}",
+    close_frame.code,
+    close_frame.reason,
+  );
+
+  pool_termination_token.cancel_and_wait().await;
+  main_termination_token.cancel_and_wait().await;
+}

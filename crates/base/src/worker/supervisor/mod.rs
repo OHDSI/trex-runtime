@@ -164,10 +164,13 @@ pub fn create_supervisor(
     isolate_lifecycle: runtime.mem_check_lifecycle(),
   };
 
-  let maybe_inspector_params = runtime.inspector().map(|_| {
+  let maybe_inspector_params = runtime.inspector().map(|insp| {
     (
       runtime.js_runtime.inspector().get_session_sender(),
       runtime.runtime_state.clone(),
+      insp.server.clone(),
+      runtime.main_module_url().to_string(),
+      insp.generation(),
     )
   });
 
@@ -247,95 +250,113 @@ pub fn create_supervisor(
         cancel.cancel();
       }
 
-      if let Some((session_tx, state)) = maybe_inspector_params {
+      if let Some((
+        session_tx,
+        state,
+        inspector_server,
+        module_url,
+        inspector_generation,
+      )) = maybe_inspector_params
+      {
         use deno_core::futures::channel::mpsc;
+
+        // First, tell the inspector server to tear down any attached
+        // DevTools WebSocket for this worker. The worker thread is often
+        // stuck inside V8 after a supervisor kill (terminate_execution
+        // doesn't always yield), so the normal runtime-drop deregister path
+        // won't fire in time. Driving the close from here keeps DevTools
+        // from hanging on a half-open socket.
+        //
+        // The generation pairs this disconnect with our specific registration:
+        // if a new worker for the same module URL re-registers before the
+        // server processes this signal, the server will ignore it (same v5
+        // UUID, but a higher generation).
+        inspector_server
+          .force_disconnect_url(&module_url, inspector_generation);
 
         let termination_request_token = termination_request_token.clone();
 
-        base_rt::SUPERVISOR_RT
-          .spawn_blocking(move || {
-            let wait_inspector_disconnect_fut = async move {
-              let ls = tokio::task::LocalSet::new();
-              ls.run_until(async move {
-                if state.is_terminated()
-                  || termination_request_token.is_cancelled()
-                {
-                  return;
+        // Inline the inspector unblock directly on this supervisor task.
+        // The previous shape — `SUPERVISOR_RT.spawn_blocking(move ||
+        // SUPERVISOR_RT.block_on(...))` — re-entered the runtime from a
+        // blocking thread and could deadlock if blocking threads were
+        // saturated. None of the work below is `!Send`: the captured types
+        // are `UnboundedSender<InspectorSessionProxy>`, `RuntimeState`
+        // (`Arc`-based), `CancellationToken`, `String`, `u64`, and
+        // `tokio::sync::Mutex` guards — all `Send`. An inline await on the
+        // current task is sufficient. If you add a new captured value, make
+        // sure it stays `Send` or this whole task will silently regress to a
+        // single-threaded executor (or fail to compile under `tokio::spawn`).
+        let cleanup = async move {
+          if state.is_terminated() || termination_request_token.is_cancelled() {
+            return;
+          }
+
+          termination_request_token.cancel();
+
+          if state.is_found_inspector_session() {
+            return;
+          }
+
+          let (outbound_tx, _outbound_rx) = mpsc::unbounded();
+          let (inbound_tx, inbound_rx) = mpsc::unbounded();
+
+          if session_tx
+            .unbounded_send(InspectorSessionProxy {
+              channels: InspectorSessionChannels::Regular {
+                tx: outbound_tx,
+                rx: inbound_rx,
+              },
+              kind: InspectorSessionKind::Blocking,
+            })
+            .is_err()
+          {
+            return;
+          }
+
+          // In the new V8/deno_core API, LocalInspectorSession is created by
+          // JsRuntimeInspector::create_local_session and requires a
+          // SessionContainer. Since we're outside the runtime and just need
+          // to send CDP messages, we send directly through the inbound
+          // channel instead.
+          let inbound_tx = Arc::new(Mutex::new(inbound_tx));
+
+          let send_msg_fn = |msg: &str| {
+            let state = state.clone();
+            let inbound_tx = inbound_tx.clone();
+            let msg_id = next_msg_id();
+            let msg = msg.to_string();
+            async move {
+              let inbound_tx = inbound_tx.lock().await;
+              let message = serde_json::json!({
+                "id": msg_id,
+                "method": msg,
+                "params": serde_json::Value::Null,
+              });
+              let _ = inbound_tx
+                .unbounded_send(serde_json::to_string(&message).unwrap());
+
+              // Give V8 a moment to process the message, but bound the wait
+              // so a stuck isolate can't pin the supervisor here forever.
+              let mut int = tokio::time::interval(Duration::from_millis(61));
+              let deadline = tokio::time::sleep(Duration::from_millis(500));
+              tokio::pin!(deadline);
+              loop {
+                tokio::select! {
+                  _ = int.tick() => if state.is_terminated() { break; },
+                  _ = &mut deadline => break,
                 }
+              }
+            }
+          };
 
-                termination_request_token.cancel();
+          send_msg_fn("Debugger.enable").await;
+          send_msg_fn("Runtime.runIfWaitingForDebugger").await;
+        };
 
-                if state.is_found_inspector_session() {
-                  return;
-                }
-
-                let (outbound_tx, _outbound_rx) = mpsc::unbounded();
-                let (inbound_tx, inbound_rx) = mpsc::unbounded();
-
-                if session_tx
-                  .unbounded_send(InspectorSessionProxy {
-                    channels: InspectorSessionChannels::Regular {
-                      tx: outbound_tx,
-                      rx: inbound_rx,
-                    },
-                    kind: InspectorSessionKind::Blocking,
-                  })
-                  .is_err()
-                {
-                  return;
-                }
-
-                // In the new V8/deno_core API, LocalInspectorSession is created by JsRuntimeInspector::create_local_session
-                // and requires a SessionContainer. Since we're outside the runtime and just need to send CDP messages,
-                // we'll send directly through the inbound channel instead.
-                let inbound_tx = Arc::new(Mutex::new(inbound_tx));
-
-                let send_msg_fn = {
-                  |msg: &str| {
-                    let state = state.clone();
-                    let inbound_tx = inbound_tx.clone();
-                    let msg_id = next_msg_id();
-                    let msg = msg.to_string();
-                    async move {
-                      let inbound_tx = inbound_tx.lock().await;
-                      let mut int =
-                        tokio::time::interval(Duration::from_millis(61));
-
-                      // Send CDP message directly through the channel
-                      let message = serde_json::json!({
-                        "id": msg_id,
-                        "method": msg,
-                        "params": serde_json::Value::Null,
-                      });
-                      let stringified_msg =
-                        serde_json::to_string(&message).unwrap();
-                      let _ = inbound_tx.unbounded_send(stringified_msg);
-
-                      loop {
-                        tokio::select! {
-                          _ = int.tick() => {
-                            if state.is_terminated() {
-                              break
-                            }
-                          }
-
-                          else => break
-                        }
-                      }
-                    }
-                  }
-                };
-
-                send_msg_fn("Debugger.enable").await;
-                send_msg_fn("Runtime.runIfWaitingForDebugger").await;
-              })
-              .await;
-            };
-
-            base_rt::SUPERVISOR_RT.block_on(wait_inspector_disconnect_fut);
-          })
-          .await
-          .unwrap();
+        // Hard cap so misbehaving v8 state can't hang the supervisor.
+        let _ =
+          tokio::time::timeout(Duration::from_millis(1500), cleanup).await;
       }
 
       // NOTE: If we issue a hard CPU time limit, It's OK because it is

@@ -1130,11 +1130,12 @@ where
         }
 
         if let Some(inspector) = worker.inspector.as_ref() {
-          inspector.server.register_inspector(
+          let generation = inspector.server.register_inspector(
             main_module_url.to_string(),
             &mut js_runtime,
             inspector.should_wait_for_session(),
           );
+          inspector.set_generation(generation);
         }
 
         if is_user_worker {
@@ -1738,13 +1739,30 @@ where
         accumulated_cpu_time_ns,
       );
 
-      let wait_for_inspector = if has_inspector {
-        let inspector = this.js_runtime.inspector();
-        let sessions_state = inspector.sessions_state();
-        sessions_state.has_active || sessions_state.has_blocking
-      } else {
-        false
-      };
+      // Don't pin the event loop open for an inspector session once the
+      // supervisor has decided to kill us. Otherwise the worker thread stays
+      // alive holding onto the runtime, the runtime never drops, and the
+      // inspector never deregisters — leaving any attached DevTools
+      // WebSocket hanging until the client times out.
+      //
+      // We sample two kill signals (`state.is_terminated()` and
+      // `termination_request_token.is_cancelled()`) and we poll the
+      // termination future on the outer waker. Polling here matters: it
+      // registers `cx`'s waker against the cancellation token, so if the
+      // supervisor cancels the token while we are parked inside
+      // `poll_event_loop` (with `wait_for_inspector = true`), we get woken
+      // up immediately and the next iteration of this poll_fn recomputes
+      // `wait_for_inspector` with the fresh signal, breaking the TOCTOU.
+      let termination_requested =
+        termination_request_fut.poll_unpin(cx).is_ready();
+      let wait_for_inspector =
+        if has_inspector && !state.is_terminated() && !termination_requested {
+          let inspector = this.js_runtime.inspector();
+          let sessions_state = inspector.sessions_state();
+          sessions_state.has_active || sessions_state.has_blocking
+        } else {
+          false
+        };
 
       let need_pool_event_loop = !is_user_worker || woked;
       let poll_result = if need_pool_event_loop {
@@ -1921,6 +1939,10 @@ where
 
   pub fn inspector(&self) -> Option<Inspector> {
     self.worker.inspector.clone()
+  }
+
+  pub fn main_module_url(&self) -> &Url {
+    &self.main_module_url
   }
 
   pub fn promise_metrics(&self) -> PromiseMetrics {
