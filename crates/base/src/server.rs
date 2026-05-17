@@ -497,9 +497,11 @@ impl Server {
         .set_termination_token(Some(termination_tokens.main.clone()));
 
       if flags.allow_main_inspector {
-        builder.set_inspector(inspector.map(|it| Inspector {
-          option: InspectorOption::Inspect(it.option.socket_addr()),
-          server: it.server,
+        builder.set_inspector(inspector.map(|it| {
+          Inspector::with_option(
+            InspectorOption::Inspect(it.option.socket_addr()),
+            it.server,
+          )
         }));
       }
 

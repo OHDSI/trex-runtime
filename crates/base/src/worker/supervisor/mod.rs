@@ -170,6 +170,7 @@ pub fn create_supervisor(
       runtime.runtime_state.clone(),
       insp.server.clone(),
       runtime.main_module_url().to_string(),
+      insp.generation(),
     )
   });
 
@@ -249,8 +250,13 @@ pub fn create_supervisor(
         cancel.cancel();
       }
 
-      if let Some((session_tx, state, inspector_server, module_url)) =
-        maybe_inspector_params
+      if let Some((
+        session_tx,
+        state,
+        inspector_server,
+        module_url,
+        inspector_generation,
+      )) = maybe_inspector_params
       {
         use deno_core::futures::channel::mpsc;
 
@@ -260,7 +266,13 @@ pub fn create_supervisor(
         // doesn't always yield), so the normal runtime-drop deregister path
         // won't fire in time. Driving the close from here keeps DevTools
         // from hanging on a half-open socket.
-        inspector_server.force_disconnect_url(&module_url);
+        //
+        // The generation pairs this disconnect with our specific registration:
+        // if a new worker for the same module URL re-registers before the
+        // server processes this signal, the server will ignore it (same v5
+        // UUID, but a higher generation).
+        inspector_server
+          .force_disconnect_url(&module_url, inspector_generation);
 
         let termination_request_token = termination_request_token.clone();
 
@@ -268,12 +280,15 @@ pub fn create_supervisor(
         // The previous shape — `SUPERVISOR_RT.spawn_blocking(move ||
         // SUPERVISOR_RT.block_on(...))` — re-entered the runtime from a
         // blocking thread and could deadlock if blocking threads were
-        // saturated. None of the work below is !Send, so an inline await is
-        // sufficient.
+        // saturated. None of the work below is `!Send`: the captured types
+        // are `UnboundedSender<InspectorSessionProxy>`, `RuntimeState`
+        // (`Arc`-based), `CancellationToken`, `String`, `u64`, and
+        // `tokio::sync::Mutex` guards — all `Send`. An inline await on the
+        // current task is sufficient. If you add a new captured value, make
+        // sure it stays `Send` or this whole task will silently regress to a
+        // single-threaded executor (or fail to compile under `tokio::spawn`).
         let cleanup = async move {
-          if state.is_terminated()
-            || termination_request_token.is_cancelled()
-          {
+          if state.is_terminated() || termination_request_token.is_cancelled() {
             return;
           }
 
@@ -318,9 +333,8 @@ pub fn create_supervisor(
                 "method": msg,
                 "params": serde_json::Value::Null,
               });
-              let _ = inbound_tx.unbounded_send(
-                serde_json::to_string(&message).unwrap(),
-              );
+              let _ = inbound_tx
+                .unbounded_send(serde_json::to_string(&message).unwrap());
 
               // Give V8 a moment to process the message, but bound the wait
               // so a stuck isolate can't pin the supervisor here forever.
@@ -341,11 +355,8 @@ pub fn create_supervisor(
         };
 
         // Hard cap so misbehaving v8 state can't hang the supervisor.
-        let _ = tokio::time::timeout(
-          Duration::from_millis(1500),
-          cleanup,
-        )
-        .await;
+        let _ =
+          tokio::time::timeout(Duration::from_millis(1500), cleanup).await;
       }
 
       // NOTE: If we issue a hard CPU time limit, It's OK because it is
