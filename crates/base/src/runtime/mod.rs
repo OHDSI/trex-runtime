@@ -1738,7 +1738,12 @@ where
         accumulated_cpu_time_ns,
       );
 
-      let wait_for_inspector = if has_inspector {
+      // Don't pin the event loop open for an inspector session once the
+      // supervisor has decided to kill us. Otherwise the worker thread stays
+      // alive holding onto the runtime, the runtime never drops, and the
+      // inspector never deregisters — leaving any attached DevTools
+      // WebSocket hanging until the client times out.
+      let wait_for_inspector = if has_inspector && !state.is_terminated() {
         let inspector = this.js_runtime.inspector();
         let sessions_state = inspector.sessions_state();
         sessions_state.has_active || sessions_state.has_blocking
@@ -1921,6 +1926,10 @@ where
 
   pub fn inspector(&self) -> Option<Inspector> {
     self.worker.inspector.clone()
+  }
+
+  pub fn main_module_url(&self) -> &Url {
+    &self.main_module_url
   }
 
   pub fn promise_metrics(&self) -> PromiseMetrics {

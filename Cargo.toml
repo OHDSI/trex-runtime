@@ -234,7 +234,7 @@ tower = { version = "0.4.13", default-features = false, features = ["util"] }
 tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
 tower-service = "0.3.2"
 url = { version = "2.5", features = ["serde", "expose_internals"] }
-uuid = { version = "1.3.0", features = ["v4"] }
+uuid = { version = "1.3.0", features = ["v4", "v5"] }
 web-transport-proto = "0.2.8"
 webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"

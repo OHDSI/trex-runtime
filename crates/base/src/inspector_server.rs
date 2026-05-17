@@ -47,7 +47,10 @@ use std::sync::Arc;
 use std::thread;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
+use tracing::debug;
 use tracing::error;
+use tracing::info;
+use tracing::warn;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, EnumAsInner)]
@@ -100,6 +103,7 @@ pub struct InspectorServer {
   pub host: SocketAddr,
 
   _register_inspector_tx: UnboundedSender<InspectorInfo>,
+  force_disconnect_tx: UnboundedSender<Uuid>,
   shutdown_server_tx: Option<oneshot::Sender<()>>,
   thread_handle: Option<thread::JoinHandle<()>>,
 }
@@ -108,6 +112,7 @@ impl InspectorServer {
   pub fn new(host: SocketAddr, name: &'static str) -> Self {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
+    let (force_disconnect_tx, force_disconnect_rx) = mpsc::unbounded::<Uuid>();
 
     let (shutdown_server_tx, shutdown_server_rx) = oneshot::channel();
 
@@ -122,13 +127,20 @@ impl InspectorServer {
       let local = tokio::task::LocalSet::new();
       local.block_on(
         &rt,
-        server(host, register_inspector_rx, shutdown_server_rx, name),
+        server(
+          host,
+          register_inspector_rx,
+          force_disconnect_rx,
+          shutdown_server_rx,
+          name,
+        ),
       )
     });
 
     Self {
       host,
       _register_inspector_tx: register_inspector_tx,
+      force_disconnect_tx,
       shutdown_server_tx: Some(shutdown_server_tx),
       thread_handle: Some(thread_handle),
     }
@@ -150,20 +162,37 @@ impl InspectorServer {
       module_url,
       wait_for_session,
     );
-    self._register_inspector_tx.unbounded_send(info).unwrap();
+    // If the server thread has exited (e.g. the port failed to bind), the
+    // receiver is dropped and this send fails. Don't take down the worker —
+    // debugging is just unavailable.
+    if let Err(err) = self._register_inspector_tx.unbounded_send(info) {
+      warn!(%err, "inspector server unavailable; debug registration ignored");
+    }
+  }
+
+  /// Tell the server thread that the worker behind `module_url` is gone and
+  /// any attached DevTools WebSocket should be closed immediately. We can't
+  /// rely on the worker's own deregister handler to fire when a supervisor
+  /// kill leaves the worker thread stuck inside V8 — the runtime drop that
+  /// would normally trigger deregistration never happens. Driving the close
+  /// from here breaks the deadlock.
+  pub fn force_disconnect_url(&self, module_url: &str) {
+    let uuid = Uuid::new_v5(&Uuid::NAMESPACE_URL, module_url.as_bytes());
+    let _ = self.force_disconnect_tx.unbounded_send(uuid);
   }
 }
 
 impl Drop for InspectorServer {
   fn drop(&mut self) {
     if let Some(shutdown_server_tx) = self.shutdown_server_tx.take() {
-      shutdown_server_tx
-        .send(())
-        .expect("unable to send shutdown signal");
+      // The receiver lives on the server thread. If that thread has already
+      // exited (e.g. the port failed to bind, or shutdown raced with bind
+      // failure), the send fails — that's fine, the thread is already gone.
+      let _ = shutdown_server_tx.send(());
     }
 
     if let Some(thread_handle) = self.thread_handle.take() {
-      thread_handle.join().expect("unable to join thread");
+      let _ = thread_handle.join();
     }
   }
 }
@@ -254,7 +283,7 @@ fn handle_ws_request(
       kind: InspectorSessionKind::Blocking,
     };
 
-    eprintln!("Debugger session started.");
+    info!("debugger session started");
     let _ = new_session_tx.unbounded_send(inspector_session_proxy);
     pump_websocket_messages(
       websocket,
@@ -295,6 +324,7 @@ fn handle_json_version_request(
 async fn server(
   host: SocketAddr,
   register_inspector_rx: UnboundedReceiver<InspectorInfo>,
+  force_disconnect_rx: UnboundedReceiver<Uuid>,
   mut shutdown_server_rx: oneshot::Receiver<()>,
   name: &str,
 ) {
@@ -304,16 +334,31 @@ async fn server(
   let inspector_map = Rc::clone(&inspector_map_);
   let mut register_inspector_handler = pin!(register_inspector_rx
     .map(|info| {
-      eprintln!(
-        "Debugger listening on {}",
-        info.get_websocket_debugger_url(&info.host.to_string())
+      let ws_url = info.get_websocket_debugger_url(&info.host.to_string());
+      info!(
+        target = %info.url,
+        wait_for_session = info.wait_for_session,
+        url = %ws_url,
+        "debugger listening (visit chrome://inspect to connect)"
       );
-      eprintln!("Visit chrome://inspect to connect to the debugger.");
-      if info.wait_for_session {
-        eprintln!("Worker is waiting for debugger to connect.");
-      }
-      if inspector_map.borrow_mut().insert(info.uuid, info).is_some() {
-        panic!("Inspector UUID already in map");
+      // Stable UUIDs (derived from the service path) can re-register when a
+      // worker restarts after a crash. Replacing the old entry is fine — the
+      // previous worker is gone and its session_tx is dead. If a previous
+      // worker was somehow still live, surface it as a warning so we can
+      // tell debugging is now pointed at the newer instance.
+      if let Some(prev) = inspector_map.borrow_mut().insert(info.uuid, info) {
+        let still_alive = !prev.new_session_tx.is_closed();
+        if still_alive {
+          warn!(
+            target = %prev.url,
+            uuid = %prev.uuid,
+            "inspector target re-registered while an older session is still attached; \
+             new connections will be routed to the most recent worker"
+          );
+          // Tell any client attached to the previous worker that the session
+          // is being replaced so their WS tears down cleanly.
+          let _ = prev.deregistered_watch_tx.send(true);
+        }
       }
     })
     .collect::<()>());
@@ -331,6 +376,20 @@ async fn server(
     Poll::<Never>::Pending
   })
   .fuse());
+
+  let inspector_map = Rc::clone(&inspector_map_);
+  let mut force_disconnect_handler = pin!(force_disconnect_rx
+    .map(|uuid| {
+      // Fire the entry's deregister watch — that's what attached pumps poll
+      // to detect "your worker is gone, close the WS". We do NOT remove the
+      // entry here: when the new worker for the same service path
+      // re-registers (same v5 UUID), the register handler replaces it.
+      // Removing here would race with that re-registration.
+      if let Some(info) = inspector_map.borrow().get(&uuid) {
+        let _ = info.deregistered_watch_tx.send(true);
+      }
+    })
+    .collect::<()>());
 
   let json_version_response = json!({
       "Browser": name,
@@ -377,10 +436,20 @@ async fn server(
     }
   });
 
-  let listener = TcpListener::bind(host).await.unwrap_or_else(|e| {
-    eprintln!("Cannot start inspector server: {e}.");
-    process::exit(1);
-  });
+  let listener = match TcpListener::bind(host).await {
+    Ok(listener) => listener,
+    Err(err) => {
+      error!(
+        %host,
+        %err,
+        "cannot bind inspector server; debugging is disabled for this session \
+         (rest of the runtime keeps running)"
+      );
+      return;
+    }
+  };
+
+  info!(%host, "inspector server listening");
 
   let graceful = GracefulShutdown::new();
   let accept_fut = async {
@@ -414,6 +483,7 @@ async fn server(
     select! {
       _ = register_inspector_handler => {},
       _ = deregister_inspector_handler => unreachable!(),
+      _ = force_disconnect_handler => {},
       _ = accept_fut => {},
       _ = shutdown_server_rx => {}
     }
@@ -438,13 +508,38 @@ async fn pump_websocket_messages(
   mut websocket: WebSocket<TokioIo<hyper::upgrade::Upgraded>>,
   inbound_tx: UnboundedSender<String>,
   mut outbound_rx: UnboundedReceiver<InspectorMsg>,
-  mut deregistered_watch_rx: watch::Receiver<bool>,
+  deregistered_watch_rx: watch::Receiver<bool>,
 ) {
+  // We can't rely on `watch::Receiver::wait_for` to wake this task reliably
+  // from the deregister handler running on the same LocalSet, so check the
+  // current watch value via `borrow()` on a short interval. The cost is
+  // negligible — there's at most one pump per attached DevTools session.
+  let mut deregister_check =
+    tokio::time::interval(std::time::Duration::from_millis(250));
+  // Skip the immediate fire so we don't waste a select! iteration up front.
+  deregister_check.set_missed_tick_behavior(
+    tokio::time::MissedTickBehavior::Skip,
+  );
+  let _ = deregister_check.tick().await;
+
+  let mut server_initiated_close = false;
   'pump: loop {
     tokio::select! {
-      Some(msg) = outbound_rx.next() => {
-        let msg = Frame::text(msg.content.into_bytes().into());
-        let _ = websocket.write_frame(msg).await;
+      // Messages from the inspector to the websocket. `None` means the
+      // inspector dropped its sender — i.e. the JsRuntime is gone. That is
+      // our most reliable "worker died" signal.
+      msg = outbound_rx.next() => {
+        match msg {
+          Some(msg) => {
+            let frame = Frame::text(msg.content.into_bytes().into());
+            let _ = websocket.write_frame(frame).await;
+          }
+          None => {
+            debug!("debugger session ended (worker terminated)");
+            server_initiated_close = true;
+            break 'pump;
+          }
+        }
       }
       msg = websocket.read_frame() => {
         match msg {
@@ -456,7 +551,7 @@ async fn pump_websocket_messages(
                 }
               }
               OpCode::Close => {
-                eprintln!("Debugger session ended");
+                debug!("debugger session ended (client closed)");
                 break 'pump;
               }
               _ => {
@@ -466,19 +561,28 @@ async fn pump_websocket_messages(
           }
 
           Err(err) => {
-            eprintln!("Debugger session ended: {}", err);
+            debug!(%err, "debugger session ended (read error)");
             break 'pump;
           }
         }
       }
-      Ok(_) = deregistered_watch_rx.wait_for(|it| *it) => {
-        eprintln!("Debugger session ended");
-        break 'pump;
+      _ = deregister_check.tick() => {
+        if *deregistered_watch_rx.borrow() {
+          debug!("debugger session ended (deregistered)");
+          server_initiated_close = true;
+          break 'pump;
+        }
       }
       else => {
         break 'pump;
       }
     }
+  }
+
+  if server_initiated_close {
+    // 1001 "going away" matches the spec for an endpoint shutting down.
+    let close = Frame::close(1001, b"worker terminated");
+    let _ = websocket.write_frame(close).await;
   }
 }
 
@@ -506,9 +610,15 @@ impl InspectorInfo {
   ) -> Self {
     let (deregistered_watch_tx, deregistered_watch_rx) = watch::channel(false);
 
+    // Derive a stable target UUID from the module URL so that a worker's
+    // DevTools WebSocket URL survives crashes and restarts. The previous
+    // behaviour minted a fresh v4 UUID per worker, which made every crash
+    // invalidate the user's pasted ws:// URL.
+    let uuid = Uuid::new_v5(&Uuid::NAMESPACE_URL, url.as_bytes());
+
     Self {
       host,
-      uuid: Uuid::new_v4(),
+      uuid,
       thread_name: thread::current().name().map(|n| n.to_owned()),
       new_session_tx,
       deregister_rx,
