@@ -179,10 +179,9 @@ jobs:
         env:
           LD_LIBRARY_PATH: /usr/local/lib
           ORT_DYLIB_PATH: /tmp/onnxruntime/lib/libonnxruntime.so
-      - name: Coveralls upload
-        uses: coverallsapp/github-action@v2
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          fail-on-error: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: lcov.info
-          debug: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: false
