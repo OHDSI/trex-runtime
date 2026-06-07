@@ -11906,14 +11906,14 @@ dependencies = [
 [[patch.unused]]
 name = "duckdb"
 version = "1.4.4"
-source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#02e43780270229fedf45ca3d724690801ffb4f2b"
+source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#6cfa29d148ae47b91f0e9044214a4dce08113cbf"
 
 [[patch.unused]]
 name = "duckdb-loadable-macros"
 version = "0.1.14"
-source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#02e43780270229fedf45ca3d724690801ffb4f2b"
+source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#6cfa29d148ae47b91f0e9044214a4dce08113cbf"
 
 [[patch.unused]]
 name = "libduckdb-sys"
 version = "1.4.4"
-source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#02e43780270229fedf45ca3d724690801ffb4f2b"
+source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#6cfa29d148ae47b91f0e9044214a4dce08113cbf"
