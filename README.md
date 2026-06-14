@@ -9,7 +9,7 @@
 Trex is a self-hosted backend platform with an analytical column-store engine and federation built in (DuckDB-based, alongside Postgres). The fork lets us:
 
 - Shape the edge runtime to fit Trex's single-binary deployment profile.
-- Track our own Deno release cadence (currently Deno 2.7.12), in step with the rest of the Trex stack rather than the upstream service's schedule.
+- Track our own Deno release cadence (currently Deno 2.7.14), in step with the rest of the Trex stack rather than the upstream service's schedule.
 - Stay wire-compatible with the Supabase Edge Functions developer experience (deploy, secrets, local dev via the Trex CLI).
 
 ## License
