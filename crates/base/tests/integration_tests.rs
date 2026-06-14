@@ -2510,7 +2510,6 @@ async fn test_issue_513() {
 
 #[tokio::test]
 #[serial]
-#[ignore = "node:http2 regression in vendored deno 2.7.12 — needs fork bump past upstream #33435"]
 async fn test_supabase_issue_29583() {
   integration_test!(
     "./test_cases/main",
