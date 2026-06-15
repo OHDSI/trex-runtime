@@ -1558,6 +1558,7 @@ mod node {
       PrivateEncryptDecryptError::Spki(_) => "Error",
       PrivateEncryptDecryptError::Rsa(_) => "Error",
       PrivateEncryptDecryptError::UnknownPadding => "TypeError",
+      PrivateEncryptDecryptError::InvalidDigest => "TypeError",
     }
   }
 
