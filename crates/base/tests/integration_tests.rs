@@ -3257,6 +3257,41 @@ async fn test_commonjs_express() {
   );
 }
 
+// Regression guard for the Deno 2.7.14 node:http rewrite. An embedder server
+// (express) re-parents the incoming request via `Object.setPrototypeOf`, which
+// after the node:http split dropped the server IncomingMessage's header getters
+// and left `req.headers` empty for the trex worker-dispatch path -- losing ALL
+// request headers, including `authorization`. This sends a request with an
+// Authorization header and asserts it reaches the express handler unchanged.
+#[tokio::test]
+#[serial]
+async fn test_commonjs_express_forwards_request_headers() {
+  ensure_npm_package_installed("./test_cases/commonjs-express").await;
+  integration_test!(
+    "./test_cases/main",
+    NON_SECURE_PORT,
+    "commonjs-express/echo-auth",
+    None,
+    Some(
+      reqwest::Client::new()
+        .get(format!(
+          "http://localhost:{NON_SECURE_PORT}/commonjs-express/echo-auth"
+        ))
+        .header("authorization", "Bearer trex-regression-token"),
+    ),
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 200);
+      assert_eq!(
+        resp.text().await.unwrap().as_str(),
+        "Bearer trex-regression-token",
+      );
+    }),
+    TerminationToken::new()
+  );
+}
+
 #[tokio::test]
 #[serial]
 async fn test_commonjs_hono() {
