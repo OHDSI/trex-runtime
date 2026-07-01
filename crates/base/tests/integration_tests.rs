@@ -1420,6 +1420,9 @@ async fn test_websocket_upgrade(maybe_tls: Option<Tls>, use_node_ws: bool) {
   );
 }
 
+// ServerEvent::Draining is only emitted in debug builds (see server.rs), so this
+// test only applies there.
+#[cfg(debug_assertions)]
 #[tokio::test]
 #[serial]
 async fn test_graceful_shutdown() {
