@@ -7,6 +7,7 @@ mod supabase_startup_snapshot {
 
   use deno_core::snapshot::create_snapshot;
   use deno_core::snapshot::CreateSnapshotOptions;
+  use deno_core::v8;
   use deno_core::Extension;
 
   use super::*;
@@ -83,7 +84,24 @@ mod supabase_startup_snapshot {
         extensions,
         extension_transpiler: Some(Rc::new(transpile_ts)),
         skip_op_registration: false,
-        with_runtime_cb: None,
+        // Bake ext_node's global template + VM context (at VM_CONTEXT_INDEX)
+        // into the snapshot, matching deno's runtime/snapshot.rs. Without this
+        // the runtime indexes a missing context slot (out-of-bounds).
+        with_runtime_cb: Some(Box::new(|rt| {
+          let isolate = rt.v8_isolate();
+          v8::scope!(scope, isolate);
+          let tmpl = ext_node::init_global_template(
+            scope,
+            ext_node::ContextInitMode::ForSnapshot,
+          );
+          let ctx = ext_node::create_v8_context(
+            scope,
+            tmpl,
+            ext_node::ContextInitMode::ForSnapshot,
+            std::ptr::null_mut(),
+          );
+          assert_eq!(scope.add_context(ctx), ext_node::VM_CONTEXT_INDEX);
+        })),
       },
       None,
     );

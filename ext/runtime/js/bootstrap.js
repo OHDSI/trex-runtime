@@ -672,6 +672,11 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
   // shared array buffer across the isolates. But for now, we explicitly disabled the shared
   // buffer option between isolate globally in `deno_runtime.rs`, so this patch also applies
   // regardless of worker type.
+  // Install wasm-memory tracking on the REAL WebAssembly.Memory before the
+  // shared-memory patch below replaces it. (Deferred to runtime, not
+  // module-eval, because WebAssembly is absent during snapshot creation.)
+  installWasmMemoryTracking();
+
   const wasmMemoryCtor = globalThis.WebAssembly.Memory;
   const wasmMemoryPrototypeGrow = wasmMemoryCtor.prototype.grow;
 
@@ -837,7 +842,6 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
     delete globalThis.nodeBootstrap;
   }
 
-  installWasmMemoryTracking(); // runtime: WebAssembly is absent at snapshot time
   startWasmMemoryPolling();
 
   delete globalThis.bootstrapSBEdge;
