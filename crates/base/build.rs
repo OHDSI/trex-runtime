@@ -1,10 +1,6 @@
 use std::env;
 use std::path::PathBuf;
 
-// Temporal support with stub implementations:
-// - temporal_shim.c provides stub implementations of temporal_rs functions
-// - Compiled into rusty_v8 when building V8 from source
-// - Allows snapshot generation to work without full temporal_rs integration
 mod supabase_startup_snapshot {
   use std::io::Write;
   use std::rc::Rc;
@@ -28,77 +24,57 @@ mod supabase_startup_snapshot {
     deno::transpile::maybe_transpile_source(specifier, code)
   }
 
-  #[derive(Clone)]
-  #[allow(dead_code)]
-  pub struct Permissions;
+  // Name-only stub (base_runtime_permissions ships no ESM/ops; it only injects
+  // state at runtime) to hold its slot in the list.
+  deno_core::extension!(base_runtime_permissions);
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
-    // SNAPSHOT COMPLETELY DISABLED FOR DENO 2.5.6:
-    // Deno 2.5.6 changed the extension system - ALL extensions with JavaScript modules
-    // now cause NonEvaluatedModules errors when using init() in snapshots.
-    // This includes even core extensions like deno_console, deno_webidl, deno_telemetry.
-    //
-    // The Deno team's solution is to either:
-    // 1. Use no snapshot at all (load everything at runtime), OR
-    // 2. Use lazy_init() for extensions (but this has other issues)
-    //
-    // For now, we're creating a TRULY EMPTY snapshot - just a minimal V8 snapshot with no extensions.
-    // All extensions will be loaded at runtime. This is how modern Deno 2.x projects work.
-    //
-    // Performance impact: ~60-110ms slower worker startup (vs ~10ms with full snapshot)
-    // Mitigation strategies will be implemented in Phase 3: worker prewarming, module caching
+    println!("Creating runtime snapshot...");
 
-    println!("Creating a snapshot...");
-
-    // Create a snapshot with extensions
-    #[allow(unused_mut)]
-    let mut extensions: Vec<Extension> = vec![];
-    /*
+    // Must mirror runtime/mod.rs's list (same names + order) or deno_core hits
+    // ExtensionSnapshotMismatch. Build-safe subs: runtime_bootstrap::init(None);
+    // build-available deno_node types; base_runtime_permissions stub; trex_core
+    // omitted (feature-gated).
+    let extensions: Vec<Extension> = vec![
       deno_telemetry::deno_telemetry::init(),
       deno_webidl::deno_webidl::init(),
-      deno_console::deno_console::init(),
-      deno_url::deno_url::init(),
-      deno_web::deno_web::init::<PermissionsContainer>(
-        Default::default(),
-        Default::default(),
-      ),
-      deno_fetch::deno_fetch::init::<PermissionsContainer>(Default::default()),
-      deno_websocket::deno_websocket::init::<PermissionsContainer>(),
-      deno_crypto::deno_crypto::init(None),
-      deno_broadcast_channel::deno_broadcast_channel::init::<
-        deno_broadcast_channel::InMemoryBroadcastChannel,
-      >(
-        deno_broadcast_channel::InMemoryBroadcastChannel::default(),
-      ),
-      deno_net::deno_net::init::<PermissionsContainer>(None, None),
-      deno_tls::deno_tls::init(),
-      // deno_http::deno_http::init(Default::default()),
-      deno_io::deno_io::init(Default::default()),
-      deno_fs::deno_fs::init::<PermissionsContainer>(Arc::new(deno_fs::RealFs)),
+      deno_web::deno_web::lazy_init(),
       deno_webgpu::deno_webgpu::init(),
+      deno_image::deno_image::init(),
+      deno_fetch::deno_fetch::lazy_init(),
+      deno_websocket::deno_websocket::lazy_init(),
+      // TODO: support providing a custom seed for crypto
+      deno_crypto::deno_crypto::lazy_init(),
+      deno_net::deno_net::lazy_init(),
+      deno_tls::deno_tls::init(),
+      deno_node_crypto::deno_node_crypto::init(),
+      deno_node_sqlite::deno_node_sqlite::init(),
+      deno_http::deno_http::lazy_init(),
+      deno_io::deno_io::lazy_init(),
+      deno_fs::deno_fs::lazy_init(),
       ext_ai::ai::init(),
       ext_env::env::init(),
       deno_process::deno_process::init(None),
       ext_workers::user_workers::init(),
       ext_event_worker::user_event_worker::init(),
       ext_event_worker::js_interceptors::js_interceptors::init(),
-      ext_runtime::runtime_bootstrap::init::<PermissionsContainer>(None),
+      ext_runtime::runtime_bootstrap::init(None),
       ext_runtime::runtime_net::init(),
       ext_runtime::runtime_http::init(),
       ext_runtime::runtime_http_start::init(),
-      ext_node::deno_node::init::<
-        PermissionsContainer,
+      // NOTE: Order matters (see runtime/mod.rs).
+      ext_node::deno_node::lazy_init::<
         deno_resolver::npm::DenoInNpmPackageChecker,
-        deno_resolver::npm::ManagedNpmResolver<sys_traits::impls::RealSys>,
+        deno_resolver::npm::NpmResolver<sys_traits::impls::RealSys>,
         sys_traits::impls::RealSys,
-      >(None, Arc::new(deno_fs::RealFs)),
-      deno_cache::deno_cache::init(Default::default()),
-      // deno::runtime::ops::permissions::deno_permissions::init(),
+      >(),
+      deno_cache::deno_cache::lazy_init(),
+      deno::runtime::ops::permissions::deno_permissions::init(),
+      base_runtime_permissions::init(),
       ext_os::os::init(None),
       ext_os::deno_os::init(),
       ext_runtime::runtime::init(),
     ];
-    */
 
     let snapshot = create_snapshot(
       CreateSnapshotOptions {
@@ -132,8 +108,6 @@ fn main() {
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
 
-  // Create the runtime snapshot
-  // When building V8 from source, temporal_shim.c provides the needed symbols
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
   let runtime_snapshot_path = o.join("RUNTIME_SNAPSHOT.bin");
   supabase_startup_snapshot::create_runtime_snapshot(
