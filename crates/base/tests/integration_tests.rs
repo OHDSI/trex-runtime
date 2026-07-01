@@ -3095,14 +3095,23 @@ async fn test_tmp_fs_usage() {
         let f = fs::read(path).await.unwrap();
         let mut cursor = Cursor::new(&f);
 
+        // httpbin.org is an external service that intermittently returns 503;
+        // when it is unavailable, skip the comparison instead of failing.
         let client = Client::new();
-        let resp2 = client
+        let resp2 = match client
           .request(Method::GET, "https://httpbin.org/stream/20".to_string())
           .send()
           .await
-          .unwrap();
-
-        assert_eq!(resp2.status().as_u16(), 200);
+        {
+          Ok(r) if r.status().as_u16() == 200 => r,
+          other => {
+            eprintln!(
+              "skipping tmp-fs/httpbin comparison: httpbin.org unavailable ({:?})",
+              other.map(|r| r.status())
+            );
+            return;
+          }
+        };
 
         let body2 = resp2.bytes().await.unwrap();
         let mut cursor2 = Cursor::new(&*body2);
