@@ -1,11 +1,10 @@
-// DISABLED: Snapshot causes SIGBUS crash on ARM64 macOS with V8 140.2.0
-// when built from source. Returning None causes ~100ms slower startup but
-// avoids snapshot corruption issues.
-// See: architecture-advisor analysis for details
+// The snapshot bakes the extension ESM (see build.rs) so user workers restore
+// the runtime instead of rebuilding it per spawn. build.rs omits the
+// feature-gated trex_core ext, so a `trex`-feature build must add it there or
+// hit ExtensionSnapshotMismatch.
 pub static CLI_SNAPSHOT: &[u8] =
   include_bytes!(concat!(env!("OUT_DIR"), "/RUNTIME_SNAPSHOT.bin"));
 
 pub fn snapshot() -> Option<&'static [u8]> {
-  // Return None to disable snapshot and initialize V8 from scratch
-  None
+  Some(CLI_SNAPSHOT)
 }

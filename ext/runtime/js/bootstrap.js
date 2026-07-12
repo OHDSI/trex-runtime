@@ -39,7 +39,7 @@ import * as WebGPU from "ext:deno_webgpu/00_init.js";
 import * as WebGPUSurface from "ext:deno_webgpu/02_surface.js";
 
 import "ext:ai/onnxruntime/cache_adapter.js";
-import { startWasmMemoryPolling } from "ext:runtime/wasm_memory_tracker.js";
+import { installWasmMemoryTracking, startWasmMemoryPolling } from "ext:runtime/wasm_memory_tracker.js";
 
 import { SUPABASE_ENV } from "ext:env/env.js";
 
@@ -672,6 +672,11 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
   // shared array buffer across the isolates. But for now, we explicitly disabled the shared
   // buffer option between isolate globally in `deno_runtime.rs`, so this patch also applies
   // regardless of worker type.
+  // Install wasm-memory tracking on the REAL WebAssembly.Memory before the
+  // shared-memory patch below replaces it. (Deferred to runtime, not
+  // module-eval, because WebAssembly is absent during snapshot creation.)
+  installWasmMemoryTracking();
+
   const wasmMemoryCtor = globalThis.WebAssembly.Memory;
   const wasmMemoryPrototypeGrow = wasmMemoryCtor.prototype.grow;
 

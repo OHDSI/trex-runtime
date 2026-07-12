@@ -15,9 +15,9 @@ const {
 
 const op_set_wasm_memory_bytes = core.ops.op_set_wasm_memory_bytes;
 
-const Wasm = globalThis.WebAssembly;
-
 const memories = [];
+
+let OrigMemory; // set by installWasmMemoryTracking() at runtime
 
 function trackMemory(mem) {
   if (mem !== undefined && mem !== null) {
@@ -25,14 +25,10 @@ function trackMemory(mem) {
   }
 }
 
-const OrigMemory = Wasm.Memory;
-const OrigInstance = Wasm.Instance;
-const origInstantiate = Wasm.instantiate;
-const origInstantiateStreaming = Wasm.instantiateStreaming;
-
 function trackInstanceExports(instance) {
   const exports = instance?.exports;
   if (exports === undefined || exports === null) return;
+  if (OrigMemory === undefined) return;
   const keys = ObjectKeys(exports);
   for (let i = 0; i < keys.length; i++) {
     const v = exports[keys[i]];
@@ -42,51 +38,63 @@ function trackInstanceExports(instance) {
   }
 }
 
-function WrapMemory(desc, ...rest) {
-  const mem = new OrigMemory(desc, ...rest);
-  trackMemory(mem);
-  return mem;
-}
-WrapMemory.prototype = OrigMemory.prototype;
+// Deferred to runtime (bootstrap.js): WebAssembly is absent during snapshot
+// creation, so this must not run at module-eval time.
+export function installWasmMemoryTracking() {
+  const Wasm = globalThis.WebAssembly;
+  if (Wasm === undefined || Wasm === null) return;
 
-function WrapInstance(mod, imports) {
-  const instance = new OrigInstance(mod, imports);
-  trackInstanceExports(instance);
-  return instance;
-}
-WrapInstance.prototype = OrigInstance.prototype;
+  OrigMemory = Wasm.Memory;
+  const OrigInstance = Wasm.Instance;
+  const origInstantiate = Wasm.instantiate;
+  const origInstantiateStreaming = Wasm.instantiateStreaming;
 
-ObjectDefineProperty(Wasm, "Memory", {
-  configurable: true,
-  writable: true,
-  value: WrapMemory,
-});
-ObjectDefineProperty(Wasm, "Instance", {
-  configurable: true,
-  writable: true,
-  value: WrapInstance,
-});
+  function WrapMemory(desc, ...rest) {
+    const mem = new OrigMemory(desc, ...rest);
+    trackMemory(mem);
+    return mem;
+  }
+  WrapMemory.prototype = OrigMemory.prototype;
 
-Wasm.instantiate = function instantiate(source, imports) {
-  return origInstantiate(source, imports).then((result) => {
-    if (ObjectPrototypeIsPrototypeOf(OrigInstance.prototype, result)) {
-      trackInstanceExports(result);
-    } else if (result?.instance !== undefined) {
-      trackInstanceExports(result.instance);
-    }
-    return result;
+  function WrapInstance(mod, imports) {
+    const instance = new OrigInstance(mod, imports);
+    trackInstanceExports(instance);
+    return instance;
+  }
+  WrapInstance.prototype = OrigInstance.prototype;
+
+  ObjectDefineProperty(Wasm, "Memory", {
+    configurable: true,
+    writable: true,
+    value: WrapMemory,
   });
-};
+  ObjectDefineProperty(Wasm, "Instance", {
+    configurable: true,
+    writable: true,
+    value: WrapInstance,
+  });
 
-if (origInstantiateStreaming !== undefined) {
-  Wasm.instantiateStreaming = function instantiateStreaming(source, imports) {
-    return origInstantiateStreaming(source, imports).then((result) => {
-      if (result?.instance !== undefined) {
+  Wasm.instantiate = function instantiate(source, imports) {
+    return origInstantiate(source, imports).then((result) => {
+      if (ObjectPrototypeIsPrototypeOf(OrigInstance.prototype, result)) {
+        trackInstanceExports(result);
+      } else if (result?.instance !== undefined) {
         trackInstanceExports(result.instance);
       }
       return result;
     });
   };
+
+  if (origInstantiateStreaming !== undefined) {
+    Wasm.instantiateStreaming = function instantiateStreaming(source, imports) {
+      return origInstantiateStreaming(source, imports).then((result) => {
+        if (result?.instance !== undefined) {
+          trackInstanceExports(result.instance);
+        }
+        return result;
+      });
+    };
+  }
 }
 
 // buffer.byteLength reflects growth from the `memory.grow` instruction too.
