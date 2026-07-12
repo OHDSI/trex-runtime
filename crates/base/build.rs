@@ -35,7 +35,7 @@ mod supabase_startup_snapshot {
     // Must mirror runtime/mod.rs's list (same names + order) or deno_core hits
     // ExtensionSnapshotMismatch. Build-safe subs: runtime_bootstrap::init(None);
     // build-available deno_node types; base_runtime_permissions stub; trex_core
-    // omitted (feature-gated).
+    // included only when the `trex` feature is on, matching runtime/mod.rs.
     let extensions: Vec<Extension> = vec![
       deno_telemetry::deno_telemetry::init(),
       deno_webidl::deno_webidl::init(),
@@ -54,6 +54,8 @@ mod supabase_startup_snapshot {
       deno_io::deno_io::lazy_init(),
       deno_fs::deno_fs::lazy_init(),
       ext_ai::ai::init(),
+      #[cfg(feature = "trex")]
+      trex_core::trex::init(),
       ext_env::env::init(),
       deno_process::deno_process::init(None),
       ext_workers::user_workers::init(),

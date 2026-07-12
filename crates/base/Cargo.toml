@@ -119,6 +119,7 @@ ext_node.workspace = true
 ext_os.workspace = true
 ext_workers.workspace = true
 ext_runtime.workspace = true
+trex_core = { version = "0.1.0", optional = true }
 
 deno_facade.workspace = true
 
