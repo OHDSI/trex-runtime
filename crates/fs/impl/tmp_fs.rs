@@ -185,7 +185,10 @@ impl Quota {
     let flag = self.sync.clone();
 
     move || {
-      debug_assert!(flag.do_opt.lower());
+      // `lower()` must run in release builds too; a side effect inside
+      // `debug_assert!` would be compiled out.
+      let was_raised = flag.do_opt.lower();
+      debug_assert!(was_raised);
 
       let dir_size = get_dir_size(root_path).map_err(FsError::Io)? as usize;
 
