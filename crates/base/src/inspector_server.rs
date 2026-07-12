@@ -20,6 +20,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::unsync::spawn;
+use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionChannels;
@@ -282,6 +283,7 @@ where
 fn handle_ws_request(
   req: http::Request<hyper::body::Incoming>,
   inspector_map_rc: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  pump_join_handles: Rc<RefCell<Vec<JoinHandle<()>>>>,
 ) -> http::Result<http::Response<BoxBody<Bytes, Infallible>>> {
   let (parts, body) = req.into_parts();
   let req = http::Request::from_parts(parts, ());
@@ -328,8 +330,9 @@ fn handle_ws_request(
   };
 
   // spawn a task that will wait for websocket connection and then pump messages between
-  // the socket and inspector proxy
-  spawn(async move {
+  // the socket and inspector proxy. The handle is retained so server shutdown
+  // can drain pumps instead of dropping them mid-write (see `server()`).
+  let pump_handle = spawn(async move {
     let websocket = match fut.await {
       Ok(w) => w,
       Err(err) => {
@@ -361,6 +364,7 @@ fn handle_ws_request(
     )
     .await;
   });
+  pump_join_handles.borrow_mut().push(pump_handle);
 
   Ok(resp)
 }
@@ -398,6 +402,9 @@ async fn server(
 ) {
   let inspector_map_ =
     Rc::new(RefCell::new(HashMap::<Uuid, InspectorInfo>::new()));
+  // One entry per attached DevTools session. Retained so shutdown can wait
+  // for pumps to flush their close frames before the LocalSet is dropped.
+  let pump_join_handles: Rc<RefCell<Vec<JoinHandle<()>>>> = Rc::default();
 
   let inspector_map = Rc::clone(&inspector_map_);
   let mut register_inspector_handler = pin!(register_inspector_rx
@@ -492,6 +499,7 @@ async fn server(
 
   let service_fn = hyper::service::service_fn({
     let inspector_map = inspector_map_.clone();
+    let pump_join_handles = pump_join_handles.clone();
     let json_version_response = json_version_response.clone();
 
     move |req| {
@@ -509,7 +517,11 @@ async fn server(
 
       let resp = match (req.method(), req.uri().path()) {
         (&http::Method::GET, path) if path.starts_with("/ws/") => {
-          handle_ws_request(req, inspector_map.clone())
+          handle_ws_request(
+            req,
+            inspector_map.clone(),
+            pump_join_handles.clone(),
+          )
         }
         (&http::Method::GET, "/json/version") => {
           handle_json_version_request(json_version_response.clone())
@@ -583,6 +595,24 @@ async fn server(
   }
 
   graceful.shutdown().await;
+
+  // The server commonly shuts down because the worker holding the last
+  // `Arc<InspectorServer>` died. Attached pumps may not have flushed their
+  // 1001 close frame yet — returning here would drop the LocalSet (and the
+  // pump tasks with it), tearing sockets down abruptly so DevTools clients
+  // see an EOF instead of a close frame. Fire every deregister watch so
+  // pumps break out of their loop on the next tick, then give them a
+  // bounded window to write the close frame.
+  for info in inspector_map_.borrow().values() {
+    let _ = info.deregistered_watch_tx.send(true);
+  }
+  let pumps = std::mem::take(&mut *pump_join_handles.borrow_mut());
+  let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+    for pump in pumps {
+      let _ = pump.await;
+    }
+  })
+  .await;
 }
 
 /// The pump future takes care of forwarding messages between the websocket
