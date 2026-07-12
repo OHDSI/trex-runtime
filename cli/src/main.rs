@@ -89,12 +89,6 @@ fn main() -> Result<ExitCode, anyhow::Error> {
     #[allow(clippy::arc_with_non_send_sync)]
     let exit_code = match matches.subcommand() {
       Some(("start", sub_matches)) => {
-        deno_telemetry::init(
-          &sys_traits::impls::RealSys,
-          deno::versions::otel_runtime_config(),
-          OtelConfig::default(),
-        )?;
-
         let ip = sub_matches.get_one::<String>("ip").cloned().unwrap();
         let ip = IpAddr::from_str(&ip)
           .context("failed to parse the IP address to bind the server")?;
@@ -147,6 +141,19 @@ fn main() -> Result<ExitCode, anyhow::Error> {
           .get_one::<OtelConsoleConfig>("otel-console")
           .cloned()
           .map(Into::into);
+
+        // The process-wide exporter must be initialized with at least one
+        // signal enabled; an all-off config makes `init` a no-op and every
+        // downstream telemetry op silently drops its data.
+        deno_telemetry::init(
+          &sys_traits::impls::RealSys,
+          deno::versions::otel_runtime_config(),
+          OtelConfig {
+            tracing_enabled: !enable_otel.is_empty(),
+            console: otel_console.unwrap_or_default(),
+            ..Default::default()
+          },
+        )?;
 
         let event_service_manager_path =
           sub_matches.get_one::<String>("event-worker").cloned();
