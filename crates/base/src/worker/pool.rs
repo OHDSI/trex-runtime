@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::pending;
 use std::str::FromStr;
@@ -31,6 +32,7 @@ use ext_workers::context::TimingStatus;
 use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::UserWorkerProfile;
 use ext_workers::context::WorkerContextInitOpts;
+use ext_workers::context::WorkerExit;
 use ext_workers::context::WorkerRuntimeOpts;
 use ext_workers::errors::WorkerError;
 use futures_util::future::join_all;
@@ -250,11 +252,23 @@ pub struct WorkerPool {
   pub global_sem: Option<Arc<Semaphore>>,
   /// Notifier for when global permits become available
   pub global_notify: Arc<Notify>,
+  /// Exit status of workers already removed from `user_workers`.
+  ///
+  /// A worker that dies while evaluating its module races its `Shutdown`
+  /// against any `SendRequest` the main worker has already issued for it. When
+  /// `Shutdown` wins, the profile is gone before the request is dispatched, so
+  /// without this the caller would be told "user worker not available" instead
+  /// of the exception that actually killed the worker.
+  pub recent_exits: VecDeque<(Uuid, WorkerExit)>,
 
   // TODO: refactor this out of worker pool
   pub worker_event_sender:
     Option<mpsc::UnboundedSender<WorkerEventWithMetadata>>,
 }
+
+/// Bounds `WorkerPool::recent_exits`. Only requests that lost the shutdown race
+/// read it, so the window only has to outlive requests already in flight.
+const MAX_RECENT_EXITS: usize = 128;
 
 impl WorkerPool {
   pub(crate) fn new(
@@ -280,6 +294,7 @@ impl WorkerPool {
       worker_pool_msgs_tx,
       global_sem,
       global_notify: Arc::new(Notify::new()),
+      recent_exits: VecDeque::new(),
     }
   }
 
@@ -718,12 +733,23 @@ impl WorkerPool {
       }
 
       None => {
-        if res_tx
-          .send(Err(anyhow!("user worker not available")))
-          .is_err()
-        {
-          error!("main worker receiver dropped")
-        }
+        let maybe_exit = self
+          .recent_exits
+          .iter()
+          .find(|(uuid, _)| uuid == key)
+          .map(|(_, exit)| exit.clone());
+
+        tokio::task::spawn(async move {
+          let err = match maybe_exit {
+            Some(exit) => exit.error().await,
+            None => None,
+          };
+          let err = err.unwrap_or_else(|| anyhow!("user worker not available"));
+
+          if res_tx.send(Err(err)).is_err() {
+            error!("main worker receiver dropped")
+          }
+        });
 
         Err(anyhow!("user worker not available"))
       }
@@ -744,6 +770,13 @@ impl WorkerPool {
     self.retire(key);
 
     let removed_worker = self.user_workers.remove(key);
+
+    if let Some(worker) = removed_worker.as_ref() {
+      if self.recent_exits.len() == MAX_RECENT_EXITS {
+        self.recent_exits.pop_front();
+      }
+      self.recent_exits.push_back((*key, worker.exit.clone()));
+    }
 
     let Some((notify_tx, _)) = removed_worker
       .as_ref()
