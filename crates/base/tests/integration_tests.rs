@@ -58,6 +58,7 @@ use ext_event_worker::events::WorkerEventWithMetadata;
 use ext_event_worker::events::WorkerEvents;
 use ext_runtime::SharedMetricSource;
 use ext_workers::context::MainWorkerRuntimeOpts;
+use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::WorkerContextInitOpts;
 use ext_workers::context::WorkerRequestMsg;
 use ext_workers::context::WorkerRuntimeOpts;
@@ -555,6 +556,96 @@ async fn test_main_worker_user_worker_mod_evaluate_exception() {
   assert!(
     body_bytes.starts_with(b"{\"msg\":\"Error: event loop error: Error: fail")
   );
+}
+
+/// A worker that throws while evaluating its module races its own `Shutdown`
+/// against requests already dispatched to it, which is what makes
+/// `test_main_worker_user_worker_mod_evaluate_exception` flaky. The uncaught
+/// exception event is emitted only after the exit status is recorded and
+/// `Shutdown` is queued, so waiting for it pins the losing order: the pool has
+/// dropped the worker by the time our request arrives, and it must still report
+/// what killed it rather than a bare "user worker not available".
+#[tokio::test]
+async fn test_user_worker_exit_reason_survives_shutdown_race() {
+  let pool_termination_token = TerminationToken::new();
+  let (events_tx, mut events_rx) =
+    mpsc::unbounded_channel::<WorkerEventWithMetadata>();
+
+  let (_, worker_pool_tx) = worker::create_user_worker_pool(
+    Arc::default(),
+    test_user_worker_pool_policy(),
+    Some(events_tx),
+    Some(pool_termination_token.clone()),
+    vec![],
+    None,
+  )
+  .await
+  .unwrap();
+
+  let (create_tx, create_rx) = oneshot::channel();
+
+  worker_pool_tx
+    .send(UserWorkerMsgs::Create(
+      Box::new(WorkerContextInitOpts {
+        service_path: "./test_cases/boot_err_user_worker".into(),
+        no_module_cache: false,
+        no_npm: None,
+        env_vars: HashMap::new(),
+        timing: None,
+        maybe_eszip: None,
+        maybe_entrypoint: None,
+        maybe_module_code: None,
+        conf: WorkerRuntimeOpts::UserWorker(Box::new(test_user_runtime_opts())),
+        static_patterns: vec![],
+
+        maybe_s3_fs_config: None,
+        maybe_tmp_fs_config: None,
+        maybe_otel_config: None,
+      }),
+      create_tx,
+    ))
+    .unwrap();
+
+  let key = create_rx.await.unwrap().unwrap().key;
+
+  loop {
+    let ev = timeout(Duration::from_secs(30), events_rx.recv())
+      .await
+      .expect("timed out waiting for the worker to die")
+      .expect("worker event channel closed");
+
+    if matches!(ev.event, WorkerEvents::UncaughtException(_)) {
+      break;
+    }
+  }
+
+  let (res_tx, res_rx) = oneshot::channel();
+
+  worker_pool_tx
+    .send(UserWorkerMsgs::SendRequest(
+      key,
+      Request::builder()
+        .uri("/")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap(),
+      res_tx,
+      None,
+    ))
+    .unwrap();
+
+  let Err(err) = res_rx.await.unwrap() else {
+    panic!("request to a dead worker must fail");
+  };
+
+  let err = err.to_string();
+
+  assert!(
+    err.contains("event loop error: Error: fail"),
+    "expected the worker's exit reason, got: {err}"
+  );
+
+  pool_termination_token.cancel_and_wait().await;
 }
 
 async fn test_main_worker_post_request_with_transfer_encoding(
