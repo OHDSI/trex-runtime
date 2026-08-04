@@ -58,6 +58,7 @@ use ext_event_worker::events::WorkerEventWithMetadata;
 use ext_event_worker::events::WorkerEvents;
 use ext_runtime::SharedMetricSource;
 use ext_workers::context::MainWorkerRuntimeOpts;
+use ext_workers::context::UserWorkerMsgs;
 use ext_workers::context::WorkerContextInitOpts;
 use ext_workers::context::WorkerRequestMsg;
 use ext_workers::context::WorkerRuntimeOpts;
@@ -555,6 +556,96 @@ async fn test_main_worker_user_worker_mod_evaluate_exception() {
   assert!(
     body_bytes.starts_with(b"{\"msg\":\"Error: event loop error: Error: fail")
   );
+}
+
+/// A worker that throws while evaluating its module races its own `Shutdown`
+/// against requests already dispatched to it, which is what makes
+/// `test_main_worker_user_worker_mod_evaluate_exception` flaky. The uncaught
+/// exception event is emitted only after the exit status is recorded and
+/// `Shutdown` is queued, so waiting for it pins the losing order: the pool has
+/// dropped the worker by the time our request arrives, and it must still report
+/// what killed it rather than a bare "user worker not available".
+#[tokio::test]
+async fn test_user_worker_exit_reason_survives_shutdown_race() {
+  let pool_termination_token = TerminationToken::new();
+  let (events_tx, mut events_rx) =
+    mpsc::unbounded_channel::<WorkerEventWithMetadata>();
+
+  let (_, worker_pool_tx) = worker::create_user_worker_pool(
+    Arc::default(),
+    test_user_worker_pool_policy(),
+    Some(events_tx),
+    Some(pool_termination_token.clone()),
+    vec![],
+    None,
+  )
+  .await
+  .unwrap();
+
+  let (create_tx, create_rx) = oneshot::channel();
+
+  worker_pool_tx
+    .send(UserWorkerMsgs::Create(
+      Box::new(WorkerContextInitOpts {
+        service_path: "./test_cases/boot_err_user_worker".into(),
+        no_module_cache: false,
+        no_npm: None,
+        env_vars: HashMap::new(),
+        timing: None,
+        maybe_eszip: None,
+        maybe_entrypoint: None,
+        maybe_module_code: None,
+        conf: WorkerRuntimeOpts::UserWorker(Box::new(test_user_runtime_opts())),
+        static_patterns: vec![],
+
+        maybe_s3_fs_config: None,
+        maybe_tmp_fs_config: None,
+        maybe_otel_config: None,
+      }),
+      create_tx,
+    ))
+    .unwrap();
+
+  let key = create_rx.await.unwrap().unwrap().key;
+
+  loop {
+    let ev = timeout(Duration::from_secs(30), events_rx.recv())
+      .await
+      .expect("timed out waiting for the worker to die")
+      .expect("worker event channel closed");
+
+    if matches!(ev.event, WorkerEvents::UncaughtException(_)) {
+      break;
+    }
+  }
+
+  let (res_tx, res_rx) = oneshot::channel();
+
+  worker_pool_tx
+    .send(UserWorkerMsgs::SendRequest(
+      key,
+      Request::builder()
+        .uri("/")
+        .method("GET")
+        .body(Body::empty())
+        .unwrap(),
+      res_tx,
+      None,
+    ))
+    .unwrap();
+
+  let Err(err) = res_rx.await.unwrap() else {
+    panic!("request to a dead worker must fail");
+  };
+
+  let err = err.to_string();
+
+  assert!(
+    err.contains("event loop error: Error: fail"),
+    "expected the worker's exit reason, got: {err}"
+  );
+
+  pool_termination_token.cancel_and_wait().await;
 }
 
 async fn test_main_worker_post_request_with_transfer_encoding(
@@ -2163,9 +2254,74 @@ async fn test_request_idle_timeout_websocket_node_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(true), true).await;
 }
 
+/// Port baked into `./test_cases/concurrent-redirect/index.ts`. The specifier
+/// lives in a static module, so it cannot pick up an ephemeral port; the test
+/// owning it is `#[serial]`, so a fixed port does not race other tests.
+const REDIRECT_MODULE_PORT: u16 = 9871;
+
+/// Stands in for the registry redirects the concurrent-redirect case used to
+/// get from `lib.deno.dev`, which was sunset with Deno Deploy Classic on
+/// 2026-07-20. Serving them here keeps the test hermetic.
+async fn serve_redirected_modules(token: CancellationToken) {
+  fn redirect(location: &str) -> HttpResponse<Body> {
+    HttpResponse::builder()
+      .status(StatusCode::FOUND)
+      .header("location", location)
+      .body(Body::empty())
+      .unwrap()
+  }
+
+  fn module(source: &'static str) -> HttpResponse<Body> {
+    HttpResponse::builder()
+      .status(StatusCode::OK)
+      .header("content-type", "application/typescript; charset=utf-8")
+      .body(Body::from(source))
+      .unwrap()
+  }
+
+  let service = hyper::service::make_service_fn(|_| async {
+    Ok::<_, std::convert::Infallible>(hyper::service::service_fn(
+      |req: Request<Body>| async move {
+        Ok::<_, std::convert::Infallible>(match req.uri().path() {
+          "/mod.ts" => redirect("/v1/mod.ts"),
+          "/types.ts" => redirect("/v1/types.ts"),
+          // Re-imports the sibling specifier so both redirects are in flight
+          // while the graph is being built.
+          "/v1/mod.ts" => module(
+            "import * as types from \"../types.ts\";\n\
+             export const mod = \"mod\";\n\
+             export { types };\n",
+          ),
+          "/v1/types.ts" => module("export const types = \"types\";\n"),
+          _ => HttpResponse::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::empty())
+            .unwrap(),
+        })
+      },
+    ))
+  });
+
+  let addr = SocketAddr::new(
+    IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    REDIRECT_MODULE_PORT,
+  );
+
+  let server = hyper::Server::bind(&addr)
+    .serve(service)
+    .with_graceful_shutdown(async move { token.cancelled().await });
+
+  if let Err(err) = server.await {
+    panic!("redirect module server failed: {err}");
+  }
+}
+
 #[tokio::test]
 #[serial]
 async fn test_should_not_hang_when_forced_redirection_for_specifiers() {
+  let server_token = CancellationToken::new();
+  let server = tokio::spawn(serve_redirected_modules(server_token.clone()));
+
   let (tx, rx) = oneshot::channel::<()>();
 
   integration_test!(
@@ -2182,7 +2338,12 @@ async fn test_should_not_hang_when_forced_redirection_for_specifiers() {
     TerminationToken::new()
   );
 
-  if timeout(Duration::from_secs(10), rx).await.is_err() {
+  let outcome = timeout(Duration::from_secs(10), rx).await;
+
+  server_token.cancel();
+  server.await.unwrap();
+
+  if outcome.is_err() {
     panic!("failed to check within 10 seconds");
   }
 }
