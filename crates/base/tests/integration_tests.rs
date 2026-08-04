@@ -2254,9 +2254,74 @@ async fn test_request_idle_timeout_websocket_node_secure() {
   test_request_idle_timeout_websocket_deno(new_localhost_tls(true), true).await;
 }
 
+/// Port baked into `./test_cases/concurrent-redirect/index.ts`. The specifier
+/// lives in a static module, so it cannot pick up an ephemeral port; the test
+/// owning it is `#[serial]`, so a fixed port does not race other tests.
+const REDIRECT_MODULE_PORT: u16 = 9871;
+
+/// Stands in for the registry redirects the concurrent-redirect case used to
+/// get from `lib.deno.dev`, which was sunset with Deno Deploy Classic on
+/// 2026-07-20. Serving them here keeps the test hermetic.
+async fn serve_redirected_modules(token: CancellationToken) {
+  fn redirect(location: &str) -> HttpResponse<Body> {
+    HttpResponse::builder()
+      .status(StatusCode::FOUND)
+      .header("location", location)
+      .body(Body::empty())
+      .unwrap()
+  }
+
+  fn module(source: &'static str) -> HttpResponse<Body> {
+    HttpResponse::builder()
+      .status(StatusCode::OK)
+      .header("content-type", "application/typescript; charset=utf-8")
+      .body(Body::from(source))
+      .unwrap()
+  }
+
+  let service = hyper::service::make_service_fn(|_| async {
+    Ok::<_, std::convert::Infallible>(hyper::service::service_fn(
+      |req: Request<Body>| async move {
+        Ok::<_, std::convert::Infallible>(match req.uri().path() {
+          "/mod.ts" => redirect("/v1/mod.ts"),
+          "/types.ts" => redirect("/v1/types.ts"),
+          // Re-imports the sibling specifier so both redirects are in flight
+          // while the graph is being built.
+          "/v1/mod.ts" => module(
+            "import * as types from \"../types.ts\";\n\
+             export const mod = \"mod\";\n\
+             export { types };\n",
+          ),
+          "/v1/types.ts" => module("export const types = \"types\";\n"),
+          _ => HttpResponse::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::empty())
+            .unwrap(),
+        })
+      },
+    ))
+  });
+
+  let addr = SocketAddr::new(
+    IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    REDIRECT_MODULE_PORT,
+  );
+
+  let server = hyper::Server::bind(&addr)
+    .serve(service)
+    .with_graceful_shutdown(async move { token.cancelled().await });
+
+  if let Err(err) = server.await {
+    panic!("redirect module server failed: {err}");
+  }
+}
+
 #[tokio::test]
 #[serial]
 async fn test_should_not_hang_when_forced_redirection_for_specifiers() {
+  let server_token = CancellationToken::new();
+  let server = tokio::spawn(serve_redirected_modules(server_token.clone()));
+
   let (tx, rx) = oneshot::channel::<()>();
 
   integration_test!(
@@ -2273,7 +2338,12 @@ async fn test_should_not_hang_when_forced_redirection_for_specifiers() {
     TerminationToken::new()
   );
 
-  if timeout(Duration::from_secs(10), rx).await.is_err() {
+  let outcome = timeout(Duration::from_secs(10), rx).await;
+
+  server_token.cancel();
+  server.await.unwrap();
+
+  if outcome.is_err() {
     panic!("failed to check within 10 seconds");
   }
 }
