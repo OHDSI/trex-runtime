@@ -1028,7 +1028,7 @@ where
           deno_fetch::deno_fetch::args(
             deno_fetch::Options {
               user_agent: "supabase-edge-runtime".to_string(),
-              root_cert_store_provider: None,
+              root_cert_store_provider: Some(_root_cert_store_provider),
               unsafely_ignore_certificate_errors: None,
               file_fetch_handler: std::rc::Rc::new(deno_fetch::FsFetchHandler),
               ..Default::default()
