@@ -29,19 +29,19 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
 } = primordials;
-import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+const { _ws } = core.loadExtScript("ext:deno_http/02_websocket.ts");
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { Event } = core.loadExtScript("ext:deno_web/02_event.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
 import {
   _eventLoop,
   _idleTimeoutDuration,
@@ -54,12 +54,12 @@ import {
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
-import {
+const {
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 // Define SymbolDispose locally since deno_web 0.252.0 doesn't export it
 const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");

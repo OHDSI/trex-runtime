@@ -1,10 +1,11 @@
-import * as net from "ext:deno_net/01_net.js";
-import * as tls from "ext:deno_net/02_tls.js";
-import * as timers from "ext:deno_web/02_timers.js";
-import * as fs from "ext:deno_fs/30_fs.js";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { core } from "ext:core/mod.js";
+const net = core.loadExtScript("ext:deno_net/01_net.js");
+const tls = core.loadExtScript("ext:deno_net/02_tls.js");
+const timers = core.loadExtScript("ext:deno_web/02_timers.js");
+const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
+const { createHttpClient } = core.loadExtScript("ext:deno_fetch/22_http_client.js");
 import { osCalls } from "ext:os/os.js";
-import * as io from "ext:deno_io/12_io.js";
+const io = core.loadExtScript("ext:deno_io/12_io.js");
 import * as permissions from "ext:runtime/permissions.js";
 import { errors } from "ext:runtime/errors.js";
 import { serve, serveHttp, upgradeWebSocket } from "ext:runtime/http.js";

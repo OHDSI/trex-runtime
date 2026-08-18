@@ -1,15 +1,15 @@
-import "ext:deno_http/01_http.js";
+core.loadExtScript("ext:deno_http/01_http.js");
 
 import { core, internals, primordials } from "ext:core/mod.js";
-import { RequestPrototype } from "ext:deno_fetch/23_request.js";
-import {
+const { RequestPrototype } = core.loadExtScript("ext:deno_fetch/23_request.js");
+const {
   fromInnerResponse,
   newInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import { upgradeWebSocket } from "ext:deno_http/02_websocket.ts";
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const { upgradeWebSocket } = core.loadExtScript("ext:deno_http/02_websocket.ts");
 import { HttpConn } from "ext:runtime/01_http.js";
-import { UpgradedConn } from "ext:deno_net/01_net.js";
-import {
+const { UpgradedConn } = core.loadExtScript("ext:deno_net/01_net.js");
+const {
   builtinTracer,
   ContextManager,
   currentSnapshot,
@@ -17,11 +17,11 @@ import {
   PROPAGATORS,
   restoreSnapshot,
   TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
-import {
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
+const {
   updateSpanFromRequest,
   updateSpanFromServerResponse,
-} from "ext:deno_telemetry/util.ts";
+} = core.loadExtScript("ext:deno_telemetry/util.ts");
 
 const ops = core.ops;
 

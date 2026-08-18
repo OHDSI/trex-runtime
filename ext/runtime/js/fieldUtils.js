@@ -1,4 +1,5 @@
-import * as console from "ext:deno_web/01_console.js";
+import { core } from "ext:core/mod.js";
+const console = core.loadExtScript("ext:deno_web/01_console.js");
 
 const {
   ObjectPrototypeIsPrototypeOf,

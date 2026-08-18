@@ -4,43 +4,51 @@ import { core, internals, primordials } from "ext:core/mod.js";
 // `lazy_loaded_js`, so it can no longer be statically imported at snapshot
 // time. Upstream's own runtime JS uses `core.loadExtScript` for exactly this.
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { nodeGlobals } from "ext:deno_node/00_globals.js";
-import "ext:deno_node/02_init.js";
+// NOTE(deno-2.9.5): `ext:deno_node/00_globals.js` and
+// `ext:deno_node/02_init.js` no longer exist. Upstream deleted the
+// `nodeGlobals` bag and moved the node bootstrap into `node:module`
+// (`01_require.js`), which is `lazy_loaded_esm` -- so `globalThis.nodeBootstrap`
+// is undefined until `node:process` and `node:module` are pulled in. The node
+// bootstrap below therefore loads them on demand and installs the same four
+// globals from the modules upstream's own lazy global-scope props read
+// (`node:process` -> `default`, `node:buffer` -> `Buffer`, `node:timers` ->
+// `setImmediate`/`clearImmediate`). `internals.nodeGlobals` is kept as a
+// trex-facing surface and filled at the same point.
+const nodeGlobals = { __proto__: null };
 
-import "ext:deno_process/40_process.js";
+core.loadExtScript("ext:deno_process/40_process.js");
 import "ext:runtime/98_global_scope_shared.js";
-import "ext:deno_http/00_serve.ts";
+core.loadExtScript("ext:deno_http/00_serve.ts");
 
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import * as base64 from "ext:deno_web/05_base64.js";
-import * as console from "ext:deno_web/01_console.js";
-import * as crypto from "ext:deno_crypto/00_crypto.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import * as encoding from "ext:deno_web/08_text_encoding.js";
-import * as event from "ext:deno_web/02_event.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
-import * as caches from "ext:deno_cache/01_cache.js";
-import * as file from "ext:deno_web/09_file.js";
-import * as fileReader from "ext:deno_web/10_filereader.js";
-import * as formData from "ext:deno_fetch/21_formdata.js";
-import * as headers from "ext:deno_fetch/20_headers.js";
-import * as streams from "ext:deno_web/06_streams.js";
-import * as streams2 from "ext:deno_web/14_compression.js";
-import * as timers from "ext:deno_web/02_timers.js";
-import * as url from "ext:deno_web/00_url.js";
-import * as urlPattern from "ext:deno_web/01_urlpattern.js";
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
+const console = core.loadExtScript("ext:deno_web/01_console.js");
+const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const event = core.loadExtScript("ext:deno_web/02_event.js");
+const fetch = core.loadExtScript("ext:deno_fetch/26_fetch.js");
+const caches = core.loadExtScript("ext:deno_cache/01_cache.js");
+const file = core.loadExtScript("ext:deno_web/09_file.js");
+const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
+const formData = core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const headers = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const streams = core.loadExtScript("ext:deno_web/06_streams.js");
+const streams2 = core.loadExtScript("ext:deno_web/14_compression.js");
+const timers = core.loadExtScript("ext:deno_web/02_timers.js");
+const url = core.loadExtScript("ext:deno_web/00_url.js");
+const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
 import * as webSocket from "ext:deno_websocket/01_websocket.js";
-import * as response from "ext:deno_fetch/23_response.js";
-import * as request from "ext:deno_fetch/23_request.js";
-import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
-import * as imageData from "ext:deno_web/16_image_data.js";
-import * as broadcastChannel from "ext:deno_web/01_broadcast_channel.js";
-import * as performance from "ext:deno_web/15_performance.js";
-import * as messagePort from "ext:deno_web/13_message_port.js";
+const response = core.loadExtScript("ext:deno_fetch/23_response.js");
+const request = core.loadExtScript("ext:deno_fetch/23_request.js");
+const globalInterfaces = core.loadExtScript("ext:deno_web/04_global_interfaces.js");
+const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
+const broadcastChannel = core.loadExtScript("ext:deno_web/01_broadcast_channel.js");
+const performance = core.loadExtScript("ext:deno_web/15_performance.js");
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import * as DenoWSStream from "ext:deno_websocket/02_websocketstream.js";
-import * as eventSource from "ext:deno_fetch/27_eventsource.js";
-import * as WebGPU from "ext:deno_webgpu/00_init.js";
-import * as WebGPUSurface from "ext:deno_webgpu/02_surface.js";
+const eventSource = core.loadExtScript("ext:deno_fetch/27_eventsource.js");
+const WebGPU = core.loadExtScript("ext:deno_webgpu/00_init.js");
 
 import "ext:ai/onnxruntime/cache_adapter.js";
 import { installWasmMemoryTracking, startWasmMemoryPolling } from "ext:runtime/wasm_memory_tracker.js";
@@ -60,7 +68,7 @@ import { registerErrors } from "ext:runtime/errors.js";
 import { denoOverrides, fsVars } from "ext:runtime/denoOverrides.js";
 import { installTrexasUpgradeHttpRaw } from "ext:runtime/http.js";
 import { registerDeclarativeServer } from "ext:runtime/00_serve.js";
-import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+const { bootstrap: bootstrapOtel } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 import {
   formatException,
@@ -208,7 +216,11 @@ const globalScope = {
 
   // crypto
   CryptoKey: nonEnumerable(crypto.CryptoKey),
-  crypto: readOnly(crypto.crypto),
+  // NOTE(deno-2.9.5): `crypto.crypto` is a getter that mints a cppgc-wrapped
+  // singleton, and the cppgc heap is not attached during snapshot building --
+  // reading it eagerly here aborts the snapshot. Upstream installs the same
+  // global as `core.propGetterOnly(() => crypto.crypto)`.
+  crypto: getterOnly(() => crypto.crypto),
   Crypto: nonEnumerable(crypto.Crypto),
   SubtleCrypto: nonEnumerable(crypto.SubtleCrypto),
 
@@ -820,6 +832,16 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
     });
   }
 
+  // NOTE(deno-2.9.5): `node:module` (01_require.js) is `lazy_loaded_esm` now,
+  // so its top-level `globalThis.nodeBootstrap = initialize` has not run yet.
+  // Pull `node:process` first and then `node:module` -- the same order and for
+  // the same reason as upstream's eager path in `runtime/js/99_main.js`
+  // (node:module's closure captures a finished node:process). trex installs the
+  // node globals eagerly, exactly as it did before, rather than adopting
+  // upstream's lazy property descriptors.
+  core.createLazyLoader("node:process")();
+  core.createLazyLoader("node:module")();
+
   const nodeBootstrap = globalThis.nodeBootstrap;
   if (nodeBootstrap) {
     nodeBootstrap({
@@ -828,6 +850,14 @@ globalThis.bootstrapSBEdge = (opts, ctx) => {
       argv: void 0,
       nodeDebug: Deno.env.get("NODE_DEBUG") ?? "",
     });
+
+    // The `nodeGlobals` bag that ext_node used to fill is gone; read the same
+    // values straight out of the modules upstream's own global-scope props use.
+    nodeGlobals.process = core.createLazyLoader("node:process")().default;
+    nodeGlobals.Buffer = core.createLazyLoader("node:buffer")().Buffer;
+    const nodeTimers = core.createLazyLoader("node:timers")();
+    nodeGlobals.setImmediate = nodeTimers.setImmediate;
+    nodeGlobals.clearImmediate = nodeTimers.clearImmediate;
 
     // Apply Node.js globals to globalThis
     if (nodeGlobals.process) {

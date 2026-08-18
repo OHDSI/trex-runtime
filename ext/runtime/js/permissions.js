@@ -1,6 +1,6 @@
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
-import { primordials } from "ext:core/mod.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { Event, EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,

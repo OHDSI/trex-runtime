@@ -4,7 +4,7 @@ import { core, primordials } from "ext:core/mod.js";
 // `lazy_loaded_js`, so it can no longer be statically imported at snapshot
 // time. Upstream's own runtime JS uses `core.loadExtScript` for exactly this.
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import * as DenoCaches from "ext:deno_cache/01_cache.js";
+const DenoCaches = core.loadExtScript("ext:deno_cache/01_cache.js");
 
 const ALLOWED_CACHE_NAMES = ["transformers-cache"];
 const {
