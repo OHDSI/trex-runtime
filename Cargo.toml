@@ -60,7 +60,6 @@ deno_broadcast_channel = "0.216.0"
 deno_node_crypto = "0.27.0"
 deno_node_sqlite = "0.27.0"
 deno_cache = "0.190.0"
-deno_canvas = "0.119.0"
 deno_image = "0.33.0"
 deno_console = "0.222.0"
 deno_crypto = "0.271.0"
@@ -306,7 +305,6 @@ v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v150.4
 # Deno monorepo fork — pinned to the trex-v2.9.5 branch. eszip now lives in the
 # monorepo, so it patches from the same fork/branch as the other deno crates.
 eszip = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
-deno_canvas = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_core = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 # The fork exports `deno_http::network_buffered_stream` so embedders can name

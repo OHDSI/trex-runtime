@@ -12137,11 +12137,6 @@ dependencies = [
 ]
 
 [[patch.unused]]
-name = "deno_canvas"
-version = "0.119.0"
-source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.9.5#0f48908d070f28519af94bd0f857a4123ec51f41"
-
-[[patch.unused]]
 name = "duckdb"
 version = "1.4.4"
 source = "git+https://github.com/p-hoffmann/trexsql-rs?tag=v1.4.4-trex#6cfa29d148ae47b91f0e9044214a4dce08113cbf"
