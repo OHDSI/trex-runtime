@@ -46,8 +46,8 @@ mod request {
   use http_utils::utils::emit_status_code;
   use http_utils::utils::get_upgrade_type;
   use http_v02::StatusCode;
+  use hyper_util::rt::TokioIo;
   use hyper_v014::client::conn::http1;
-  use hyper_v014::upgrade::OnUpgrade;
   use hyper_v014::Body;
   use hyper_v014::Response;
   use once_cell::sync::Lazy;
@@ -64,6 +64,35 @@ mod request {
   use crate::timeout::ReadTimeoutStream;
   use crate::timeout::{self};
   use crate::worker::DuplexStreamEntry;
+
+  /// A pending upgrade taken out of an inbound request's extensions.
+  ///
+  /// Requests reach us from two places that are on different hyper majors, and
+  /// `http::Extensions` is type-erased, so asking for only one of them compiles
+  /// but silently misses the other:
+  ///
+  /// * `crate::server` — the outer edge server, still hyper 0.14, which puts
+  ///   its own `OnUpgrade` in the request extensions.
+  /// * `ext_workers::op_user_worker_fetch_send` — worker-to-worker `fetch`,
+  ///   which moves the upgrade out of a `deno_http` request. `deno_http` has
+  ///   been on hyper 1.x since 0.255 (it dropped `hyper_v014` outright), so
+  ///   that one is a hyper 1.x `OnUpgrade`.
+  enum ReqUpgrade {
+    V014(hyper_v014::upgrade::OnUpgrade),
+    V1(hyper::upgrade::OnUpgrade),
+  }
+
+  fn take_req_upgrade(req: &mut hyper_v014::Request<Body>) -> Option<ReqUpgrade> {
+    let extensions = req.extensions_mut();
+
+    if let Some(it) = extensions.remove::<hyper_v014::upgrade::OnUpgrade>() {
+      return Some(ReqUpgrade::V014(it));
+    }
+
+    extensions
+      .remove::<hyper::upgrade::OnUpgrade>()
+      .map(ReqUpgrade::V1)
+  }
 
   pub(super) async fn handle_request(
     flags: Arc<ServerFlags>,
@@ -97,7 +126,7 @@ mod request {
     let req_upgrade_type = get_upgrade_type(req.headers());
     let req_upgrade = req_upgrade_type
       .clone()
-      .and_then(|it| Some(it).zip(req.extensions_mut().remove::<OnUpgrade>()));
+      .and_then(|it| Some(it).zip(take_req_upgrade(&mut req)));
 
     // send the HTTP request to the worker over duplex stream
     let (mut request_sender, connection) =
@@ -208,7 +237,7 @@ mod request {
   }
 
   async fn relay_upgraded_request_and_response(
-    downstream: OnUpgrade,
+    downstream: ReqUpgrade,
     parts: http1::Parts<io::DuplexStream>,
     maybe_idle_timeout: Option<Duration>,
   ) {
@@ -219,31 +248,66 @@ mod request {
       ReadTimeoutStream::with_bypass(upstream)
     };
 
-    let mut downstream = downstream.await.expect("failed to upgrade request");
+    match downstream {
+      ReqUpgrade::V014(downstream) => {
+        let mut downstream =
+          downstream.await.expect("failed to upgrade request");
 
-    match io::copy_bidirectional(&mut upstream, &mut downstream).await {
-      Ok(_) => {}
-      Err(err)
-        if matches!(
-          err.kind(),
-          ErrorKind::TimedOut | ErrorKind::BrokenPipe
-        ) => {}
-      Err(err) if matches!(err.kind(), ErrorKind::UnexpectedEof) => {
-        let Ok(_) =
-          downstream.downcast::<timeout::Stream<TlsStream<TcpStream>>>()
-        else {
-          // TODO(Nyannyacha): It would be better if we send
-          // `close_notify` before shutdown an upstream if downstream is a
-          // TLS stream.
+        match io::copy_bidirectional(&mut upstream, &mut downstream).await {
+          Ok(_) => {}
+          Err(err)
+            if matches!(
+              err.kind(),
+              ErrorKind::TimedOut | ErrorKind::BrokenPipe
+            ) => {}
+          Err(err) if matches!(err.kind(), ErrorKind::UnexpectedEof) => {
+            let Ok(_) =
+              downstream.downcast::<timeout::Stream<TlsStream<TcpStream>>>()
+            else {
+              // TODO(Nyannyacha): It would be better if we send
+              // `close_notify` before shutdown an upstream if downstream is a
+              // TLS stream.
 
-          // INVARIANT: `UnexpectedEof` due to shutdown `DuplexStream` is
-          // only expected to occur in the context of `TlsStream`.
-          panic!("unhandleable unexpected eof");
-        };
+              // INVARIANT: `UnexpectedEof` due to shutdown `DuplexStream` is
+              // only expected to occur in the context of `TlsStream`.
+              panic!("unhandleable unexpected eof");
+            };
+          }
+
+          value => {
+            unreachable!(
+              "coping between upgraded connections failed: {:?}",
+              value
+            );
+          }
+        }
       }
 
-      value => {
-        unreachable!("coping between upgraded connections failed: {:?}", value);
+      ReqUpgrade::V1(downstream) => {
+        // A worker-to-worker upgrade. The downstream here is the calling
+        // worker's `deno_http` connection, which is always a duplex stream, so
+        // the `TlsStream` invariant above cannot apply and an `UnexpectedEof`
+        // just means the caller went away.
+        let mut downstream =
+          TokioIo::new(downstream.await.expect("failed to upgrade request"));
+
+        match io::copy_bidirectional(&mut upstream, &mut downstream).await {
+          Ok(_) => {}
+          Err(err)
+            if matches!(
+              err.kind(),
+              ErrorKind::TimedOut
+                | ErrorKind::BrokenPipe
+                | ErrorKind::UnexpectedEof
+            ) => {}
+
+          value => {
+            unreachable!(
+              "coping between upgraded connections failed: {:?}",
+              value
+            );
+          }
+        }
       }
     }
 

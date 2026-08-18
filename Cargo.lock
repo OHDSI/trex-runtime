@@ -4346,6 +4346,7 @@ dependencies = [
  "futures-util",
  "http_utils",
  "hyper 0.14.32",
+ "hyper 1.9.0",
  "log",
  "once_cell",
  "scopeguard",
