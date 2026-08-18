@@ -13,6 +13,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::common::FastInsecureHasher;
 
@@ -83,20 +84,49 @@ pub struct CacheDBConfiguration {
 
 impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
+    // WSL-1's filesystem translation layer doesn't support WAL's
+    // shared-memory locking, which surfaces as `SQLITE_PROTOCOL` (error
+    // code 15: "Database lock protocol error") when two Deno processes
+    // open the same cache DB at once. Fall back to TRUNCATE journal mode
+    // there. See https://github.com/denoland/deno/issues/26441.
+    let journal_mode = if is_wsl1() { "TRUNCATE" } else { "WAL" };
     format!(
-      concat!(
-        "PRAGMA journal_mode=WAL;",
-        "PRAGMA synchronous=NORMAL;",
-        "PRAGMA temp_store=memory;",
-        "PRAGMA page_size=4096;",
-        "PRAGMA mmap_size=6000000;",
-        "PRAGMA optimize;",
-        "CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
-        "{}",
-      ),
-      self.table_initializer
+      "PRAGMA journal_mode={journal_mode};\
+       PRAGMA synchronous=NORMAL;\
+       PRAGMA temp_store=memory;\
+       PRAGMA page_size=4096;\
+       PRAGMA mmap_size=6000000;\
+       PRAGMA optimize;\
+       CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
+       {table_initializer}",
+      table_initializer = self.table_initializer
     )
   }
+}
+
+/// Returns whether the underlying `osrelease` string was produced by
+/// the WSL-1 kernel. The WSL-1 kernel string contains "Microsoft"; the
+/// WSL-2 kernel string contains both "microsoft" and "WSL2".
+#[cfg(target_os = "linux")]
+fn parse_wsl1_from_osrelease(osrelease: &str) -> bool {
+  let lower = osrelease.to_ascii_lowercase();
+  lower.contains("microsoft") && !lower.contains("wsl2")
+}
+
+#[cfg(target_os = "linux")]
+fn is_wsl1() -> bool {
+  use std::sync::OnceLock;
+  static IS_WSL1: OnceLock<bool> = OnceLock::new();
+  *IS_WSL1.get_or_init(|| {
+    std::fs::read_to_string("/proc/sys/kernel/osrelease")
+      .map(|s| parse_wsl1_from_osrelease(&s))
+      .unwrap_or(false)
+  })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_wsl1() -> bool {
+  false
 }
 
 #[derive(Debug)]
@@ -394,6 +424,25 @@ fn open_connection(
     }
   }
 
+  // If the failure is just transient lock contention (another process is
+  // currently operating on the database - for example recovering a WAL-mode
+  // database, which surfaces as SQLITE_BUSY_RECOVERY / error code 261), the
+  // file is not corrupt. Wait for the other process to finish by retrying with
+  // exponential backoff instead of deleting it.
+  // See https://github.com/denoland/deno/issues/27283.
+  if is_lock_contention_error(&err) {
+    match retry_open_with_backoff(path, &open_connection_and_init) {
+      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+      Err(err) => {
+        // Still locked after exhausting retries. Don't delete the file - it
+        // belongs to another process and is not corrupt - just degrade
+        // gracefully to the configured failure mode.
+        log_failure_mode(path, std::io::stderr().is_terminal(), config);
+        return handle_failure_mode(config, err, open_connection_and_init);
+      }
+    }
+  }
+
   // There are rare times in the tests when we can't initialize a cache DB the first time, but it succeeds the second time, so
   // we don't log these at a debug level.
   log::trace!(
@@ -426,6 +475,74 @@ fn open_connection(
     };
   }
 
+  log_failure_mode(path, is_tty, config);
+  handle_failure_mode(config, err, open_connection_and_init)
+}
+
+/// Returns whether the error is transient lock contention that just means
+/// another process is currently operating on the database (e.g. recovering a
+/// WAL-mode database file, which surfaces as `SQLITE_BUSY_RECOVERY`). The
+/// underlying file is not corrupt and the operation should be retried rather
+/// than the file deleted.
+fn is_lock_contention_error(err: &AnyError) -> bool {
+  matches!(
+    err.downcast_ref::<rusqlite::Error>(),
+    Some(rusqlite::Error::SqliteFailure(ffi_err, _))
+      if matches!(
+        ffi_err.code,
+        rusqlite::ErrorCode::DatabaseBusy
+          | rusqlite::ErrorCode::DatabaseLocked
+      )
+  )
+}
+
+/// Maximum number of times to retry opening a database that is busy because
+/// another process is operating on it.
+const LOCK_CONTENTION_RETRIES: u32 = 7;
+/// Base delay used for the first retry; doubles on each subsequent retry up to
+/// [`LOCK_CONTENTION_MAX_DELAY`]. The default schedule waits ~1.3s in total.
+const LOCK_CONTENTION_BASE_DELAY: Duration = Duration::from_millis(10);
+const LOCK_CONTENTION_MAX_DELAY: Duration = Duration::from_millis(1000);
+
+/// Retry opening the database with exponential backoff while it remains locked
+/// by another process. Returns the last error if the contention does not clear
+/// within [`LOCK_CONTENTION_RETRIES`] attempts, or immediately if a different
+/// (non-contention) error is encountered.
+fn retry_open_with_backoff(
+  path: &Path,
+  open_connection_and_init: impl Fn(Option<&Path>) -> Result<Connection, AnyError>,
+) -> Result<Connection, AnyError> {
+  let mut delay = LOCK_CONTENTION_BASE_DELAY;
+  let mut last_err = None;
+  for attempt in 1..=LOCK_CONTENTION_RETRIES {
+    log::debug!(
+      "Cache database '{}' is locked by another process, retrying in {}ms (attempt {}/{}).",
+      path.to_string_lossy(),
+      delay.as_millis(),
+      attempt,
+      LOCK_CONTENTION_RETRIES,
+    );
+    std::thread::sleep(delay);
+    match open_connection_and_init(Some(path)) {
+      Ok(conn) => return Ok(conn),
+      Err(err) => {
+        // If the error changed to something other than lock contention, stop
+        // retrying and surface it to the regular recovery path.
+        if !is_lock_contention_error(&err) {
+          return Err(err);
+        }
+        last_err = Some(err);
+      }
+    }
+    delay = (delay * 2).min(LOCK_CONTENTION_MAX_DELAY);
+  }
+  Err(
+    last_err
+      .unwrap_or_else(|| rusqlite::Error::SqliteSingleThreadedMode.into()),
+  )
+}
+
+fn log_failure_mode(path: &Path, is_tty: bool, config: &CacheDBConfiguration) {
   match config.on_failure {
     CacheFailure::InMemory => {
       log::log!(
@@ -437,7 +554,6 @@ fn open_connection(
         "Failed to open cache file '{}', opening in-memory cache.",
         path.to_string_lossy()
       );
-      Ok(ConnectionState::Connected(open_connection_and_init(None)?))
     }
     CacheFailure::Blackhole => {
       log::log!(
@@ -449,14 +565,26 @@ fn open_connection(
         "Failed to open cache file '{}', performance may be degraded.",
         path.to_string_lossy()
       );
-      Ok(ConnectionState::Blackhole)
     }
     CacheFailure::Error => {
       log::error!(
         "Failed to open cache file '{}', expect further errors.",
         path.to_string_lossy()
       );
-      Err(err)
     }
+  }
+}
+
+fn handle_failure_mode(
+  config: &CacheDBConfiguration,
+  err: AnyError,
+  open_connection_and_init: impl Fn(Option<&Path>) -> Result<Connection, AnyError>,
+) -> Result<ConnectionState, AnyError> {
+  match config.on_failure {
+    CacheFailure::InMemory => {
+      Ok(ConnectionState::Connected(open_connection_and_init(None)?))
+    }
+    CacheFailure::Blackhole => Ok(ConnectionState::Blackhole),
+    CacheFailure::Error => Err(err),
   }
 }

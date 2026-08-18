@@ -161,7 +161,11 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => {
+      Some(deno_semver::Version::parse_standard(version).with_context(
+        || format!("Invalid 'version' field in '{}'", config.specifier),
+      )?)
+    }
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {

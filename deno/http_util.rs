@@ -590,16 +590,18 @@ impl HttpClient {
       .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
     if status.is_redirection() && status != http::StatusCode::NOT_MODIFIED {
+      let mut redirect_headers = headers.clone();
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
         let mut req = self.get(new_url.clone())?.build();
 
-        let mut headers = headers.clone();
-        // SECURITY: Do NOT forward auth headers to a new origin
+        // SECURITY: Do NOT forward auth headers to a new origin. Once
+        // stripped, the header stays stripped for the rest of the redirect
+        // chain so a later hop back to the original origin can't restore it.
         if new_url.origin() != url.origin() {
-          headers.remove(http::header::AUTHORIZATION);
+          redirect_headers.remove(http::header::AUTHORIZATION);
         }
-        *req.headers_mut() = headers;
+        *req.headers_mut() = redirect_headers.clone();
 
         let new_response = self
           .client
@@ -630,9 +632,14 @@ pub async fn get_response_body_with_progress(
   if let Some(progress_guard) = progress_guard {
     let mut total_size = response.body().size_hint().exact();
     if total_size.is_none() {
+      // `Content-Length` describes the encoded body, so it can't be used as
+      // the progress total when the body was transparently decompressed.
       total_size = response
         .headers()
         .get(http::header::CONTENT_LENGTH)
+        .filter(|_| {
+          !response.headers().contains_key(http::header::CONTENT_ENCODING)
+        })
         .and_then(|val| val.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());
     }
