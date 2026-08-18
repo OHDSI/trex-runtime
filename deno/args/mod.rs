@@ -300,6 +300,14 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     },
     scopes: Default::default(),
     registry_configs: Default::default(),
+    // NOTE(deno-2.9.5): new in deno_npmrc 0.18. Every default is the
+    // "feature off" value (`ReplaceRegistryHost::NpmJs`, no min release age,
+    // `TrustPolicyConfig::Off`, no cutoff, no exclusions).
+    replace_registry_host: Default::default(),
+    min_release_age_days: Default::default(),
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: Default::default(),
+    trust_policy_exclude: Default::default(),
   })
 }
 

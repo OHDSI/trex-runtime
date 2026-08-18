@@ -4317,6 +4317,7 @@ dependencies = [
  "httparse",
  "hyper 0.14.32",
  "hyper 1.9.0",
+ "hyper-util",
  "log",
  "memmem",
  "once_cell",

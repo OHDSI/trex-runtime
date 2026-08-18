@@ -18,8 +18,8 @@ use deno_websocket::ws_create_server_stream;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use futures::ready;
-use hyper_v014::upgrade::OnUpgrade;
-use hyper_v014::upgrade::Parts;
+use hyper::upgrade::OnUpgrade;
+use hyper_util::rt::TokioIo;
 use log::error;
 use serde::Serialize;
 use tokio::io::AsyncRead;
@@ -238,28 +238,36 @@ async fn op_http_upgrade_websocket2(
     }
   };
 
-  let upgraded = hyper_v014::upgrade::on(request)
+  // NOTE(deno-2.9.5): deno_http 0.255 moved the legacy `serveHttp` connection
+  // off hyper 0.14 and onto hyper 1.x, and it now wraps the embedder's IO in a
+  // private `NetworkBufferedStream` before handing it to hyper. The concrete
+  // upgraded type is therefore `TokioIo<NetworkBufferedStream<DuplexStream2>>`,
+  // which cannot be named outside deno_http, so the old
+  // `downcast::<DuplexStream2>()` is no longer expressible. We wrap the
+  // `Upgraded` instead; it replays hyper's `read_buf` on first read, so no
+  // bytes are lost and `read_buf` is passed as empty.
+  //
+  // XXX(deno-2.9.5): this loses the `conn_sync` `CancellationToken` that used
+  // to be moved onto the `UnixStream2` half. See task-12-report.md - BEHAVIOUR
+  // QUESTION 1. Do not treat this as settled.
+  let upgraded = hyper::upgrade::on(request)
     .await
     .map_err(|e| crate::RuntimeError::Http(e.to_string()))?;
-  let Parts { io, read_buf, .. } =
-    upgraded.downcast::<DuplexStream2>().unwrap();
-  let (mut rw, conn_sync) = io
-    .into_inner()
-    .with_context(|| "invalid duplex stream was found")?;
+  let mut rw = TokioIo::new(upgraded);
 
   // NOTE(Nyannyacha): We use `UnixStream` out of necessity here because
   // `ws_create_server_stream` only supports network stream types.
   let (ours, theirs) = UnixStream::pair()?;
 
   tokio::spawn(async move {
-    let mut theirs = UnixStream2::new(theirs, conn_sync);
+    let mut theirs = UnixStream2::new(theirs, None);
     let _ = copy_bidirectional(&mut rw, &mut theirs).await;
   });
 
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
     ours.into(),
-    read_buf,
+    bytes::Bytes::new(),
   ))
 }
 
@@ -306,7 +314,10 @@ fn op_http_upgrade_raw2(
             bail!("cannot send response");
           }
 
-          let mut upgraded = upgrade.await?;
+          // NOTE(deno-2.9.5): hyper 1.x `Upgraded` implements hyper's own
+          // `rt::Read`/`rt::Write` rather than tokio's, so bridge it with
+          // `TokioIo` before using the tokio IO helpers below.
+          let mut upgraded = TokioIo::new(upgrade.await?);
 
           upgraded.write_all(&pre).await?;
           break upgraded;

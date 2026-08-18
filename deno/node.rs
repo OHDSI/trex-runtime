@@ -180,12 +180,14 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
             return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],
               reexports: vec![],
+              member_reexports: vec![],
             }));
           }
         } else {
           return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
             exports: vec![],
             reexports: vec![],
+            member_reexports: vec![],
           }));
         }
       }
@@ -200,9 +202,24 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
         Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
           exports,
           reexports,
+          member_reexports: vec![],
         }))
       }
     }
+  }
+
+  // NOTE(deno-2.9.5): `CjsCodeAnalyzer` gained `analyze_cjs_member_props` for
+  // the `module.exports = require(X).MEMBER` shape. This analyzer never emits
+  // `member_reexports`, so node_resolver never calls this; returning `None`
+  // keeps the pre-2.9.5 behaviour (no member-shape narrowing). Mirrors
+  // upstream's `cli/rt/node.rs` implementation.
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    _specifier: &ModuleSpecifier,
+    _maybe_source: Option<Cow<'a, str>>,
+    _member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox> {
+    Ok(None)
   }
 }
 
@@ -331,12 +348,14 @@ impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static>
             return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],
               reexports: vec![],
+              member_reexports: vec![],
             }));
           }
         } else {
           return Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
             exports: vec![],
             reexports: vec![],
+            member_reexports: vec![],
           }));
         }
       }
@@ -351,8 +370,23 @@ impl<TSys: FsRead + FsMetadata + FsCanonicalize + Send + Sync + Clone + 'static>
         Ok(ExtNodeCjsAnalysis::Cjs(CjsAnalysisExports {
           exports,
           reexports,
+          member_reexports: vec![],
         }))
       }
     }
+  }
+
+  // NOTE(deno-2.9.5): `CjsCodeAnalyzer` gained `analyze_cjs_member_props` for
+  // the `module.exports = require(X).MEMBER` shape. This analyzer never emits
+  // `member_reexports`, so node_resolver never calls this; returning `None`
+  // keeps the pre-2.9.5 behaviour (no member-shape narrowing). Mirrors
+  // upstream's `cli/rt/node.rs` implementation.
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    _specifier: &ModuleSpecifier,
+    _maybe_source: Option<Cow<'a, str>>,
+    _member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox> {
+    Ok(None)
   }
 }

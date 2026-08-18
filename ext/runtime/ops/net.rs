@@ -140,11 +140,13 @@ impl Drop for ListenMarker {
 impl Resource for ListenMarker {}
 
 /// Virtual TCP listen - creates a marker instead of real TCP socket.
+// NOTE(deno-2.9.5): `deno_net::ops::IpAddr` swapped its serde derives for
+// `FromV8`/`ToV8`, so the argument is now `#[scoped]` and the tuple return
+// carries no `#[serde]` marker - mirroring upstream `op_net_listen_tcp`.
 #[op2]
-#[serde]
 pub fn op_net_listen(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   _reuse_port: bool,
   _load_balanced: bool,
   _tcp_backlog: i32,
@@ -160,7 +162,6 @@ pub fn op_net_listen(
 
 /// Virtual TCP accept - waits for duplex stream from main worker.
 #[op2]
-#[serde]
 pub async fn op_net_accept(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
