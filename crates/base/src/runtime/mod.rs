@@ -946,6 +946,10 @@ where
           shared_array_buffer_store: None,
           compiled_wasm_module_store: None,
           startup_snapshot: snapshot::snapshot(),
+          // NOTE(deno-2.9.5): sources for `lazy_loaded_*` files the snapshot
+          // did not consume; see crates/base/src/snapshot.rs.
+          residual_lazy_js_sources: snapshot::RESIDUAL_LAZY_JS,
+          residual_lazy_esm_sources: snapshot::RESIDUAL_LAZY_ESM,
           module_loader: Some(module_loader),
           extension_transpiler: Some(std::rc::Rc::new(|specifier, source| {
             deno::transpile::maybe_transpile_source(specifier, source)

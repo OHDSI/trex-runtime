@@ -9,6 +9,8 @@ mod supabase_startup_snapshot {
   use deno_core::snapshot::CreateSnapshotOptions;
   use deno_core::v8;
   use deno_core::Extension;
+  use deno_core::ExtensionFileSource;
+  use deno_core::ExtensionFileSourceCode;
 
   use super::*;
 
@@ -29,7 +31,120 @@ mod supabase_startup_snapshot {
   // state at runtime) to hold its slot in the list.
   deno_core::extension!(base_runtime_permissions);
 
-  pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
+  /// NOTE(deno-2.9.5): a single `lazy_loaded_js` / `lazy_loaded_esm` entry
+  /// declared by an extension, as `(specifier, on-disk source path)`. Mirrors
+  /// upstream's `deno_runtime::snapshot::LazyExtensionFile`.
+  #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+  enum LazyKind {
+    /// `lazy_loaded_js` - loaded on demand via `core.loadExtScript()`.
+    Js,
+    /// `lazy_loaded_esm` - loaded on demand via `op_lazy_load_esm()`.
+    Esm,
+  }
+
+  struct LazyFile {
+    specifier: String,
+    path: PathBuf,
+    kind: LazyKind,
+  }
+
+  fn lazy_file_entry(
+    file: &ExtensionFileSource,
+    kind: LazyKind,
+  ) -> Option<LazyFile> {
+    #[allow(deprecated)]
+    let path = match &file.code {
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(p) => PathBuf::from(p),
+      // Entries pushed by customizers have no on-disk path and so cannot be
+      // re-embedded by the build script.
+      ExtensionFileSourceCode::IncludedInBinary(_)
+      | ExtensionFileSourceCode::LoadedFromMemoryDuringSnapshot(_)
+      | ExtensionFileSourceCode::Computed(_) => return None,
+    };
+    Some(LazyFile {
+      specifier: file.specifier.to_string(),
+      path,
+      kind,
+    })
+  }
+
+  fn collect_lazy_extension_files(extensions: &[Extension]) -> Vec<LazyFile> {
+    let mut out = Vec::new();
+    for ext in extensions {
+      for file in &*ext.lazy_loaded_js_files {
+        if let Some(entry) = lazy_file_entry(file, LazyKind::Js) {
+          out.push(entry);
+        }
+      }
+      for file in &*ext.lazy_loaded_esm_files {
+        if let Some(entry) = lazy_file_entry(file, LazyKind::Esm) {
+          out.push(entry);
+        }
+      }
+    }
+    out.sort_by(|a, b| a.specifier.cmp(&b.specifier));
+    out.dedup_by(|a, b| a.specifier == b.specifier);
+    out
+  }
+
+  /// Residual lazy sources arrive at the runtime untranspiled and unwrapped
+  /// (only *consumed* sources go through the snapshot's transpiler), so do
+  /// both here and write the result under `$OUT_DIR/residual_sources`.
+  fn transpile_residual_source(
+    out_dir: &std::path::Path,
+    specifier: &str,
+    src_path: &std::path::Path,
+  ) -> PathBuf {
+    let source = std::fs::read_to_string(src_path).unwrap_or_else(|e| {
+      panic!(
+        "failed to read residual lazy source {}: {e}",
+        src_path.display()
+      )
+    });
+    let (transpiled, _source_map) = transpile_ts(
+      deno_core::ModuleName::from(specifier.to_string()),
+      deno_core::ModuleCodeString::from(source),
+    )
+    .unwrap_or_else(|e| {
+      panic!("failed to transpile residual lazy source {specifier}: {e}")
+    });
+
+    // `ext:deno_node/https.ts` -> `ext_deno_node_https_ts.js`
+    let sanitized: String = specifier
+      .chars()
+      .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+      .collect();
+    let out_path = out_dir.join(format!("{sanitized}.js"));
+    std::fs::write(&out_path, transpiled.as_bytes()).unwrap();
+    out_path
+  }
+
+  fn write_residual_table(
+    f: &mut std::fs::File,
+    out_dir: &std::path::Path,
+    name: &str,
+    entries: &[(String, PathBuf)],
+  ) {
+    writeln!(f, "pub static {name}: &[(&str, &str)] = &[").unwrap();
+    let mut entries = entries.iter().collect::<Vec<_>>();
+    // `ModuleMap::add_residual_lazy_loaded_sources` binary-searches these.
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (specifier, transpiled_path) in entries {
+      let rel = transpiled_path.strip_prefix(out_dir).unwrap();
+      writeln!(
+        f,
+        "  ({specifier:?}, include_str!(concat!(env!(\"OUT_DIR\"), {:?}))),",
+        format!("/{}", rel.display()),
+      )
+      .unwrap();
+    }
+    writeln!(f, "];\n").unwrap();
+  }
+
+  pub fn create_runtime_snapshot(
+    snapshot_path: PathBuf,
+    residual_path: PathBuf,
+  ) {
     println!("Creating runtime snapshot...");
 
     // Must mirror runtime/mod.rs's list (same names + order) or deno_core hits
@@ -79,6 +194,9 @@ mod supabase_startup_snapshot {
       ext_runtime::runtime::init(),
     ];
 
+    // Must be collected before `create_snapshot` takes ownership.
+    let lazy_extension_files = collect_lazy_extension_files(&extensions);
+
     let snapshot = create_snapshot(
       CreateSnapshotOptions {
         cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
@@ -115,6 +233,63 @@ mod supabase_startup_snapshot {
 
     println!("Snapshot created successfully");
 
+    // NOTE(deno-2.9.5): deno_core stores *empty* bytes in the snapshot for any
+    // `lazy_loaded_*` source that snapshot-time evaluation did not consume, on
+    // the assumption that the embedder ships those sources separately. Without
+    // this table every deferred module - the whole node polyfill closure
+    // included - fails at runtime with "cannot be lazy-loaded as it was not
+    // included in the binary". Mirrors upstream's `cli/snapshot/build.rs`.
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    let consumed: std::collections::HashSet<&str> = output
+      .consumed_lazy_specifiers
+      .iter()
+      .map(String::as_str)
+      .collect();
+
+    let residual_sources_dir = out_dir.join("residual_sources");
+    std::fs::create_dir_all(&residual_sources_dir).unwrap();
+
+    let mut residual_js: Vec<(String, PathBuf)> = Vec::new();
+    let mut residual_esm: Vec<(String, PathBuf)> = Vec::new();
+    for file in &lazy_extension_files {
+      if consumed.contains(file.specifier.as_str()) {
+        continue;
+      }
+      println!("cargo:rerun-if-changed={}", file.path.display());
+      let transpiled_path = transpile_residual_source(
+        &residual_sources_dir,
+        &file.specifier,
+        &file.path,
+      );
+      match file.kind {
+        LazyKind::Js => {
+          // `loadExtScript` evaluates the source as the body of a
+          // `compile_function` call; doing the wrap here lets the runtime hand
+          // V8 a `&'static` external string.
+          let src = std::fs::read_to_string(&transpiled_path).unwrap();
+          let wrapped = deno_core::wrap_lazy_ext_script(&src);
+          std::fs::write(&transpiled_path, wrapped.as_bytes()).unwrap();
+          residual_js.push((file.specifier.clone(), transpiled_path));
+        }
+        LazyKind::Esm => {
+          residual_esm.push((file.specifier.clone(), transpiled_path));
+        }
+      }
+    }
+
+    println!(
+      "Residual lazy sources: {} js, {} esm ({} consumed at snapshot time)",
+      residual_js.len(),
+      residual_esm.len(),
+      consumed.len()
+    );
+
+    let mut f = std::fs::File::create(&residual_path).unwrap();
+    writeln!(f, "// @generated by crates/base/build.rs - do not edit.\n")
+      .unwrap();
+    write_residual_table(&mut f, &out_dir, "RESIDUAL_LAZY_JS", &residual_js);
+    write_residual_table(&mut f, &out_dir, "RESIDUAL_LAZY_ESM", &residual_esm);
+
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
     }
@@ -130,7 +305,9 @@ fn main() {
 
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
   let runtime_snapshot_path = o.join("RUNTIME_SNAPSHOT.bin");
+  let residual_path = o.join("EXTENSION_RESIDUAL_SOURCES.rs");
   supabase_startup_snapshot::create_runtime_snapshot(
     runtime_snapshot_path.clone(),
+    residual_path,
   );
 }
