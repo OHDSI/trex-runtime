@@ -256,6 +256,12 @@ deno_process = "0.72.0"
 deno_subprocess_windows = "0.52.0"
 deno_crypto_provider = "0.51.0"
 
+# Fork-only crate — not published on crates.io, so this is a direct git
+# dependency rather than a [patch.crates-io] entry. Shares the
+# RuntimeOtelExtraAttributes type between crates/base (producer) and the
+# fork's ext/telemetry (consumer) so they key the same TypeId in OpState.
+deno_otel_attrs = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
+
 # crypto
 aws-lc-rs = "1.0.0"
 ctr = { version = "0.9.2", features = ["alloc"] }
