@@ -377,7 +377,7 @@ impl RunOptionsBuilder {
   }
 }
 
-fn cleanup_js_runtime(runtime: &mut JsRuntime) {
+fn cleanup_js_runtime(_runtime: &mut JsRuntime) {
   // Don't call isolate.exit() - JsRuntime::drop handles cleanup properly.
   // Calling exit() causes HandleScope crashes during cross-thread task processing.
 }
@@ -956,9 +956,15 @@ where
         let mut js_runtime = JsRuntime::new(runtime_options);
 
         js_runtime.lazy_init_extensions(vec![
+          // NOTE(deno-2.9.5): `deno_web`'s options changed - `blob_store` is
+          // now `Arc<dyn BlobStoreTrait>` (so it needs a concrete value rather
+          // than `Default::default()`), and a third `enable_css_parser_features`
+          // flag was added. `true` matches what upstream's own
+          // `runtime/worker.rs` passes.
           deno_web::deno_web::args(
-            Default::default(),
+            std::sync::Arc::new(deno_web::BlobStore::default()),
             None,
+            true,
             deno_web::InMemoryBroadcastChannel::default(),
           ),
           deno_fetch::deno_fetch::args(

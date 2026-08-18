@@ -1,5 +1,9 @@
-import { primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { core, primordials } from "ext:core/mod.js";
+
+// NOTE(deno-2.9.5): deno_webidl moved its JS from `esm` to
+// `lazy_loaded_js`, so it can no longer be statically imported at snapshot
+// time. Upstream's own runtime JS uses `core.loadExtScript` for exactly this.
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import * as DenoCaches from "ext:deno_cache/01_cache.js";
 
 const ALLOWED_CACHE_NAMES = ["transformers-cache"];

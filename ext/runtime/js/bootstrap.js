@@ -1,4 +1,9 @@
 import { core, internals, primordials } from "ext:core/mod.js";
+
+// NOTE(deno-2.9.5): deno_webidl moved its JS from `esm` to
+// `lazy_loaded_js`, so it can no longer be statically imported at snapshot
+// time. Upstream's own runtime JS uses `core.loadExtScript` for exactly this.
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import "ext:deno_node/02_init.js";
 
@@ -24,7 +29,6 @@ import * as streams2 from "ext:deno_web/14_compression.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as url from "ext:deno_web/00_url.js";
 import * as urlPattern from "ext:deno_web/01_urlpattern.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
 import * as webSocket from "ext:deno_websocket/01_websocket.js";
 import * as response from "ext:deno_fetch/23_response.js";
 import * as request from "ext:deno_fetch/23_request.js";
