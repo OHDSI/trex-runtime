@@ -1,6 +1,6 @@
 [package]
 name = "deno"
-version = "2.7.14"
+version = "2.9.5"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
