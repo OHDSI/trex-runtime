@@ -54,7 +54,6 @@ use deno_core::v8;
 use deno_core::v8::GCCallbackFlags;
 use deno_core::v8::GCType;
 use deno_core::v8::Isolate;
-use deno_core::v8::Locker;
 use deno_core::JsRuntime;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
@@ -114,35 +113,6 @@ use crate::utils::units::bytes_to_display;
 use crate::utils::units::mib_to_bytes;
 use crate::utils::units::percentage_value;
 
-/// Debug state for tracking V8 isolate lock ownership without calling back into V8.
-#[allow(dead_code)]
-#[derive(Debug, Default)]
-struct LockDebugState {
-  depth: u32,
-  ever_locked: bool,
-}
-
-thread_local! {
-  static LOCK_DEBUG_STATES: RefCell<HashMap<usize, LockDebugState>> =
-    RefCell::new(HashMap::new());
-}
-
-#[inline]
-fn isolate_debug_key(isolate: &v8::Isolate) -> usize {
-  isolate as *const v8::Isolate as usize
-}
-
-#[allow(dead_code)]
-#[inline]
-fn log_locker_event(isolate_key: usize, stage: &'static str, depth: u32) {
-  debug!(
-    target = "edge::runtime::locker",
-    stage,
-    isolate = format_args!("{isolate_key:#x}"),
-    thread = ?std::thread::current().id(),
-    depth,
-  );
-}
 use crate::worker::supervisor::as_interrupt_callback;
 use crate::worker::supervisor::CPUUsage;
 use crate::worker::supervisor::CPUUsageMetrics;
@@ -408,13 +378,6 @@ impl RunOptionsBuilder {
 }
 
 fn cleanup_js_runtime(runtime: &mut JsRuntime) {
-  let isolate = runtime.v8_isolate();
-  let isolate_key = isolate_debug_key(isolate);
-
-  LOCK_DEBUG_STATES.with(|states| {
-    states.borrow_mut().remove(&isolate_key);
-  });
-
   // Don't call isolate.exit() - JsRuntime::drop handles cleanup properly.
   // Calling exit() causes HandleScope crashes during cross-thread task processing.
 }
@@ -489,33 +452,6 @@ impl<F: Future> Future for ScopedFuture<F> {
     let inner = unsafe { self.map_unchecked_mut(|s| &mut s.future) };
     inner.poll(cx)
   }
-}
-
-impl<RuntimeContext> DenoRuntime<RuntimeContext> {
-  #[allow(dead_code)]
-  #[inline]
-  fn assert_isolate_not_locked(&mut self) {
-    assert_isolate_not_locked(self.js_runtime.v8_isolate());
-  }
-}
-
-#[allow(dead_code)]
-#[inline]
-fn assert_isolate_not_locked(isolate: &v8::Isolate) {
-  // Only check the lock state if we've ever taken the lock on this thread.
-  // This avoids calling into V8's ThreadManager before it's initialized,
-  // which would segfault in v8::Locker::IsLocked during bootstrap.
-  let isolate_key = isolate_debug_key(isolate);
-  LOCK_DEBUG_STATES.with(|states| {
-    if let Some(state) = states.borrow().get(&isolate_key) {
-      if state.ever_locked {
-        assert_eq!(
-          state.depth, 0,
-          "isolate must not be locked when entering this scope"
-        );
-      }
-    }
-  });
 }
 
 impl<RuntimeContext> DenoRuntime<RuntimeContext>
@@ -1470,8 +1406,6 @@ where
   }
 
   pub async fn run(&mut self, options: RunOptions) -> (Result<(), Error>, i64) {
-    // self.assert_isolate_not_locked();
-
     let RunOptions {
       wait_termination_request_token,
       duplex_stream_rx,
@@ -1709,10 +1643,6 @@ where
 
       global_waker.register(waker);
 
-      // let mut this = {
-      //   self.assert_isolate_not_locked();
-      //   unsafe { self.with_locker() }
-      // };
       let this = &mut *self;
 
       if woked {
@@ -2034,59 +1964,6 @@ where
       .v8_isolate()
       .set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
     guard
-  }
-}
-
-#[allow(dead_code)]
-trait JsRuntimeLockerGuard {
-  fn js_runtime(&mut self) -> &mut JsRuntime;
-
-  unsafe fn with_locker<'l>(
-    &'l mut self,
-  ) -> scopeguard::ScopeGuard<&'l mut Self, impl FnOnce(&'l mut Self) + 'l> {
-    let js_runtime = self.js_runtime();
-    let isolate = js_runtime.v8_isolate();
-
-    let isolate_key = isolate_debug_key(isolate);
-    let depth_after_increment = LOCK_DEBUG_STATES.with(|states| {
-      let mut states = states.borrow_mut();
-      let state = states.entry(isolate_key).or_default();
-      state.ever_locked = true;
-      state.depth = state.depth.saturating_add(1);
-      state.depth
-    });
-    log_locker_event(isolate_key, "acquire_start", depth_after_increment);
-
-    let locker =
-      Locker::new(std::mem::transmute::<&mut Isolate, &mut Isolate>(isolate));
-    log_locker_event(isolate_key, "acquire_complete", depth_after_increment);
-
-    scopeguard::guard(self, move |_guard| {
-      // Update debug state on exit
-      let depth_before_release = LOCK_DEBUG_STATES.with(|states| {
-        if let Some(state) = states.borrow_mut().get_mut(&isolate_key) {
-          let before = state.depth;
-          state.depth = state.depth.saturating_sub(1);
-          before
-        } else {
-          0
-        }
-      });
-      log_locker_event(isolate_key, "release", depth_before_release);
-      drop(locker);
-    })
-  }
-}
-
-impl<C> JsRuntimeLockerGuard for DenoRuntime<C> {
-  fn js_runtime(&mut self) -> &mut JsRuntime {
-    &mut self.js_runtime
-  }
-}
-
-impl JsRuntimeLockerGuard for JsRuntime {
-  fn js_runtime(&mut self) -> &mut JsRuntime {
-    self
   }
 }
 
