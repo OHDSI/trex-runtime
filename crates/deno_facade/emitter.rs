@@ -462,6 +462,11 @@ impl EmitterFactory {
                   npm_system_info: inner.npm_system_info().clone(),
                   npmrc: self.resolved_npm_rc()?.clone(),
                   npm_resolution,
+                  // NOTE(deno-2.9.5): new in deno_resolver 0.88. The default
+                  // is `Isolated`, which is the only layout that existed
+                  // before, so this preserves behaviour. Upstream's standalone
+                  // runtime also passes the default here.
+                  linker_mode: Default::default(),
                 },
               );
 
@@ -525,6 +530,11 @@ impl EmitterFactory {
                   npm_system_info: inner.npm_system_info().clone(),
                   npmrc: self.resolved_npm_rc()?.clone(),
                   npm_resolution,
+                  // NOTE(deno-2.9.5): new in deno_resolver 0.88. The default
+                  // is `Isolated`, which is the only layout that existed
+                  // before, so this preserves behaviour. Upstream's standalone
+                  // runtime also passes the default here.
+                  linker_mode: Default::default(),
                 },
               );
 
@@ -546,7 +556,8 @@ impl EmitterFactory {
               npm_req_resolver: Arc::clone(self.npm_req_resolver().await?),
             }),
             workspace_resolver: self.workspace_resolver()?.clone(),
-            bare_node_builtins: options.unstable_detect_cjs(), // or some appropriate value
+            // NOTE(deno-2.9.5): `bare_node_builtins` was removed from
+            // `DenoResolverOptions` in deno_resolver 0.88.
             is_byonm: options.use_byonm(),
             maybe_vendor_dir: None,
           });
@@ -636,6 +647,8 @@ impl EmitterFactory {
                     npm_system_info: inner.npm_system_info().clone(),
                     npmrc: self.resolved_npm_rc()?.clone(),
                     npm_resolution,
+                    // NOTE(deno-2.9.5): see above; default is `Isolated`.
+                    linker_mode: Default::default(),
                   },
                 );
 

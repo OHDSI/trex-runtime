@@ -581,6 +581,27 @@ impl deno_fs::FileSystem for TmpFs {
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]
+  // NOTE(deno-2.9.5): `statfs_sync`/`statfs_async` are new in deno_fs 0.167.
+  fn statfs_sync(
+    &self,
+    path: &CheckedPath,
+    bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    let joined_path = self.root.path().join(path.try_normalize()?);
+    let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
+    RealFs.statfs_sync(&checked_path, bigint)
+  }
+
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    let joined_path = self.root.path().join(path.try_normalize()?);
+    let checked_path = CheckedPathBuf::unsafe_new(joined_path);
+    RealFs.statfs_async(checked_path, bigint).await
+  }
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPath::unsafe_new(Cow::Borrowed(&joined_path));
@@ -604,15 +625,16 @@ impl deno_fs::FileSystem for TmpFs {
   }
 
   #[instrument(level = "trace", skip(self), err(Debug))]
+  // NOTE(deno-2.9.5): deno_fs 0.167 made `read_dir_async` return a lazy
+  // `FsReadDirRc` rather than a `Vec`, so the entry-count trace that used to
+  // sit here has no count to report and is dropped.
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
+  ) -> FsResult<deno_fs::FsReadDirRc> {
     let joined_path = self.root.path().join(path.try_normalize()?);
     let checked_path = CheckedPathBuf::unsafe_new(joined_path);
-    RealFs.read_dir_async(checked_path).await.inspect(|it| {
-      trace!(len = it.len());
-    })
+    RealFs.read_dir_async(checked_path).await
   }
 
   #[instrument(level = "trace", skip(self), ret, err(Debug))]

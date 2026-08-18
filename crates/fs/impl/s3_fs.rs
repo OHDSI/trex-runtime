@@ -988,6 +988,23 @@ impl deno_fs::FileSystem for S3Fs {
     Ok(self.stat_async(path).await.is_ok())
   }
 
+  // NOTE(deno-2.9.5): `statfs_sync`/`statfs_async` are new in deno_fs 0.167.
+  fn statfs_sync(
+    &self,
+    _path: &CheckedPath,
+    _bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn statfs_async(
+    &self,
+    _path: CheckedPathBuf,
+    _bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    Err(FsError::NotSupported)
+  }
+
   fn realpath_sync(&self, _path: &CheckedPath) -> FsResult<PathBuf> {
     Err(FsError::NotSupported)
   }
@@ -1001,7 +1018,9 @@ impl deno_fs::FileSystem for S3Fs {
       let path = path.to_path_buf();
       s.spawn(move || {
         rt::IO_RT.block_on(async move {
-          self.read_dir_async(CheckedPathBuf::unsafe_new(path)).await
+          self
+            .read_dir_entries(CheckedPathBuf::unsafe_new(path))
+            .await
         })
       })
       .join()
@@ -1009,90 +1028,16 @@ impl deno_fs::FileSystem for S3Fs {
     })
   }
 
-  #[instrument(level = "trace", skip(self), err(Debug))]
+  // NOTE(deno-2.9.5): deno_fs 0.167 made `read_dir_async` return an
+  // `FsReadDirRc` cursor instead of a `Vec`. The listing is still built
+  // eagerly by `read_dir_entries` below; it is only wrapped for the trait.
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
-    self.flush_background_tasks().await;
-
-    let (bucket_name, mut key) =
-      try_get_bucket_name_and_key(path.try_normalize()?)?;
-    let is_root = key.is_empty();
-
-    debug_assert!(!key.ends_with('/'));
-    key.push('/');
-
-    let builder = self
-      .client
-      .list_objects_v2()
-      .set_bucket(Some(bucket_name))
-      .set_delimiter(Some("/".into()))
-      .set_prefix((!is_root).then_some(key));
-
-    let mut entries = vec![];
-    let mut stream = builder.into_paginator().send();
-
-    while let Some(resp) = stream.next().await {
-      let v = resp.map_err(io::Error::other)?;
-      let Some(prefix) = v.prefix() else {
-        continue;
-      };
-
-      let common_prefixes = v.common_prefixes();
-      let contents = v.contents();
-
-      for common_prefix in common_prefixes {
-        entries.push(FsDirEntry {
-          name: {
-            let Some(name) = common_prefix
-              .prefix()
-              .and_then(|it| it.strip_prefix(prefix))
-              .and_then(|it| it.strip_suffix('/'))
-              .map(str::to_owned)
-            else {
-              continue;
-            };
-
-            name
-          },
-
-          is_file: false,
-          is_directory: true,
-          is_symlink: false,
-        });
-      }
-
-      for content in contents {
-        let Some(name) = content.key() else {
-          continue;
-        };
-
-        if name.ends_with('/') {
-          continue;
-        }
-
-        entries.push(FsDirEntry {
-          name: {
-            let Some(name) = name.strip_prefix(prefix).map(str::to_owned)
-            else {
-              continue;
-            };
-
-            name
-          },
-
-          is_file: true,
-          is_directory: false,
-          is_symlink: false,
-        });
-      }
-    }
-
-    Ok(entries).inspect(|it| {
-      trace!(len = it.len());
-    })
+  ) -> FsResult<deno_fs::FsReadDirRc> {
+    Ok(super::vec_read_dir(self.read_dir_entries(path).await?))
   }
+
 
   fn rename_sync(
     &self,
@@ -2199,13 +2144,17 @@ fn try_get_bucket_name_and_key(path: PathBuf) -> FsResult<(String, String)> {
 }
 
 #[inline(always)]
-fn to_msec(maybe_time: DateTime) -> Option<u64> {
+// NOTE(deno-2.9.5): `FsStat`'s time fields became `Option<i64>` in deno_io so
+// pre-epoch timestamps can be represented. Negate the duration in that case,
+// matching upstream's `to_msec` in `ext/io/fs.rs`; previously the unsigned
+// cast made a pre-epoch time come back as a large positive value.
+fn to_msec(maybe_time: DateTime) -> Option<i64> {
   match SystemTime::try_from(maybe_time) {
     Ok(time) => Some(
       time
         .duration_since(UNIX_EPOCH)
-        .map(|t| t.as_millis() as u64)
-        .unwrap_or_else(|err| err.duration().as_millis() as u64),
+        .map(|t| t.as_millis() as i64)
+        .unwrap_or_else(|err| -(err.duration().as_millis() as i64)),
     ),
     Err(_) => None,
   }
@@ -2300,5 +2249,95 @@ mod test {
       .kind(),
       io::ErrorKind::InvalidInput
     );
+  }
+}
+
+impl S3Fs {
+  /// Eagerly lists a prefix. Split out of `read_dir_async` in the 2.9.5
+  /// upgrade so `read_dir_sync` (which still returns a `Vec`) and
+  /// `read_dir_async` (which now returns an `FsReadDirRc`) share one body.
+  #[instrument(level = "trace", skip(self), err(Debug))]
+  async fn read_dir_entries(
+    &self,
+    path: CheckedPathBuf,
+  ) -> FsResult<Vec<FsDirEntry>> {
+    self.flush_background_tasks().await;
+
+    let (bucket_name, mut key) =
+      try_get_bucket_name_and_key(path.try_normalize()?)?;
+    let is_root = key.is_empty();
+
+    debug_assert!(!key.ends_with('/'));
+    key.push('/');
+
+    let builder = self
+      .client
+      .list_objects_v2()
+      .set_bucket(Some(bucket_name))
+      .set_delimiter(Some("/".into()))
+      .set_prefix((!is_root).then_some(key));
+
+    let mut entries = vec![];
+    let mut stream = builder.into_paginator().send();
+
+    while let Some(resp) = stream.next().await {
+      let v = resp.map_err(io::Error::other)?;
+      let Some(prefix) = v.prefix() else {
+        continue;
+      };
+
+      let common_prefixes = v.common_prefixes();
+      let contents = v.contents();
+
+      for common_prefix in common_prefixes {
+        entries.push(FsDirEntry {
+          name: {
+            let Some(name) = common_prefix
+              .prefix()
+              .and_then(|it| it.strip_prefix(prefix))
+              .and_then(|it| it.strip_suffix('/'))
+              .map(str::to_owned)
+            else {
+              continue;
+            };
+
+            name
+          },
+
+          is_file: false,
+          is_directory: true,
+          is_symlink: false,
+        });
+      }
+
+      for content in contents {
+        let Some(name) = content.key() else {
+          continue;
+        };
+
+        if name.ends_with('/') {
+          continue;
+        }
+
+        entries.push(FsDirEntry {
+          name: {
+            let Some(name) = name.strip_prefix(prefix).map(str::to_owned)
+            else {
+              continue;
+            };
+
+            name
+          },
+
+          is_file: true,
+          is_directory: false,
+          is_symlink: false,
+        });
+      }
+    }
+
+    Ok(entries).inspect(|it| {
+      trace!(len = it.len());
+    })
   }
 }

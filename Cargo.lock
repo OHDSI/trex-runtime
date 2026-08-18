@@ -4635,6 +4635,7 @@ dependencies = [
  "deno_core",
  "deno_fs",
  "deno_io",
+ "deno_maybe_sync",
  "deno_npm",
  "deno_permissions",
  "deno_semver",
