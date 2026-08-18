@@ -25,3 +25,5 @@ eszip.bin
 
 deno.lock
 package-lock.json
+
+.superpowers/
