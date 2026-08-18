@@ -6,6 +6,8 @@ use std::task::Poll;
 
 use anyhow::Context;
 use anyhow::bail;
+use bytes::Bytes;
+use bytes::BytesMut;
 use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -14,11 +16,13 @@ use deno_core::ResourceId;
 use deno_core::op2;
 use deno_http::HttpRequestReader;
 use deno_http::HttpStreamReadResource;
+use deno_http::network_buffered_stream::NetworkBufferedStream;
 use deno_websocket::ws_create_server_stream;
 use futures::FutureExt;
 use futures::future::BoxFuture;
 use futures::ready;
 use hyper::upgrade::OnUpgrade;
+use hyper::upgrade::Parts;
 use hyper_util::rt::TokioIo;
 use log::error;
 use serde::Serialize;
@@ -239,36 +243,62 @@ async fn op_http_upgrade_websocket2(
   };
 
   // NOTE(deno-2.9.5): deno_http 0.255 moved the legacy `serveHttp` connection
-  // off hyper 0.14 and onto hyper 1.x, and it now wraps the embedder's IO in a
-  // private `NetworkBufferedStream` before handing it to hyper. The concrete
-  // upgraded type is therefore `TokioIo<NetworkBufferedStream<DuplexStream2>>`,
-  // which cannot be named outside deno_http, so the old
-  // `downcast::<DuplexStream2>()` is no longer expressible. We wrap the
-  // `Upgraded` instead; it replays hyper's `read_buf` on first read, so no
-  // bytes are lost and `read_buf` is passed as empty.
-  //
-  // XXX(deno-2.9.5): this loses the `conn_sync` `CancellationToken` that used
-  // to be moved onto the `UnixStream2` half. See task-12-report.md - BEHAVIOUR
-  // QUESTION 1. Do not treat this as settled.
+  // off hyper 0.14 and onto hyper 1.x, and it wraps the embedder's IO in a
+  // `NetworkBufferedStream` (for the h2 prefix sniff) before handing it to
+  // hyper. The concrete type behind the upgrade is therefore
+  // `TokioIo<NetworkBufferedStream<DuplexStream2>>` rather than the bare
+  // `DuplexStream2` it was on hyper 0.14, so we peel both wrappers off before
+  // reaching our own stream and its `conn_sync` token.
   let upgraded = hyper::upgrade::on(request)
     .await
     .map_err(|e| crate::RuntimeError::Http(e.to_string()))?;
-  let mut rw = TokioIo::new(upgraded);
+
+  let Parts { io, read_buf, .. } = upgraded
+    .downcast::<TokioIo<NetworkBufferedStream<DuplexStream2>>>()
+    .unwrap();
+
+  // Both wrappers can be holding bytes that were read off the wire but never
+  // consumed as HTTP, and they must be handed to the websocket in wire order:
+  // whatever hyper buffered was pulled *through* the `NetworkBufferedStream`,
+  // so it precedes anything the latter still has left over from the h2 prefix
+  // sniff.
+  let (stream, prefix_buf) = io.into_inner().into_inner();
+  let read_buf = concat_bytes(read_buf, prefix_buf);
+
+  let (mut rw, conn_sync) = stream
+    .into_inner()
+    .with_context(|| "invalid duplex stream was found")?;
 
   // NOTE(Nyannyacha): We use `UnixStream` out of necessity here because
   // `ws_create_server_stream` only supports network stream types.
   let (ours, theirs) = UnixStream::pair()?;
 
   tokio::spawn(async move {
-    let mut theirs = UnixStream2::new(theirs, None);
+    let mut theirs = UnixStream2::new(theirs, conn_sync);
     let _ = copy_bidirectional(&mut rw, &mut theirs).await;
   });
 
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
     ours.into(),
-    bytes::Bytes::new(),
+    read_buf,
   ))
+}
+
+/// Joins two buffers of already-read-but-unconsumed bytes, `head` being the
+/// bytes that came off the wire first.
+fn concat_bytes(head: Bytes, tail: Bytes) -> Bytes {
+  if tail.is_empty() {
+    head
+  } else if head.is_empty() {
+    tail
+  } else {
+    let mut buf = BytesMut::with_capacity(head.len() + tail.len());
+
+    buf.extend_from_slice(&head);
+    buf.extend_from_slice(&tail);
+    buf.freeze()
+  }
 }
 
 #[op2]

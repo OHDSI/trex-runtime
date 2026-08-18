@@ -2759,8 +2759,7 @@ dependencies = [
 [[package]]
 name = "deno_http"
 version = "0.255.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c0ee7f27db98961c68c3040f46776923f92fc0a60776a21fdf89469ebc45ff0"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.9.5#0f48908d070f28519af94bd0f857a4123ec51f41"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -2799,8 +2798,7 @@ dependencies = [
 [[package]]
 name = "deno_http_h1"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86a36470eba145ca3d1a6ecf735f3d0fe06cfb8a59640f6eb074978f0e0db5f6"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.9.5#0f48908d070f28519af94bd0f857a4123ec51f41"
 dependencies = [
  "httparse",
  "memchr",
@@ -3506,8 +3504,7 @@ dependencies = [
 [[package]]
 name = "deno_websocket"
 version = "0.262.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aedbfc0a1c00d4473d5d0d5eb6f0e6b5a2bfd2e760b97f4bbb971d3740281842"
+source = "git+https://github.com/p-hoffmann/deno?branch=trex-v2.9.5#0f48908d070f28519af94bd0f857a4123ec51f41"
 dependencies = [
  "bytes",
  "deno_core",

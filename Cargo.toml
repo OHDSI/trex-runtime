@@ -309,6 +309,16 @@ eszip = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_canvas = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_core = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_fs = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
+# The fork exports `deno_http::network_buffered_stream` so embedders can name
+# `NetworkBufferedStream<S>` — the wrapper deno_http puts between the embedder's
+# IO and hyper — and downcast an upgraded legacy `serveHttp` connection back to
+# their own stream. Visibility only; no behaviour change from crates.io 0.255.0.
+deno_http = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
+# Unchanged from crates.io, but deno_http pulls its sibling from the fork's
+# workspace. Without this the graph ends up with two distinct `deno_websocket`
+# crates — deno_http's ops would then hand out resources the runtime's own
+# websocket extension cannot see.
+deno_websocket = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_io = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_net = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
 deno_console = { git = "https://github.com/p-hoffmann/deno", branch = "trex-v2.9.5" }
