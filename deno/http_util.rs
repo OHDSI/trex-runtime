@@ -655,7 +655,7 @@ pub async fn get_response_body_with_progress(
         let bytes = item?;
         current_size += bytes.len() as u64;
         progress_guard.set_position(current_size);
-        data.extend(bytes.into_iter());
+        data.extend(bytes);
       }
       return Ok((parts.headers, data));
     }

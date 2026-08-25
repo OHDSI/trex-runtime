@@ -757,7 +757,7 @@ where
           metadata
             .static_assets_lookup(static_root_path)
             .into_iter()
-            .chain(static_files.into_iter())
+            .chain(static_files)
             .collect()
         } else {
           static_files

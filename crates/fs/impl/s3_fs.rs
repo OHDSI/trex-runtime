@@ -2174,83 +2174,6 @@ where
   Err(io::Error::other(messages.join("\n")).into())
 }
 
-#[cfg(test)]
-mod test {
-  use std::io;
-  use std::path::PathBuf;
-  use std::sync::Arc;
-
-  use aws_config::BehaviorVersion;
-  use aws_sdk_s3::{self as s3};
-  use aws_smithy_runtime::client::http::test_util::ReplayEvent;
-  use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
-  use deno_fs::FileSystem;
-  use deno_fs::OpenOptions;
-  use deno_permissions::CheckedPathBuf;
-  use once_cell::sync::Lazy;
-
-  static OPEN_CREATE: Lazy<OpenOptions> = Lazy::new(|| OpenOptions {
-    read: true,
-    write: true,
-    create: true,
-    truncate: true,
-    append: true,
-    create_new: true,
-    mode: None,
-    custom_flags: None,
-  });
-
-  fn get_s3_credentials() -> s3::config::SharedCredentialsProvider {
-    s3::config::SharedCredentialsProvider::new(s3::config::Credentials::new(
-      "AKIMEOWMEOW",
-      "+meowmeowmeeeeeeow/",
-      None,
-      None,
-      "meowmeow",
-    ))
-  }
-
-  fn get_s3_fs<I>(events: I) -> (super::S3Fs, StaticReplayClient)
-  where
-    I: IntoIterator<Item = ReplayEvent>,
-  {
-    let client = StaticReplayClient::new(events.into_iter().collect());
-
-    (
-      super::S3Fs {
-        background_tasks: Default::default(),
-        config: Arc::default(),
-        client: s3::Client::from_conf(
-          s3::Config::builder()
-            .behavior_version(BehaviorVersion::latest())
-            .credentials_provider(get_s3_credentials())
-            .region(s3::config::Region::new("us-east-1"))
-            .http_client(client.clone())
-            .build(),
-        ),
-      },
-      client,
-    )
-  }
-
-  #[tokio::test]
-  async fn should_not_be_open_when_object_key_is_empty() {
-    let (fs, _) = get_s3_fs([]);
-
-    assert_eq!(
-      fs.open_async(
-        CheckedPathBuf::unsafe_new(PathBuf::from("meowmeow")),
-        *OPEN_CREATE
-      )
-      .await
-      .err()
-      .unwrap()
-      .kind(),
-      io::ErrorKind::InvalidInput
-    );
-  }
-}
-
 impl S3Fs {
   /// Eagerly lists a prefix. Split out of `read_dir_async` in the 2.9.5
   /// upgrade so `read_dir_sync` (which still returns a `Vec`) and
@@ -2338,5 +2261,82 @@ impl S3Fs {
     Ok(entries).inspect(|it| {
       trace!(len = it.len());
     })
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use std::io;
+  use std::path::PathBuf;
+  use std::sync::Arc;
+
+  use aws_config::BehaviorVersion;
+  use aws_sdk_s3::{self as s3};
+  use aws_smithy_runtime::client::http::test_util::ReplayEvent;
+  use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
+  use deno_fs::FileSystem;
+  use deno_fs::OpenOptions;
+  use deno_permissions::CheckedPathBuf;
+  use once_cell::sync::Lazy;
+
+  static OPEN_CREATE: Lazy<OpenOptions> = Lazy::new(|| OpenOptions {
+    read: true,
+    write: true,
+    create: true,
+    truncate: true,
+    append: true,
+    create_new: true,
+    mode: None,
+    custom_flags: None,
+  });
+
+  fn get_s3_credentials() -> s3::config::SharedCredentialsProvider {
+    s3::config::SharedCredentialsProvider::new(s3::config::Credentials::new(
+      "AKIMEOWMEOW",
+      "+meowmeowmeeeeeeow/",
+      None,
+      None,
+      "meowmeow",
+    ))
+  }
+
+  fn get_s3_fs<I>(events: I) -> (super::S3Fs, StaticReplayClient)
+  where
+    I: IntoIterator<Item = ReplayEvent>,
+  {
+    let client = StaticReplayClient::new(events.into_iter().collect());
+
+    (
+      super::S3Fs {
+        background_tasks: Default::default(),
+        config: Arc::default(),
+        client: s3::Client::from_conf(
+          s3::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .credentials_provider(get_s3_credentials())
+            .region(s3::config::Region::new("us-east-1"))
+            .http_client(client.clone())
+            .build(),
+        ),
+      },
+      client,
+    )
+  }
+
+  #[tokio::test]
+  async fn should_not_be_open_when_object_key_is_empty() {
+    let (fs, _) = get_s3_fs([]);
+
+    assert_eq!(
+      fs.open_async(
+        CheckedPathBuf::unsafe_new(PathBuf::from("meowmeow")),
+        *OPEN_CREATE
+      )
+      .await
+      .err()
+      .unwrap()
+      .kind(),
+      io::ErrorKind::InvalidInput
+    );
   }
 }

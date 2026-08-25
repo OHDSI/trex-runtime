@@ -104,7 +104,7 @@ impl NpmInstallDepsProvider {
           .dependencies
           .clone()
           .into_iter()
-          .chain(deps.dev_dependencies.clone().into_iter())
+          .chain(deps.dev_dependencies.clone())
         {
           let dep = match dep {
             Ok(dep) => dep,
