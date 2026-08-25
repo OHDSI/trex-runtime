@@ -1038,7 +1038,6 @@ impl deno_fs::FileSystem for S3Fs {
     Ok(super::vec_read_dir(self.read_dir_entries(path).await?))
   }
 
-
   fn rename_sync(
     &self,
     _oldpath: &CheckedPath,

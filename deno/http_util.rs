@@ -638,7 +638,9 @@ pub async fn get_response_body_with_progress(
         .headers()
         .get(http::header::CONTENT_LENGTH)
         .filter(|_| {
-          !response.headers().contains_key(http::header::CONTENT_ENCODING)
+          !response
+            .headers()
+            .contains_key(http::header::CONTENT_ENCODING)
         })
         .and_then(|val| val.to_str().ok())
         .and_then(|s| s.parse::<u64>().ok());

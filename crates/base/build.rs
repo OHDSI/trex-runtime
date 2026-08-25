@@ -54,7 +54,9 @@ mod supabase_startup_snapshot {
   ) -> Option<LazyFile> {
     #[allow(deprecated)]
     let path = match &file.code {
-      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(p) => PathBuf::from(p),
+      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(p) => {
+        PathBuf::from(p)
+      }
       // Entries pushed by customizers have no on-disk path and so cannot be
       // re-embedded by the build script.
       ExtensionFileSourceCode::IncludedInBinary(_)

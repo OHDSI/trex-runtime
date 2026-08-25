@@ -169,8 +169,7 @@ impl NpmInstallDepsProvider {
             // NOTE(deno-2.9.5): `catalog:` deps are new in deno_package_json
             // 0.59 and trex has no catalog resolution, so they are skipped -
             // the same treatment upstream's `cli/tools/pm/deps.rs` gives them.
-            PackageJsonDepValue::Catalog(_)
-            | PackageJsonDepValue::File(_) => {
+            PackageJsonDepValue::Catalog(_) | PackageJsonDepValue::File(_) => {
               continue;
             }
           }

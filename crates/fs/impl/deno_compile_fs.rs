@@ -444,9 +444,7 @@ impl FileSystem for DenoCompileFileSystem {
   ) -> FsResult<deno_fs::FsReadDirRc> {
     if self.0.is_path_within(&path) {
       match self.0.read_dir(&path) {
-        Ok(entries) => {
-          Ok(super::vec_read_dir(entries))
-        }
+        Ok(entries) => Ok(super::vec_read_dir(entries)),
         Err(_) => {
           self.error_if_no_use_real_fs(true)?;
           RealFs.read_dir_async(path).await

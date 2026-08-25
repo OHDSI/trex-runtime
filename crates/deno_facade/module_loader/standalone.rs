@@ -403,10 +403,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
         // 0.59. Before the upgrade the scheme failed to parse and this arm
         // returned an error via `dep_result`; erroring here keeps that
         // outcome while naming the cause.
-        PackageJsonDepValue::Catalog(_) => Err(JsErrorBox::type_error(format!(
-          "catalog: protocol dependencies are not supported in package.json (dependency: {})",
-          alias
-        ))),
+        PackageJsonDepValue::Catalog(_) => {
+          Err(JsErrorBox::type_error(format!(
+            "catalog: protocol dependencies are not supported in package.json (dependency: {})",
+            alias
+          )))
+        }
 
         PackageJsonDepValue::File(_) => Err(JsErrorBox::type_error(format!(
           "file: protocol dependencies are not supported in package.json (dependency: {})",

@@ -82,7 +82,9 @@ mod request {
     V1(hyper::upgrade::OnUpgrade),
   }
 
-  fn take_req_upgrade(req: &mut hyper_v014::Request<Body>) -> Option<ReqUpgrade> {
+  fn take_req_upgrade(
+    req: &mut hyper_v014::Request<Body>,
+  ) -> Option<ReqUpgrade> {
     let extensions = req.extensions_mut();
 
     if let Some(it) = extensions.remove::<hyper_v014::upgrade::OnUpgrade>() {
