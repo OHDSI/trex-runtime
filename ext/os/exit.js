@@ -1,4 +1,4 @@
-import { primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 import {
   op_exit,
   op_get_exit_code,
@@ -12,7 +12,7 @@ const {
   TypeError,
 } = primordials;
 
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
+const { Event, EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const windowDispatchEvent = FunctionPrototypeBind(
   EventTarget.prototype.dispatchEvent,
@@ -67,5 +67,12 @@ function setExitCode(value) {
   }
   op_set_exit_code(value);
 }
+
+// NOTE(deno-2.9.5): `ext:deno_os/30_os.js` is a `lazy_loaded_js` script now
+// (upstream made theirs lazy, and the node polyfills reach it through
+// `core.loadExtScript`). A script cannot `import`, so hand the helpers over on
+// `internals` - the same object the captured `__bootstrap` view exposes to
+// lazy scripts - which keeps a single `exitHandler` for both entry points.
+internals.trexOsExit = { exit, getExitCode, setExitCode, setExitHandler };
 
 export { exit, getExitCode, setExitCode, setExitHandler };

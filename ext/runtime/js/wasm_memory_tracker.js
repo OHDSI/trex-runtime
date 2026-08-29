@@ -3,7 +3,7 @@
 // globalThis.__trex_poll_wasm_bytes() and stores the total in a shared atomic.
 
 import { core, primordials } from "ext:core/mod.js";
-import { setInterval, unrefTimer } from "ext:deno_web/02_timers.js";
+const { setInterval, unrefTimer } = core.loadExtScript("ext:deno_web/02_timers.js");
 
 const {
   ArrayPrototypePush,

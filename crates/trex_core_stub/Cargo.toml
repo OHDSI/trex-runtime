@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 # Empty stub used only to satisfy `[patch.crates-io]` for the optional `trex_core`
-# dependency in `crates/base`. The real `trex_core` lives in the parent OHDSI/trexsql
+# dependency in `crates/base`. The real `trex_core` lives in the parent OHDSI/trex
 # monorepo and overrides this stub when this repo is built as a child of that workspace.
 # Standalone CI here never enables `--features trex`, so this stub never needs to
 # compile any real API surface.

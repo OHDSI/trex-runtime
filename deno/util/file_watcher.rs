@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -31,6 +32,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::time::sleep;
 
 use crate::args::Flags;
+use crate::args::FlagsExt;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 
@@ -59,9 +61,7 @@ impl DebouncedReceiver {
 
   async fn recv(&mut self) -> Option<Vec<PathBuf>> {
     if self.received_items.is_empty() {
-      self
-        .received_items
-        .extend(self.receiver.recv().await?.into_iter());
+      self.received_items.extend(self.receiver.recv().await?);
     }
 
     loop {
@@ -259,13 +259,9 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
-  let fut = watch_recv(
-    flags,
-    print_config,
-    WatcherRestartMode::Automatic,
-    operation,
-  )
-  .boxed_local();
+  let fut =
+    watch_recv(flags, print_config, WatcherRestartMode::Automatic, operation)
+      .boxed_local();
 
   fut.await
 }
@@ -299,7 +295,7 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
-  let exclude_set = flags.resolve_watch_exclude_set()?;
+  let exclude_set = Arc::new(flags.resolve_watch_exclude_set()?);
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -350,7 +346,7 @@ where
       tokio::task::yield_now().await;
     }
 
-    let mut watcher = new_watcher(watcher_sender.clone())?;
+    let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
     let receiver_future = async {
@@ -375,7 +371,13 @@ where
 
     select! {
       _ = receiver_future => {},
-      _ = deno_signals::ctrl_c() => {
+      // Watch for Ctrl+C without preventing the default signal behavior:
+      // if the program has no signal listeners, the process is terminated
+      // by the default handler right away, even while the event loop is
+      // blocked in synchronous JS code and this branch cannot be polled
+      // (https://github.com/denoland/deno/issues/35824). This branch is
+      // reached when a JS signal listener prevented the default behavior.
+      _ = deno_signals::ctrl_c_allow_default() => {
         return Ok(());
       },
       _ = restart_rx.recv() => {
@@ -385,7 +387,6 @@ where
       success = operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         if print_finished {
-          // TODO(bartlomieju): print exit code here?
           info!(
             "{} {} {}. Restarting on file change...",
             colors::intense_blue(banner),
@@ -411,7 +412,7 @@ where
     // watched paths has changed.
     select! {
       _ = receiver_future => {},
-      _ = deno_signals::ctrl_c() => {
+      _ = deno_signals::ctrl_c_allow_default() => {
         return Ok(());
       },
       _ = restart_rx.recv() => {
@@ -424,6 +425,7 @@ where
 
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+  exclude_set: Arc<PathOrPatternSet>,
 ) -> Result<RecommendedWatcher, AnyError> {
   Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
@@ -438,16 +440,47 @@ fn new_watcher(
         return;
       }
 
-      let paths = event
+      let canonicalized: Vec<PathBuf> = event
         .paths
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
         .collect();
+      let paths: Vec<PathBuf> = canonicalized
+        .iter()
+        .filter(|path| !exclude_set.matches_path(path))
+        .cloned()
+        .collect();
+
+      // Only bail when the empty result was caused by exclusion, not
+      // by canonicalize failures — preserves pre-PR behavior for
+      // file-removal events.
+      if paths.is_empty() && !canonicalized.is_empty() {
+        return;
+      }
 
       sender.send(paths).unwrap();
     },
     Default::default(),
   )?)
+}
+
+/// Computes the set of paths a watcher should observe for a given set of file
+/// patterns.
+///
+/// When `include` patterns are present, their base paths are watched: a
+/// directory for directory/glob patterns, or the file itself for explicit file
+/// paths. When no `include` is set, the base directory is watched so that newly
+/// created files within it are detected.
+///
+/// This is important for subcommands like `fmt`, `lint`, `test` and `bench`
+/// running in `--watch` mode: watching the already-resolved list of files would
+/// miss files created after the watcher started, because the watcher would only
+/// observe the individual file inodes rather than their containing directories.
+pub fn watch_paths_for_file_patterns(patterns: &FilePatterns) -> Vec<PathBuf> {
+  match &patterns.include {
+    Some(set) => set.base_paths(),
+    None => vec![patterns.base.clone()],
+  }
 }
 
 fn add_paths_to_watcher(

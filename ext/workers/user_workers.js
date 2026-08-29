@@ -1,14 +1,14 @@
 import { core, primordials } from "ext:core/mod.js";
-import {
+const {
   readableStreamForRid,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 import { getSupabaseTag } from "ext:runtime/http.js";
-import {
+const {
   builtinTracer,
   enterSpan,
   TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
 const ops = core.ops;
 

@@ -1,10 +1,16 @@
 // Facade for ext:deno_os/30_os.js
 //
-// Upstream deno_node polyfills (os.ts, process.ts) import from this specifier.
-// We re-export real exit helpers from ext:os/exit.js and stub everything else
-// so that no actual host information leaks.
+// Upstream deno_node polyfills (os.ts, process.ts, wasi.ts) reach this
+// specifier through `core.loadExtScript`, so it is a `lazy_loaded_js` script
+// rather than an ES module (see ext/os/lib.rs). We forward the real exit
+// helpers published by `ext:os/exit.js` on `internals` and stub everything
+// else so that no actual host information leaks.
 
-import { exit, getExitCode, setExitCode, setExitHandler } from "ext:os/exit.js";
+(function () {
+const { internals } = __bootstrap;
+
+const { exit, getExitCode, setExitCode, setExitHandler } =
+  internals.trexOsExit;
 
 function loadavg() {
   return [0, 0, 0];
@@ -56,7 +62,7 @@ function execPath() {
   return "";
 }
 
-export {
+return {
   env,
   execPath,
   exit,
@@ -72,3 +78,4 @@ export {
   systemMemoryInfo,
   uid,
 };
+})();

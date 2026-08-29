@@ -239,9 +239,13 @@ deno_core::extension!(
 
 // Facade extension that satisfies `ext:deno_os/30_os.js` imports from upstream
 // deno_node polyfills (os.ts, process.ts) with stubbed/mocked implementations.
+// NOTE(deno-2.9.5): upstream moved `deno_os`'s `30_os.js` to
+// `lazy_loaded_js`, and its consumers (the node polyfills, upstream's
+// `90_deno_ns.js`) now reach it via `core.loadExtScript`, which only resolves
+// lazy scripts. The facade has to match or those loads fail at runtime.
 deno_core::extension!(
   deno_os,
   deps = [os],
   ops = [op_get_env_no_permission_check],
-  esm = ["30_os.js"],
+  lazy_loaded_js = ["30_os.js"],
 );

@@ -338,6 +338,7 @@ impl ModuleGraphCreator {
           workspace_fast_check: WorkspaceFastCheckOption::Enabled(
             &fast_check_workspace_members,
           ),
+          fast_check_dts: false,
         },
       )?;
     }
@@ -401,6 +402,8 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+  /// Whether to generate .d.ts files during fast check.
+  pub fast_check_dts: bool,
 }
 
 pub struct ModuleGraphBuilder {
@@ -655,7 +658,12 @@ impl ModuleGraphBuilder {
       is_dynamic,
       skip_dynamic_deps: false,
       unstable_bytes_imports: false,
-      unstable_text_imports: false,
+      // Upstream 2.9.5 stabilised text imports and turns them on
+      // unconditionally. bytes/css imports remain gated behind
+      // `--unstable-raw-imports`, which trex does not expose, so they stay off.
+      unstable_text_imports: true,
+      unstable_css_imports: false,
+      unstable_config_imports: false,
       passthrough_jsr_specifiers: false,
       executor: Default::default(),
       file_system: &fs_adapter,
@@ -742,7 +750,7 @@ impl ModuleGraphBuilder {
       deno_graph::BuildFastCheckTypeGraphOptions {
         es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
-        fast_check_dts: false,
+        fast_check_dts: options.fast_check_dts,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
         workspace_fast_check: options.workspace_fast_check,

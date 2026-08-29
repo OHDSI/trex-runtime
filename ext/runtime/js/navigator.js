@@ -3,7 +3,12 @@ const {
   SymbolFor,
 } = globalThis.__bootstrap.primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { core } from "ext:core/mod.js";
+
+// NOTE(deno-2.9.5): deno_webidl moved its JS from `esm` to
+// `lazy_loaded_js`, so it can no longer be statically imported at snapshot
+// time. Upstream's own runtime JS uses `core.loadExtScript` for exactly this.
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 
 class Navigator {
   constructor() {

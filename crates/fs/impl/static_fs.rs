@@ -341,6 +341,23 @@ impl deno_fs::FileSystem for StaticFs {
     }
   }
 
+  // NOTE(deno-2.9.5): `statfs_sync`/`statfs_async` are new in deno_fs 0.167.
+  fn statfs_sync(
+    &self,
+    _path: &CheckedPath,
+    _bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    Err(FsError::NotSupported)
+  }
+
+  async fn statfs_async(
+    &self,
+    _path: CheckedPathBuf,
+    _bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    Err(FsError::NotSupported)
+  }
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     if self.vfs.is_path_within(path) {
       Ok(self.vfs.canonicalize(path)?)
@@ -365,12 +382,15 @@ impl deno_fs::FileSystem for StaticFs {
     }
   }
 
+  // NOTE(deno-2.9.5): deno_fs 0.167 made `read_dir_async` return an
+  // `FsReadDirRc` cursor instead of a `Vec<FsDirEntry>`. This listing is still
+  // produced eagerly; it is only wrapped for the trait.
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
+  ) -> FsResult<deno_fs::FsReadDirRc> {
     if self.vfs.is_path_within(&path) {
-      Ok(self.vfs.read_dir(&path)?)
+      Ok(super::vec_read_dir(self.vfs.read_dir(&path)?))
     } else {
       Err(FsError::NotSupported)
     }

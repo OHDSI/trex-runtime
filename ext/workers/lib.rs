@@ -46,7 +46,14 @@ use hyper_v014::body::HttpBody;
 use hyper_v014::header::CONTENT_LENGTH;
 use hyper_v014::header::HeaderName;
 use hyper_v014::header::HeaderValue;
-use hyper_v014::upgrade::OnUpgrade;
+// NOTE(deno-2.9.5): deliberately hyper 1.x, not `hyper_v014`. The request we
+// lift this out of below belongs to `deno_http`, which is on hyper 1.x as of
+// 0.255 (it dropped its `hyper_v014` dependency entirely). Extensions are
+// type-erased, so asking for the 0.14 type here compiles and silently yields
+// `None` forever, which is exactly how nested-worker websocket upgrades broke.
+// `crates/base/src/worker/worker_surface_creation.rs` is the other end of this
+// handoff and accepts either version.
+use hyper::upgrade::OnUpgrade;
 use log::error;
 use once_cell::sync::Lazy;
 use serde::Deserialize;

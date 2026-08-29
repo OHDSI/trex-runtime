@@ -48,12 +48,30 @@ docker run -it --rm -p 9000:9000 -v ./examples/:/examples supabase/edge-runtime 
 
 ## How to update to a newer Deno version
 
-- Select the Deno version to upgrade and visit its tag on GitHub (eg:
-  https://github.com/denoland/deno/blob/v1.30.3/Cargo.toml)
-- Open the `Cargo.toml` at the root of of this repo and modify all `deno_*`
-  modules to match to the selected tag of Deno.
-- Update the contents of `ext/node/` to match the contents of
-  `deno@selected-tag/ext/node`.
+This is a fork-based workflow across four repositories, not a version-string
+edit. In order:
+
+1. **`p-hoffmann/rusty_v8`** — branch `supabase-v<V8_VERSION>` from the upstream
+   tag that the target Deno release pins in `libs/deno_v8/Cargo.toml`. Carry the
+   cppgc/isolate null guards forward. Publish release assets for x86_64 and
+   aarch64; `.devcontainer/install.sh` and CI consume them.
+2. **`p-hoffmann/deno`** — branch `trex-v<DENO_VERSION>` from the upstream tag and
+   rebase the trex patches. `git diff v<PREV>..trex-v<PREV>` lists them. Point
+   `libs/deno_v8` at the rusty_v8 branch from step 1. Gate on
+   `cargo check --workspace` inside the fork.
+3. **This repo** — bump every `deno_*` pin in `[workspace.dependencies]` to match
+   the target tag's `Cargo.toml`, retarget every `[patch.crates-io]` entry to the
+   new fork branches, bump `deno/Cargo.toml`, and re-sync the vendored `deno/`
+   crate against upstream `cli/`.
+4. **`OHDSI/trex`** — the parent repository, at `plugins/runtime/`, vendors this
+   repo as a git submodule and builds with `--features trex`, which this repo's
+   CI never exercises. Coordinate the bump there.
+
+The snapshot extension lists in `crates/base/build.rs` and
+`crates/base/src/runtime/mod.rs` must stay name- and order-identical;
+`crates/base/tests/snapshot_extension_parity.rs` enforces this.
+
+See `docs/superpowers/specs/` for the design record of past upgrades.
 
 ## How to use Dev Container
 
@@ -136,7 +154,7 @@ Once you've confirmed that k6 is run properly, you can proceed to load testing.
   vscode ➜ /workspaces/edge-runtime $ cat ./scripts/run.sh
   #!/usr/bin/env bash
 
-  GIT_V_TAG=0.1.1 cargo build && EDGE_RUNTIME_PORT=9998 RUST_BACKTRACE=full ./target/debug/edge-runtime "$@" start --main-service ./examples/main --event-worker ./examples/event-manager
+  GIT_V_TAG=0.1.1 cargo build && EDGE_RUNTIME_PORT=9998 RUST_BACKTRACE=full ./target/debug/trex "$@" start --main-service ./examples/main --event-worker ./examples/event-manager
 
   vscode ➜ /workspaces/edge-runtime $ ./scripts/run.sh
     Compiling base v0.1.0 (/workspaces/edge-runtime/crates/base)
@@ -214,8 +232,8 @@ can simply replace it by adding arguments as shown below.
 ```diff
 # scripts/run.sh
 
--GIT_V_TAG=0.1.1 cargo build && EDGE_RUNTIME_PORT=9998 RUST_BACKTRACE=full ./target/debug/edge-runtime "$@" start \
-+GIT_V_TAG=0.1.1 cargo build --features cli/tracing && EDGE_RUNTIME_PORT=9998 RUST_BACKTRACE=full ./target/debug/edge-runtime "$@" start \
+-GIT_V_TAG=0.1.1 cargo build && EDGE_RUNTIME_PORT=9998 RUST_BACKTRACE=full ./target/debug/trex "$@" start \
++GIT_V_TAG=0.1.1 cargo build --features cli/tracing && EDGE_RUNTIME_PORT=9998 RUST_BACKTRACE=full ./target/debug/trex "$@" start \
      --main-service ./examples/main \
      --event-worker ./examples/event-manager
 ```

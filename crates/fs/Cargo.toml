@@ -14,6 +14,7 @@ deno.workspace = true
 deno_ast.workspace = true
 deno_core.workspace = true
 deno_fs.workspace = true
+deno_maybe_sync.workspace = true
 deno_io.workspace = true
 deno_npm.workspace = true
 deno_permissions.workspace = true

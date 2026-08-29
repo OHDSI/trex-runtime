@@ -1008,6 +1008,9 @@ pub async fn generate_binary_eszip(
       })
       .collect(),
     pkg_json_resolution: workspace_resolver.pkg_json_dep_resolution(),
+    // NOTE(deno-2.9.5): new field; carried through the eszip exactly as
+    // upstream's `cli/standalone/binary.rs` does.
+    catalogs: workspace_resolver.catalogs().clone(),
   };
 
   metadata.entrypoint = Some(Entrypoint::Key(

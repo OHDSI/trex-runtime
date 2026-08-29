@@ -32,6 +32,7 @@ futures.workspace = true
 http.workspace = true
 httparse.workspace = true
 hyper.workspace = true
+hyper-util.workspace = true
 hyper_v014.workspace = true
 log.workspace = true
 once_cell.workspace = true

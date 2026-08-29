@@ -367,7 +367,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
 
-        PackageJsonDepValue::Workspace(version_req) => {
+        // NOTE(deno-2.9.5): `Workspace` became a struct variant with a new
+        // optional `name` for pnpm-style aliases. The lookup keys off `alias`
+        // as before; `name` is ignored to preserve behaviour.
+        PackageJsonDepValue::Workspace {
+          name: _,
+          version_req,
+        } => {
           let pkg_folder = self
             .shared
             .workspace_resolver
@@ -391,6 +397,17 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .into_url()
             .map_err(|e| JsErrorBox::generic(format!("{:#}", e)))?;
           Ok(url)
+        }
+
+        // NOTE(deno-2.9.5): `catalog:` deps are new in deno_package_json
+        // 0.59. Before the upgrade the scheme failed to parse and this arm
+        // returned an error via `dep_result`; erroring here keeps that
+        // outcome while naming the cause.
+        PackageJsonDepValue::Catalog(_) => {
+          Err(JsErrorBox::type_error(format!(
+            "catalog: protocol dependencies are not supported in package.json (dependency: {})",
+            alias
+          )))
         }
 
         PackageJsonDepValue::File(_) => Err(JsErrorBox::type_error(format!(
@@ -809,6 +826,20 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
+
+  // NOTE(deno-2.9.5): new `NodeRequireLoader` method in ext_node. Delegates to
+  // the same `CjsTracker` as `is_maybe_cjs`, mirroring upstream's
+  // `cli/rt/run.rs` implementation.
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, deno::node_resolver::errors::PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
+  }
 }
 
 pub struct StandaloneModuleLoaderFactory {
@@ -1093,6 +1124,8 @@ pub async fn create_module_loader_for_eszip(
         ManagedNpmResolver, ManagedNpmResolverCreateOptions,
       };
       let upstream_resolver =
+        // NOTE(deno-2.9.5): `linker_mode` is new in deno_resolver 0.88; the
+        // default (`Isolated`) is the pre-existing layout.
         ManagedNpmResolver::<VfsSys>::new(ManagedNpmResolverCreateOptions {
           npm_cache_dir: npm_cache_dir.clone(),
           sys: node_resolver::cache::NodeResolutionSys::new(
@@ -1103,6 +1136,7 @@ pub async fn create_module_loader_for_eszip(
           npm_system_info: inner.npm_system_info().clone(),
           npmrc: inner.npmrc().clone(),
           npm_resolution,
+          linker_mode: Default::default(),
         });
 
       deno::deno_resolver::npm::NpmResolver::Managed(new_rc(upstream_resolver))
@@ -1243,6 +1277,11 @@ pub async fn create_module_loader_for_eszip(
           deno::deno_resolver::workspace::SloppyImportsOptions::Enabled, // sloppy_imports_options
           Default::default(), // fs_cache_options
           vfs_sys.clone(),    // sys
+          // NOTE(deno-2.9.5): `new_raw` gained a trailing `catalogs` argument
+          // in deno_resolver 0.88. It round-trips through the eszip metadata,
+          // so hand back what was serialized (empty for eszips written before
+          // this upgrade, thanks to `#[serde(default)]`).
+          serialized_workspace_resolver.catalogs,
         )
       },
       cjs_tracker: cjs_tracker.clone(),

@@ -2605,7 +2605,22 @@ async fn test_issue_208() {
         let resp = resp.unwrap();
         assert!(resp.status().as_u16() == 500);
         let reason = resp.text().await.unwrap();
-        assert!(reason.contains("invalid peer certificate: UnknownIssuer"));
+        // deno 2.9.5's fetch no longer folds the rustls detail into the
+        // TypeError's own message; it now throws
+        // `new TypeError("fetch failed", { cause: new Error(detail) })`
+        // (deno_fetch 26_fetch.js), so `ex.toString()` alone is just
+        // "TypeError: fetch failed". The issue-208 fixture was updated in the
+        // same change to serialise `.cause` after a `cause: ` marker, which is
+        // where the peer-certificate verification failure now lives.
+        assert!(
+          reason.starts_with("TypeError: fetch failed"),
+          "expected the fetch to fail with a TypeError, got: {reason}"
+        );
+        assert!(
+          reason.contains("invalid peer certificate: UnknownIssuer"),
+          "expected the peer-certificate verification failure in the error \
+           cause, got: {reason}"
+        );
       }),
       TerminationToken::new()
     );

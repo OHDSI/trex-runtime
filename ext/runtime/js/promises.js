@@ -1,4 +1,4 @@
-import * as event from "ext:deno_web/02_event.js";
+const event = core.loadExtScript("ext:deno_web/02_event.js");
 import { core, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 

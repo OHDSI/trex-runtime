@@ -684,6 +684,42 @@ where
     }
   }
 
+  // NOTE(deno-2.9.5): `statfs_sync`/`statfs_async` are new in deno_fs 0.167.
+  fn statfs_sync(
+    &self,
+    path: &CheckedPath,
+    bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    self.check_sync_api_allowed("statfs_sync")?;
+    if path.starts_with(&self.prefix) {
+      let stripped = path.strip_prefix(&self.prefix).unwrap();
+      let checked = CheckedPath::unsafe_new(Cow::Borrowed(stripped));
+      self.fs.statfs_sync(&checked, bigint)
+    } else {
+      self
+        .base_fs
+        .as_ref()
+        .map(|it| it.statfs_sync(path, bigint))
+        .unwrap_or_else(|| Err(FsError::NotSupported))
+    }
+  }
+
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<deno_io::fs::FsStatFs> {
+    if path.starts_with(&self.prefix) {
+      let stripped = path.strip_prefix(&self.prefix).unwrap();
+      let checked = CheckedPathBuf::unsafe_new(stripped.to_path_buf());
+      self.fs.statfs_async(checked, bigint).await
+    } else if let Some(fs) = self.base_fs.as_ref() {
+      fs.statfs_async(path, bigint).await
+    } else {
+      Err(FsError::NotSupported)
+    }
+  }
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
     self.check_sync_api_allowed("realpath_sync")?;
     if path.starts_with(&self.prefix) {
@@ -729,7 +765,7 @@ where
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
+  ) -> FsResult<deno_fs::FsReadDirRc> {
     if path.starts_with(&self.prefix) {
       let stripped = path.strip_prefix(&self.prefix).unwrap();
       let checked = CheckedPathBuf::unsafe_new(stripped.to_path_buf());

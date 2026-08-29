@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
@@ -245,7 +244,37 @@ impl BlockingScopeCPUUsageMetricExt for &mut OpState {
 #[derive(Debug, Clone)]
 pub struct RuntimeWaker(pub Arc<AtomicWaker>);
 
-#[derive(Debug, Clone)]
-pub struct RuntimeOtelExtraAttributes(
-  pub HashMap<opentelemetry::Key, opentelemetry::Value>,
-);
+// Re-exported rather than redefined: `ext/telemetry` reads this out of `OpState`
+// by TypeId, so a structurally identical copy in this crate is a *different* key
+// and the borrow silently returns None. See docs/superpowers/plans/ Task 8a.
+pub use deno_otel_attrs::RuntimeOtelExtraAttributes;
+
+#[cfg(test)]
+mod tests {
+  use std::collections::HashMap;
+
+  use deno_core::OpState;
+
+  #[test]
+  fn otel_extra_attributes_roundtrip_through_opstate() {
+    // Guards the TypeId identity between the producer (crates/base) and the
+    // consumer (fork ext/telemetry). If base_rt ever redefines this struct
+    // locally instead of re-exporting it, put/borrow silently stop matching.
+    let mut state = OpState::new(None);
+    // NOTE: the key/value types are deliberately left to inference. This crate
+    // and `deno_otel_attrs` resolve *different* opentelemetry versions (0.27
+    // here, 0.32 in the fork), so naming `opentelemetry::Key` explicitly picks
+    // the wrong one and the test does not compile. Inference takes the types
+    // from `RuntimeOtelExtraAttributes` itself, which is the point of the test.
+    let mut map = HashMap::new();
+    map.insert("trex.worker".into(), "test".into());
+    state.put(deno_otel_attrs::RuntimeOtelExtraAttributes(map));
+
+    let got = state.try_borrow::<crate::RuntimeOtelExtraAttributes>();
+    assert!(
+      got.is_some(),
+      "put via deno_otel_attrs must be borrowable as base_rt's alias -- \
+       if this fails the two are distinct types again"
+    );
+  }
+}

@@ -161,7 +161,11 @@ pub fn config_to_deno_graph_workspace_member(
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
-    Some(name) => Some(deno_semver::Version::parse_standard(name)?),
+    Some(version) => {
+      Some(deno_semver::Version::parse_standard(version).with_context(
+        || format!("Invalid 'version' field in '{}'", config.specifier),
+      )?)
+    }
     None => None,
   };
   Ok(deno_graph::WorkspaceMember {
@@ -296,6 +300,14 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
     },
     scopes: Default::default(),
     registry_configs: Default::default(),
+    // NOTE(deno-2.9.5): new in deno_npmrc 0.18. Every default is the
+    // "feature off" value (`ReplaceRegistryHost::NpmJs`, no min release age,
+    // `TrustPolicyConfig::Off`, no cutoff, no exclusions).
+    replace_registry_host: Default::default(),
+    min_release_age_days: Default::default(),
+    trust_policy: Default::default(),
+    trust_policy_ignore_after_minutes: Default::default(),
+    trust_policy_exclude: Default::default(),
   })
 }
 

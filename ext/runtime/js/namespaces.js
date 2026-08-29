@@ -4,12 +4,12 @@ import { MAIN_WORKER_API, USER_WORKER_API } from "ext:ai/ai.js";
 import { SUPABASE_USER_WORKERS } from "ext:user_workers/user_workers.js";
 import { applySupabaseTag, getSupabaseTag } from "ext:runtime/http.js";
 import { waitUntil } from "ext:runtime/async_hook.js";
-import {
+const {
   builtinTracer,
   enterSpan,
   METRICS_ENABLED,
   TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 import { exit as osExit } from "ext:os/exit.js";
 
 const ops = core.ops;

@@ -104,7 +104,7 @@ impl NpmInstallDepsProvider {
           .dependencies
           .clone()
           .into_iter()
-          .chain(deps.dev_dependencies.clone().into_iter())
+          .chain(deps.dev_dependencies.clone())
         {
           let dep = match dep {
             Ok(dep) => dep,
@@ -140,7 +140,14 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Workspace(workspace_version_req) => {
+            // NOTE(deno-2.9.5): `Workspace` became a struct variant with a new
+            // optional `name` for pnpm-style aliases
+            // (`workspace:<name>@<range>`). This lookup keys off `alias` as it
+            // always has; `name` is deliberately ignored to preserve behaviour.
+            PackageJsonDepValue::Workspace {
+              name: _,
+              version_req: workspace_version_req,
+            } => {
               let version_req = match workspace_version_req {
                 PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                   version_req
@@ -159,7 +166,10 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::File(_) => {
+            // NOTE(deno-2.9.5): `catalog:` deps are new in deno_package_json
+            // 0.59 and trex has no catalog resolution, so they are skipped -
+            // the same treatment upstream's `cli/tools/pm/deps.rs` gives them.
+            PackageJsonDepValue::Catalog(_) | PackageJsonDepValue::File(_) => {
               continue;
             }
           }

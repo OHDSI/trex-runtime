@@ -1,6 +1,9 @@
 [env]
-RUSTY_V8_MIRROR = "https://github.com/p-hoffmann/rusty_v8/releases/download"
-# V8_FROM_SOURCE = "1"
+# Upstream artifacts are usable because the fork's binding.cc/.gn/BUILD.gn are
+# byte-identical to upstream v150.4.0 -- its only changes are Rust (src/cppgc.rs
+# guards + a build.rs sysroot fix), which compile locally. Upstream publishes
+# macOS assets, so no V8_FROM_SOURCE build is needed on any supported platform.
+RUSTY_V8_MIRROR = "https://github.com/denoland/rusty_v8/releases/download"
 # EXTRA_GN_ARGS = "v8_monolithic=true v8_monolithic_for_shared_library=true"
 # https://supabase.com/docs/guides/functions/limits
 SUPABASE_RESOURCE_LIMIT_MEM_MB = "256"

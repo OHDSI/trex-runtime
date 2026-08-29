@@ -40,4 +40,6 @@ pub struct SerializedWorkspaceResolver {
   pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,
+  #[serde(default)]
+  pub catalogs: IndexMap<String, IndexMap<String, String>>,
 }

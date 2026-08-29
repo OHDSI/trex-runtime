@@ -356,6 +356,8 @@ fn get_crypto_decrypt_error_class(e: &DecryptError) -> &'static str {
     DecryptError::InvalidKeyOrIv => "DOMExceptionOperationError",
     DecryptError::TooMuchData => "DOMExceptionOperationError",
     DecryptError::InvalidIvLength => "TypeError",
+    DecryptError::InvalidChaChaNonceLength => "TypeError",
+    DecryptError::InvalidChaChaKeyLength => "TypeError",
     DecryptError::Rsa(_) => "DOMExceptionOperationError",
   }
 }
@@ -367,6 +369,9 @@ fn get_crypto_encrypt_error_class(e: &EncryptError) -> &'static str {
     EncryptError::Failed => "DOMExceptionOperationError",
     EncryptError::InvalidLength => "TypeError",
     EncryptError::InvalidIvLength => "TypeError",
+    EncryptError::InvalidTagLength => "DOMExceptionOperationError",
+    EncryptError::InvalidChaChaNonceLength => "TypeError",
+    EncryptError::InvalidChaChaKeyLength => "TypeError",
     EncryptError::InvalidCounterLength => "TypeError",
     EncryptError::TooMuchData => "DOMExceptionOperationError",
   }
@@ -390,6 +395,9 @@ fn get_crypto_shared_error_class(e: &deno_crypto::SharedError) -> &'static str {
     deno_crypto::SharedError::UnsupportedFormat => {
       "DOMExceptionNotSupportedError"
     }
+    deno_crypto::SharedError::InvalidKeyHandle => "TypeError",
+    deno_crypto::SharedError::IllegalConstructor => "TypeError",
+    deno_crypto::SharedError::InvalidKeyType => "TypeError",
   }
 }
 
@@ -463,6 +471,7 @@ fn get_crypto_import_key_error_class(e: &ImportKeyError) -> &'static str {
 fn get_crypto_x448_error_class(e: &deno_crypto::X448Error) -> &'static str {
   match e {
     deno_crypto::X448Error::FailedExport => "DOMExceptionOperationError",
+    deno_crypto::X448Error::InvalidKeyLength => "DOMExceptionDataError",
     deno_crypto::X448Error::Der(_) => "Error",
   }
 }
@@ -470,6 +479,7 @@ fn get_crypto_x448_error_class(e: &deno_crypto::X448Error) -> &'static str {
 fn get_crypto_x25519_error_class(e: &deno_crypto::X25519Error) -> &'static str {
   match e {
     deno_crypto::X25519Error::FailedExport => "DOMExceptionOperationError",
+    deno_crypto::X25519Error::InvalidKeyLength => "DOMExceptionDataError",
     deno_crypto::X25519Error::Der(_) => "Error",
   }
 }
@@ -731,6 +741,7 @@ fn get_fetch_error(error: &FetchError) -> &'static str {
     FetchError::Permission(e) => get_permission_check_error_class(e),
     FetchError::NetworkError => "TypeError",
     FetchError::FsNotGet(_) => "TypeError",
+    FetchError::FileFetch(_, _) => "TypeError",
     FetchError::PathToUrl(_) => "TypeError",
     FetchError::InvalidUrl(_) => "TypeError",
     FetchError::InvalidHeaderName(_) => "TypeError",
@@ -1023,7 +1034,12 @@ fn get_child_permission_error(e: &ChildPermissionError) -> &'static str {
 fn get_http_error(error: &HttpError) -> &'static str {
   match error {
     HttpError::Canceled(_) => "Interrupted",
-    HttpError::HyperV014(e) => get_hyper_v014_error_class(e),
+    // NOTE(deno-2.9.5): deno_http 0.255 moved the legacy `serveHttp`
+    // connection onto hyper 1.x, so `HttpError::HyperV014` became
+    // `HttpError::Hyper` and a new `HttpError::Connection` was added. Both
+    // map to "Http", matching the class the old variant produced.
+    HttpError::Hyper(e) => get_hyper_error_class(e),
+    HttpError::Connection(_) => "Http",
     HttpError::InvalidHeaderName(_) => "Error",
     HttpError::InvalidHeaderValue(_) => "Error",
     HttpError::Http(_) => "Error",
@@ -1050,6 +1066,7 @@ fn get_http_next_error(error: &HttpNextError) -> &'static str {
     HttpNextError::Other(_) => "Error",
     HttpNextError::InvalidHttpStatusLine => "Http",
     HttpNextError::RawUpgradeFailed => "Error",
+    HttpNextError::TakeNetworkStream(_) => "Busy",
   }
 }
 
@@ -1129,7 +1146,7 @@ mod node {
   pub fn get_blocklist_error(error: &BlocklistError) -> &'static str {
     match error {
       BlocklistError::AddrParse(_) => "Error",
-      BlocklistError::IpNetwork(_) => "Error",
+      BlocklistError::PrefixLen(_) => "Error",
       BlocklistError::InvalidAddress => "Error",
       BlocklistError::IpVersionMismatch => "Error",
     }
@@ -1306,6 +1323,7 @@ mod node {
       KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsa => "Error",
       KeyObjectHandlePrehashedSignAndVerifyError::DigestNotAllowedForRsaPssSignature(_) => "TypeError",
       KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithRsaPss => "Error",
+      KeyObjectHandlePrehashedSignAndVerifyError::PssSaltLenTooSmall => "Error",
       KeyObjectHandlePrehashedSignAndVerifyError::FailedToSignDigestWithDsa => "TypeError",
       KeyObjectHandlePrehashedSignAndVerifyError::RsaPssHashAlgorithmUnsupported => "TypeError",
       KeyObjectHandlePrehashedSignAndVerifyError::PrivateKeyDisallowsUsage { .. } => "TypeError",
@@ -1473,6 +1491,9 @@ mod node {
       AsymmetricPrivateKeyError::InvalidEncryptedPemPrivateKey => "TypeError",
       AsymmetricPrivateKeyError::InvalidPemPrivateKey => "TypeError",
       AsymmetricPrivateKeyError::EncryptedPrivateKeyRequiresPassphraseToDecrypt => "TypeError",
+      AsymmetricPrivateKeyError::EncryptedPrivateKeyBadDecrypt => "TypeError",
+      AsymmetricPrivateKeyError::BadDecrypt => "TypeError",
+      AsymmetricPrivateKeyError::EncryptedPkcs8DerRequiresPassphrase => "TypeError",
       AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey => "TypeError",
       AsymmetricPrivateKeyError::InvalidSec1PrivateKey => "TypeError",
       AsymmetricPrivateKeyError::UnsupportedPemLabel(_) => "TypeError",
@@ -1559,6 +1580,8 @@ mod node {
       PrivateEncryptDecryptError::Rsa(_) => "Error",
       PrivateEncryptDecryptError::UnknownPadding => "TypeError",
       PrivateEncryptDecryptError::InvalidDigest => "TypeError",
+      PrivateEncryptDecryptError::OaepDecodingError => "Error",
+      PrivateEncryptDecryptError::EncryptedKeyRequiresPassphrase => "Error",
     }
   }
 

@@ -117,7 +117,11 @@ impl CliLockfile {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::Workspace { .. } => None,
+          // NOTE(deno-2.9.5): `catalog:` deps are new in deno_package_json
+          // 0.59. trex has no catalog resolution, so they are skipped like the
+          // other non-registry dep kinds already are here.
+          PackageJsonDepValue::Catalog(_) => None,
           PackageJsonDepValue::File(_) => None,
         })
         .collect()

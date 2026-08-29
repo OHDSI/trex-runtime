@@ -224,6 +224,10 @@ async fn snapshot_from_lockfile(
       lockfile: &lock,
       default_tarball_url:
         &deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider,
+      // NOTE(deno-2.9.5): new in deno_npm 0.69. `false` keeps the pre-2.9.5
+      // behaviour (no in-memory merging of equivalent peer-dep variants) and
+      // matches upstream's own non-installer call sites.
+      dedup_equivalent_peer_variants: false,
     },
   )?;
 
@@ -538,9 +542,13 @@ impl ManagedCliNpmResolver {
         | deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope(_) => {
           return Err(Box::new(err.clone()));
         }
+        // NOTE(deno-2.9.5): `EmptyName` is new in deno_package_json 0.59;
+        // upstream's `ensure_no_pkg_json_dep_errors` groups it with
+        // `Unsupported` as warn-only.
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
-        } => {
+        }
+        | deno_package_json::PackageJsonDepValueParseErrorKind::EmptyName => {
           log::warn!("{} {}\n    at {}", "Warning", err.source, err.location)
         }
       }

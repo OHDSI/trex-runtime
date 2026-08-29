@@ -237,7 +237,17 @@ impl NpmResolution {
   }
 
   pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
-    self.snapshot.read().package_reqs().clone()
+    // NOTE(deno-2.9.5): deno_npm 0.69 switched the snapshot's map to
+    // `FxBuildHasher`; rebuild it with the std hasher so this crate's public
+    // signature is unchanged. Both callers iterate and sort, so hasher order
+    // is not observable.
+    self
+      .snapshot
+      .read()
+      .package_reqs()
+      .iter()
+      .map(|(k, v)| (k.clone(), v.clone()))
+      .collect()
   }
 
   pub fn all_system_packages(
@@ -312,6 +322,9 @@ async fn add_package_reqs_to_snapshot(
     link_packages: Arc::new(HashMap::new()),
     newest_dependency_date_options: Default::default(),
     overrides: Default::default(),
+    // NOTE(deno-2.9.5): new in deno_npm 0.69. `Default` is `NpmTrustPolicy::Off`,
+    // i.e. trust evidence is ignored during resolution - the pre-2.9.5 behaviour.
+    trust_policy: Default::default(),
   };
   let result = snapshot
     .add_pkg_reqs(

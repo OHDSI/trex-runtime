@@ -28,7 +28,16 @@ export default {
       return new Response(await resp.text());
     } catch (ex) {
       if (ex instanceof TypeError) {
-        return new Response(ex.toString(), {
+        // deno 2.9.5 no longer folds the transport/TLS detail into the
+        // TypeError's own message; fetch now throws
+        // `new TypeError("fetch failed", { cause: new Error(detail) })`
+        // (deno_fetch 26_fetch.js). Serialise the cause alongside the error so
+        // the integration test can still assert on the TLS-level reason.
+        const cause = ex.cause instanceof Error
+          ? ex.cause.message
+          : String(ex.cause ?? "");
+
+        return new Response(`${ex.toString()}\ncause: ${cause}`, {
           status: 500,
         });
       }
