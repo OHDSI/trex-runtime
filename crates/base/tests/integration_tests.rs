@@ -3371,15 +3371,34 @@ async fn test_tmp_fs_should_not_be_available_in_import_stmt() {
 
 #[tokio::test]
 #[serial]
-async fn test_browser_globals_are_absent() {
-  // Deno 2.9.5 removed ext/node's global proxy (denoland/deno#33249), which had
-  // been hiding the `window` this runtime declares from anything loaded out of a
-  // `node_modules/` directory. With the proxy gone, any browser-only global left
-  // on `globalThis` is handed straight to npm packages doing `typeof window ===
-  // "object"` environment sniffing -- brotli@1.3.3 (via parquetjs) answers that
-  // by reaching for an emscripten `Browser` object its build dead-code-
-  // eliminated, and throws `ReferenceError: Browser is not defined` while being
-  // required, killing the worker at boot.
+async fn test_window_is_visible_to_user_code_but_not_to_npm_code() {
+  // Two properties, both of which have to hold at once.
+  //
+  // This runtime declares a `window` global because user function code reaches
+  // for it directly -- d2e's `DemoService.encrypt` calls
+  // `window.crypto.subtle.encrypt`, and without it the "Adding demo database"
+  // setup step fails with `Error while encrypting data ReferenceError: window
+  // is not defined`.
+  //
+  // npm packages, meanwhile, sniff their environment with bare `typeof window`
+  // checks and must not be answered like a browser: brotli@1.3.3 (via
+  // parquetjs, which d2e's analytics-svc imports statically) otherwise takes
+  // its browser branch, reaches for an emscripten `Browser` object its build
+  // dead-code-eliminated, and throws `ReferenceError: Browser is not defined`
+  // while being required, killing the worker at boot.
+  //
+  // ext/node's v8 named-property handler is what separates the two: the
+  // definition in ext/runtime/js/bootstrap.js is captured into the Deno-side
+  // globals bag rather than landing on the global object, and only code
+  // compiled without the "is node" host-defined option resolves it. Upstream
+  // deleted that handler in denoland/deno#33249; the fork restores it for
+  // `window` alone.
+  //
+  // The fixture ships a hand-written `node_modules/env-sniff` reproducing
+  // brotli's sniff verbatim, plus the `package.json` that puts the worker in
+  // byonm mode so the path-based in-npm-package check applies to it. brotli
+  // itself is not imported: its emscripten heap trips the test worker's memory
+  // limit, so the test would fail for an unrelated reason.
   integration_test!(
     "./test_cases/main",
     NON_SECURE_PORT,
@@ -3394,11 +3413,23 @@ async fn test_browser_globals_are_absent() {
       let body = resp.json::<serde_json::Value>().await.unwrap();
       let body = body.as_object().unwrap();
 
-      assert_eq!(body.get("window"), Some(&json!("undefined")));
-      assert_eq!(body.get("importScripts"), Some(&json!("undefined")));
-      // The Node-side half of the same sniff: without `process` the packages
-      // fall through to the browser branch regardless.
-      assert_eq!(body.get("process"), Some(&json!("object")));
+      let trex = body.get("trex").unwrap().as_object().unwrap();
+      // Property 1: this runtime's own user code sees `window`.
+      assert_eq!(trex.get("window"), Some(&json!("object")));
+      assert_eq!(trex.get("process"), Some(&json!("object")));
+      // Never declared by this runtime, in either world; brotli reads it as
+      // `ENVIRONMENT_IS_WORKER`.
+      assert_eq!(trex.get("importScripts"), Some(&json!("undefined")));
+
+      let npm = body.get("npm").unwrap().as_object().unwrap();
+      // Property 2: code loaded out of `node_modules/` does not.
+      assert_eq!(npm.get("window"), Some(&json!("undefined")));
+      assert_eq!(npm.get("importScripts"), Some(&json!("undefined")));
+      // The Node-side half of the same sniff: without `process` the package
+      // falls through to the browser branch regardless.
+      assert_eq!(npm.get("process"), Some(&json!("object")));
+      // The branch brotli resolves to.
+      assert_eq!(npm.get("environment"), Some(&json!("node")));
     }),
     TerminationToken::new()
   );

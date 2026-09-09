@@ -434,17 +434,21 @@ ObjectDefineProperties(globalThis, globalScope);
 
 const globalProperties = {
   Window: globalInterfaces.windowConstructorDescriptor,
-  // NOTE(deno-2.9.5): deliberately no `window`. Deno 2 dropped the global, and
-  // until 2.9.5 `ext/node/global.rs` installed a v8 named-property handler that
-  // hid the `window` this runtime still declared from any code loaded out of a
-  // `node_modules/` directory. Upstream deleted that proxy
-  // (denoland/deno#33249), so a `window` here is now visible to npm packages and
-  // flips their `typeof window === "object"` environment sniffing to the browser
-  // branch -- e.g. brotli@1.3.3 (via parquetjs) then reaches for an emscripten
-  // `Browser` object its build dead-code-eliminated and throws
-  // `ReferenceError: Browser is not defined` while being required. Nothing in
-  // this runtime needs `window`; `Window` stays because the global's prototype
-  // is set from it below.
+  // NOTE(deno-2.9.5): this `window` is deliberately NOT visible to npm code.
+  // Defining it here does not put it on the global object: ext/node's v8
+  // named-property handler intercepts the definition and captures it into the
+  // context's Deno-side globals bag, so only code compiled without the "is
+  // node" host-defined option -- this runtime's own user functions -- resolves
+  // it. Code under `node_modules/` and every CJS module get the Node-side bag,
+  // where it is absent, and so keep seeing `typeof window === "undefined"`.
+  // That split is what npm packages doing browser sniffing depend on:
+  // brotli@1.3.3 (via parquetjs) otherwise takes its browser branch, reaches
+  // for an emscripten `Browser` object its build dead-code-eliminated, and
+  // throws `ReferenceError: Browser is not defined` while being required.
+  // Upstream deleted the handler in denoland/deno#33249; the fork restores it
+  // for `window` alone (see ext/node/global.rs). Do not drop this property
+  // instead -- user function code reaches for `window.crypto` directly.
+  window: getterOnly(() => globalThis),
   Navigator: nonEnumerable(Navigator),
   navigator: getterOnly(() => navigator),
   self: getterOnly(() => globalThis),
