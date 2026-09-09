@@ -1,0 +1,7 @@
+# The repo root .gitignore excludes `node_modules/` everywhere. This fixture's
+# node_modules is hand-written rather than installed -- it has to be committed,
+# because the test it backs asserts that code loaded out of a `node_modules/`
+# directory does not see the `window` global this runtime declares for its own
+# user code.
+!node_modules/
+!node_modules/**

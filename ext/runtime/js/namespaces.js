@@ -20,7 +20,30 @@ function loadTrex() {
 	if (trexMod === undefined) {
 		try {
 			trexMod = ops.op_lazy_load_esm("ext:trex/trex_lib.js");
-		} catch {
+		} catch (e) {
+			// Falling back to `null` is correct: builds without
+			// `--features trex` have no `ext:trex` extension at all, and this
+			// runtime must still boot. But swallowing the error silently
+			// strips the *entire* Trex API surface (tokioChannel, httpClient,
+			// req, databaseManager, ...), and the loss only shows up much
+			// later and much further away as e.g. "Trex.tokioChannel is not a
+			// function". Report the real cause where it actually happens.
+			//
+			// Only when the extension *is* in this build, though -- otherwise
+			// every worker bootstrap of the plain runtime would print it.
+			// `op_get_dbc` is one of the trex ops, so its presence means the
+			// Rust half registered and only the JS half failed to load, which
+			// is always a bug (e.g. the module registered in the wrong
+			// extension bucket, where `op_lazy_load_esm` cannot see it).
+			//
+			// `core.print` rather than `console`: this runs during bootstrap,
+			// potentially before the console global is installed.
+			if (typeof ops.op_get_dbc === "function") {
+				core.print(
+					`Trex: ext:trex/trex_lib.js could not be loaded, the Trex API will be unavailable: ${e?.stack ?? e}\n`,
+					true,
+				);
+			}
 			trexMod = null;
 		}
 	}
