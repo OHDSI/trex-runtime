@@ -36,6 +36,7 @@ const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   ResponsePrototype,
   toInnerResponse,
+  wireHeaderList,
 } = core.loadExtScript("ext:deno_fetch/23_response.js");
 const {
   abortRequest,
@@ -268,7 +269,13 @@ function createRespondWith(
         await op_http_write_headers(
           writeStreamRid,
           innerResp.status ?? 200,
-          innerResp.headerList,
+          // Not `innerResp.headerList`: a response whose body `fetch`
+          // transparently decompressed keeps the `content-encoding` /
+          // `content-length` / `transfer-encoding` of the encoded wire body in
+          // its header list, and those don't describe the decoded body being
+          // written here. `wireHeaderList` drops them. Mirrors what deno_http's
+          // own `01_http.js` and `00_serve.ts` do.
+          wireHeaderList(innerResp),
           isStreamingResponseBody ? null : respBody,
         );
       } catch (error) {
