@@ -434,7 +434,17 @@ ObjectDefineProperties(globalThis, globalScope);
 
 const globalProperties = {
   Window: globalInterfaces.windowConstructorDescriptor,
-  window: getterOnly(() => globalThis),
+  // NOTE(deno-2.9.5): deliberately no `window`. Deno 2 dropped the global, and
+  // until 2.9.5 `ext/node/global.rs` installed a v8 named-property handler that
+  // hid the `window` this runtime still declared from any code loaded out of a
+  // `node_modules/` directory. Upstream deleted that proxy
+  // (denoland/deno#33249), so a `window` here is now visible to npm packages and
+  // flips their `typeof window === "object"` environment sniffing to the browser
+  // branch -- e.g. brotli@1.3.3 (via parquetjs) then reaches for an emscripten
+  // `Browser` object its build dead-code-eliminated and throws
+  // `ReferenceError: Browser is not defined` while being required. Nothing in
+  // this runtime needs `window`; `Window` stays because the global's prototype
+  // is set from it below.
   Navigator: nonEnumerable(Navigator),
   navigator: getterOnly(() => navigator),
   self: getterOnly(() => globalThis),

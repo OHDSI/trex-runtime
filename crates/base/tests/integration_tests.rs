@@ -3371,6 +3371,41 @@ async fn test_tmp_fs_should_not_be_available_in_import_stmt() {
 
 #[tokio::test]
 #[serial]
+async fn test_browser_globals_are_absent() {
+  // Deno 2.9.5 removed ext/node's global proxy (denoland/deno#33249), which had
+  // been hiding the `window` this runtime declares from anything loaded out of a
+  // `node_modules/` directory. With the proxy gone, any browser-only global left
+  // on `globalThis` is handed straight to npm packages doing `typeof window ===
+  // "object"` environment sniffing -- brotli@1.3.3 (via parquetjs) answers that
+  // by reaching for an emscripten `Browser` object its build dead-code-
+  // eliminated, and throws `ReferenceError: Browser is not defined` while being
+  // required, killing the worker at boot.
+  integration_test!(
+    "./test_cases/main",
+    NON_SECURE_PORT,
+    "browser-globals",
+    None,
+    None,
+    None,
+    (|resp| async {
+      let resp = resp.unwrap();
+      assert_eq!(resp.status().as_u16(), 200);
+
+      let body = resp.json::<serde_json::Value>().await.unwrap();
+      let body = body.as_object().unwrap();
+
+      assert_eq!(body.get("window"), Some(&json!("undefined")));
+      assert_eq!(body.get("importScripts"), Some(&json!("undefined")));
+      // The Node-side half of the same sniff: without `process` the packages
+      // fall through to the browser branch regardless.
+      assert_eq!(body.get("process"), Some(&json!("object")));
+    }),
+    TerminationToken::new()
+  );
+}
+
+#[tokio::test]
+#[serial]
 async fn test_commonjs() {
   integration_test!(
     "./test_cases/main",
