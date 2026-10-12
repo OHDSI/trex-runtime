@@ -82,13 +82,15 @@ jobs:
     name: 'cargo test'
     runs-on: ubuntu-latest
     steps:
+      # MinIO pulled its images from Docker Hub/quay.io and its binaries from
+      # dl.min.io, so use the pgsty community build of the same server.
       - name: Start MinIO
         run: |
           docker run -d --name minio \
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
           until curl -sf http://localhost:9000/minio/health/live; do sleep 1; done
 
       - name: Install deps
@@ -155,11 +157,11 @@ jobs:
       #     mv ./edge-runtime-test-eszip/testdata/*.out crates/base/tests/fixture/testdata
 
       - name: Create MinIO test bucket
-        run: |
-          wget --tries=3 --retry-connrefused --waitretry=5 -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /tmp/mc
-          chmod +x /tmp/mc
-          /tmp/mc alias set myminio http://localhost:9000 minioadmin minioadmin
-          /tmp/mc mb myminio/testbucket
+        run: aws --endpoint-url http://localhost:9000 s3 mb s3://testbucket
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_DEFAULT_REGION: us-east-1
 
       - name: Configure S3FS tests (MinIO)
         run: |
