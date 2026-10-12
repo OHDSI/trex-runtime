@@ -515,7 +515,7 @@ impl Worker {
             }
           }
 
-          let _guard = scopeguard::guard((), |_| {
+          let shutdown_guard = scopeguard::guard((), |_| {
             if let Some((key, tx)) = worker_key.zip(pool_msg_tx.clone()) {
               if let Err(err) = tx.send(UserWorkerMsgs::Shutdown(key)) {
                 error!(
@@ -559,6 +559,10 @@ impl Worker {
           let result = tokio::task::spawn_local(worker_poll_fut)
             .await
             .map_err(anyhow::Error::from)?;
+
+          // Queue `Shutdown` before the exit event goes out, so anyone reacting
+          // to the event finds the worker already on its way out of the pool.
+          drop(shutdown_guard);
 
           // Handle the result
           match result {

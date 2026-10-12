@@ -634,7 +634,11 @@ async fn test_user_worker_exit_reason_survives_shutdown_race() {
     ))
     .unwrap();
 
-  let Err(err) = res_rx.await.unwrap() else {
+  let Err(err) = timeout(Duration::from_secs(30), res_rx)
+    .await
+    .expect("timed out waiting for the request to fail")
+    .unwrap()
+  else {
     panic!("request to a dead worker must fail");
   };
 
@@ -645,7 +649,12 @@ async fn test_user_worker_exit_reason_survives_shutdown_race() {
     "expected the worker's exit reason, got: {err}"
   );
 
-  pool_termination_token.cancel_and_wait().await;
+  timeout(
+    Duration::from_secs(30),
+    pool_termination_token.cancel_and_wait(),
+  )
+  .await
+  .expect("dead worker kept the pool from terminating");
 }
 
 async fn test_main_worker_post_request_with_transfer_encoding(

@@ -260,6 +260,13 @@ pub struct WorkerPool {
   /// without this the caller would be told "user worker not available" instead
   /// of the exception that actually killed the worker.
   pub recent_exits: VecDeque<(Uuid, WorkerExit)>,
+  /// Workers whose `Shutdown` arrived before their `Created`.
+  ///
+  /// The creating task only sends `Created` after boot, while the worker keeps
+  /// evaluating its module on its own thread, so one that dies immediately can
+  /// queue `Shutdown` first. Without this, the late `Created` would register a
+  /// dead worker that never leaves the pool and blocks its termination.
+  pub early_shutdowns: HashSet<Uuid>,
 
   // TODO: refactor this out of worker pool
   pub worker_event_sender:
@@ -295,6 +302,7 @@ impl WorkerPool {
       global_sem,
       global_notify: Arc::new(Notify::new()),
       recent_exits: VecDeque::new(),
+      early_shutdowns: HashSet::new(),
     }
   }
 
@@ -627,6 +635,10 @@ impl WorkerPool {
 
     self.user_workers.insert(key, profile);
     self.metric_src.incl_active_user_workers();
+
+    if self.early_shutdowns.remove(&key) {
+      self.shutdown(&key);
+    }
   }
 
   pub fn send_request(
@@ -770,6 +782,10 @@ impl WorkerPool {
     self.retire(key);
 
     let removed_worker = self.user_workers.remove(key);
+
+    if removed_worker.is_none() {
+      self.early_shutdowns.insert(*key);
+    }
 
     if let Some(worker) = removed_worker.as_ref() {
       if self.recent_exits.len() == MAX_RECENT_EXITS {
