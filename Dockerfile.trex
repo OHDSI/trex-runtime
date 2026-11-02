@@ -10,7 +10,7 @@ ARG FEATURES=cli/tracing
 ENV ZERO_AR_DATE=1
 ENV DUCKDB_STATIC_BUILD=1
 ENV LLAMA_CUBLAS=1
-ENV duckdb_version=1.3.2
+ENV duckdb_version=2.0.0
 
 RUN echo "Platform: $TARGETPLATFORM"
 
@@ -27,7 +27,7 @@ RUN rustup component add rustfmt
 
 # Download and install TrexSQL library
 RUN mkdir -p /usr/local/lib && \
-    wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v1.4.4-trex/libtrexsql-linux-amd64.zip && \
+    wget --tries=3 --retry-connrefused --waitretry=5 -O /tmp/libtrexsql-linux-amd64.zip https://github.com/p-hoffmann/trexsql-rs/releases/download/v2.0.0-trex/libtrexsql-linux-amd64.zip && \
     unzip /tmp/libtrexsql-linux-amd64.zip -d /tmp/trexsql && \
     cp /tmp/trexsql/libtrexsql.so /usr/local/lib/ && \
     cp /tmp/trexsql/duckdb.h /usr/local/include/ && \
@@ -71,7 +71,7 @@ FROM ghcr.io/p-hoffmann/duckdb-extension-circe:sha-265ca31 AS duckdb_circe
 
 FROM node:20.19.4-trixie-slim AS trex-base
 
-ARG DUCKDB_VERSION=1.3.2
+ARG DUCKDB_VERSION=2.0.0
 ENV DUCKDB_VERSION=${DUCKDB_VERSION}
 
 RUN apt-get update && apt-get install -y curl libssl-dev mesa-vulkan-drivers libgomp1 libopenblas-dev && rm -rf /var/lib/apt/lists/*
