@@ -145,7 +145,7 @@ data-encoding = "2.3.3"
 data-url = "=0.3.1"
 dissimilar = "=1.0.9"
 dotenvy = "0.15.7"
-duckdb = { version = "1.4.4", features = ["vtab-arrow"] }
+duckdb = { version = "1.20000.1", features = ["vtab-arrow"] }
 dyn-clone = "1.0.20"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
@@ -296,9 +296,9 @@ windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media
 trex_core = { path = "crates/trex_core_stub" }
 
 # DuckDB Rust bindings fork
-duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
-libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
-duckdb-loadable-macros = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v1.4.4-trex" }
+duckdb = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v2.0.0-trex" }
+libduckdb-sys = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v2.0.0-trex" }
+duckdb-loadable-macros = { git = "https://github.com/p-hoffmann/trexsql-rs", tag = "v2.0.0-trex" }
 
 # Standalone forks
 v8 = { git = "https://github.com/p-hoffmann/rusty_v8", branch = "supabase-v150.4.0" }
